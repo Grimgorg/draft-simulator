@@ -1,4 +1,6 @@
 import "./App.css";
+import { CardPreviewProvider } from "./CardPreviewContext.js";
+import { CardPreviewOverlay } from "./components/CardPreviewOverlay.js";
 import { DraftBoard } from "./components/DraftBoard.js";
 import { HostSetupScreen } from "./components/HostSetupScreen.js";
 import { JoinScreen } from "./components/JoinScreen.js";
@@ -15,7 +17,7 @@ function StatusScreen({ message }: { message: string }) {
   );
 }
 
-function App() {
+function AppContent() {
   const { connected, reconnecting, lobbyState, myPlayerId, setMyPlayerId, myPack, myPool, myDeckExport } =
     useDraftConnection();
 
@@ -60,6 +62,15 @@ function App() {
       myDeckExport={myDeckExport}
       onNewDraftCreated={setMyPlayerId}
     />
+  );
+}
+
+function App() {
+  return (
+    <CardPreviewProvider>
+      <AppContent />
+      <CardPreviewOverlay />
+    </CardPreviewProvider>
   );
 }
 
