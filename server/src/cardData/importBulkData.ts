@@ -99,8 +99,8 @@ async function main() {
 
   const db = getDb();
   const insert = db.prepare(`
-    INSERT INTO cards (scryfall_id, name, name_lower, mana_cost, cmc, colors, type_line, source_image_uri)
-    VALUES (@scryfall_id, @name, @name_lower, @mana_cost, @cmc, @colors, @type_line, @source_image_uri)
+    INSERT INTO cards (scryfall_id, name, name_lower, front_name_lower, mana_cost, cmc, colors, type_line, source_image_uri)
+    VALUES (@scryfall_id, @name, @name_lower, @front_name_lower, @mana_cost, @cmc, @colors, @type_line, @source_image_uri)
   `);
 
   const importAll = db.transaction((rows: ScryfallCard[]) => {
@@ -117,6 +117,10 @@ async function main() {
         scryfall_id: card.id,
         name: card.name,
         name_lower: card.name.toLowerCase(),
+        // CubeCobra (and other sources) often refer to double-faced cards by
+        // just their front face name, e.g. "Delver of Secrets" rather than
+        // Scryfall's combined "Delver of Secrets // Insectile Aberration".
+        front_name_lower: card.name.split(" // ")[0]!.trim().toLowerCase(),
         mana_cost: extractManaCost(card),
         cmc: card.cmc ?? 0,
         colors: JSON.stringify(extractColors(card)),

@@ -18,6 +18,7 @@ export function getDb(): Database.Database {
       scryfall_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       name_lower TEXT NOT NULL,
+      front_name_lower TEXT NOT NULL,
       mana_cost TEXT NOT NULL,
       cmc REAL NOT NULL,
       colors TEXT NOT NULL,
@@ -25,6 +26,7 @@ export function getDb(): Database.Database {
       source_image_uri TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_cards_name_lower ON cards(name_lower);
+    CREATE INDEX IF NOT EXISTS idx_cards_front_name_lower ON cards(front_name_lower);
   `);
 
   return db;

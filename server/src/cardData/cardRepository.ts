@@ -5,6 +5,7 @@ interface CardRow {
   scryfall_id: string;
   name: string;
   name_lower: string;
+  front_name_lower: string;
   mana_cost: string;
   cmc: number;
   colors: string;
@@ -25,19 +26,32 @@ function rowToCard(row: CardRow): Card {
   };
 }
 
+/**
+ * Looks up a card by exact name, falling back to matching just the front
+ * face for double-faced cards (Scryfall stores those as "Front // Back",
+ * but sources like CubeCobra often refer to them by front face name alone).
+ */
+function findRow(byExactName: import("better-sqlite3").Statement, byFrontName: import("better-sqlite3").Statement, name: string): CardRow | undefined {
+  const lower = name.toLowerCase();
+  return (byExactName.get(lower) ?? byFrontName.get(lower)) as CardRow | undefined;
+}
+
 export function findCardByName(name: string): Card | undefined {
-  const row = getDb()
-    .prepare("SELECT * FROM cards WHERE name_lower = ?")
-    .get(name.toLowerCase()) as CardRow | undefined;
+  const db = getDb();
+  const byExactName = db.prepare("SELECT * FROM cards WHERE name_lower = ?");
+  const byFrontName = db.prepare("SELECT * FROM cards WHERE front_name_lower = ? LIMIT 1");
+  const row = findRow(byExactName, byFrontName, name);
   return row ? rowToCard(row) : undefined;
 }
 
 /** Resolves a batch of card names against the local cache. Names with no match are simply absent from the result. */
 export function findCardsByNames(names: string[]): Map<string, Card> {
-  const stmt = getDb().prepare("SELECT * FROM cards WHERE name_lower = ?");
+  const db = getDb();
+  const byExactName = db.prepare("SELECT * FROM cards WHERE name_lower = ?");
+  const byFrontName = db.prepare("SELECT * FROM cards WHERE front_name_lower = ? LIMIT 1");
   const result = new Map<string, Card>();
   for (const name of names) {
-    const row = stmt.get(name.toLowerCase()) as CardRow | undefined;
+    const row = findRow(byExactName, byFrontName, name);
     if (row) result.set(name, rowToCard(row));
   }
   return result;
