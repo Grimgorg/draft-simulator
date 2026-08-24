@@ -16,9 +16,16 @@ function StatusScreen({ message }: { message: string }) {
 }
 
 function App() {
-  const { connected, lobbyState, myPlayerId, setMyPlayerId, myPack, myDeckExport } = useDraftConnection();
+  const { connected, reconnecting, lobbyState, myPlayerId, setMyPlayerId, myPack, myPool, myDeckExport } =
+    useDraftConnection();
 
-  if (!connected || !lobbyState) {
+  if (!connected) {
+    return <StatusScreen message="Connecting to server..." />;
+  }
+  if (reconnecting) {
+    return <StatusScreen message="Reconnecting..." />;
+  }
+  if (!lobbyState) {
     return <StatusScreen message="Connecting to server..." />;
   }
 
@@ -37,11 +44,9 @@ function App() {
 
   if (lobbyState.status === "drafting") {
     if (!iAmSeated) {
-      return (
-        <StatusScreen message="A draft is already in progress and reconnecting mid-draft isn't supported yet — check with your host." />
-      );
+      return <StatusScreen message="A draft is already in progress and you're not part of it." />;
     }
-    return <DraftBoard lobbyState={lobbyState} myPlayerId={myPlayerId!} myPack={myPack} />;
+    return <DraftBoard lobbyState={lobbyState} myPlayerId={myPlayerId!} myPack={myPack} myPool={myPool} />;
   }
 
   // status === "complete"

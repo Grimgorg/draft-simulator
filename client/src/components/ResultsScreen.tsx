@@ -61,10 +61,7 @@ export function ResultsScreen({ lobbyState, myPlayerId, myDeckExport, onNewDraft
           </div>
         </>
       ) : (
-        <p className="subtitle">
-          Your personal export isn't available (this usually only happens after refreshing the page post-draft —
-          reconnect support isn't built yet).
-        </p>
+        <p className="subtitle">Your personal export hasn't arrived yet — it should show up momentarily.</p>
       )}
 
       <h2>Players</h2>

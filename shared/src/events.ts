@@ -1,3 +1,4 @@
+import type { Card } from "./card.js";
 import type { DeckExport, DraftSettings, Pack } from "./draft.js";
 import type { LobbyStateView } from "./lobbyView.js";
 
@@ -24,6 +25,8 @@ export interface ClientToServerEvents {
     payload: { playerName: string },
     callback: (result: ActionResultWithData<{ playerId: string }>) => void
   ) => void;
+  /** Re-attaches this socket to an existing player id, e.g. after a page refresh or a network blip. */
+  "lobby:reconnect": (payload: { playerId: string }, callback: (result: ActionResult) => void) => void;
   "draft:start": (callback: (result: ActionResult) => void) => void;
   "draft:pick": (payload: { scryfallId: string }, callback: (result: ActionResult) => void) => void;
 }
@@ -32,8 +35,8 @@ export interface ClientToServerEvents {
 export interface ServerToClientEvents {
   /** Broadcast to everyone on connect and after every state change. Never carries pack/pick contents. */
   "lobby:state": (state: LobbyStateView) => void;
-  /** Sent privately: only to the socket of the player who holds this pack. */
-  "draft:packUpdate": (pack: Pack) => void;
+  /** Sent privately: this player's current pack (null between rounds) and their pool so far. */
+  "draft:myState": (state: { pack: Pack | null; pool: Card[] }) => void;
   /** Sent privately: only to the socket of the player this export belongs to. */
   "draft:complete": (deckExport: DeckExport) => void;
 }

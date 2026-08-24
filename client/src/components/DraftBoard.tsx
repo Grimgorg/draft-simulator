@@ -7,10 +7,10 @@ interface DraftBoardProps {
   lobbyState: LobbyStateView;
   myPlayerId: string;
   myPack: Pack | null;
+  myPool: Card[];
 }
 
-export function DraftBoard({ lobbyState, myPlayerId, myPack }: DraftBoardProps) {
-  const [myPool, setMyPool] = useState<Card[]>([]);
+export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoardProps) {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,11 +26,9 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack }: DraftBoardProps) 
     setError(null);
     socket.emit("draft:pick", { scryfallId: card.scryfallId }, (result) => {
       setPicking(false);
-      if (result.ok) {
-        setMyPool((pool) => [...pool, card]);
-      } else {
-        setError(result.error);
-      }
+      if (!result.ok) setError(result.error);
+      // No optimistic pool update needed: the server pushes the updated
+      // pool right back via draft:myState.
     });
   }
 

@@ -14,24 +14,29 @@ function broadcastLobbyState(io: IoServer): void {
   io.emit("lobby:state", buildLobbyStateView());
 }
 
-/** Pushes each connected player their own current pack — never anyone else's. */
-function sendPrivatePacks(io: IoServer): void {
+/**
+ * Pushes one player's own current state (their pack + pool while drafting,
+ * or their deck export once complete) to one specific socket. Never sends
+ * anyone else's data.
+ */
+function sendDraftStateTo(io: IoServer, socketId: string, playerId: string): void {
   const session = lobbyManager.getSession();
-  if (!session || session.status !== "drafting") return;
-  for (const [socketId, playerId] of socketPlayers) {
-    const pack = session.currentPacks[playerId];
-    if (pack) io.to(socketId).emit("draft:packUpdate", pack);
+  if (!session) return;
+
+  if (session.status === "complete") {
+    const deckExport = buildDeckExports(session).find((e) => e.playerId === playerId);
+    if (deckExport) io.to(socketId).emit("draft:complete", deckExport);
+  } else if (session.status === "drafting") {
+    io.to(socketId).emit("draft:myState", {
+      pack: session.currentPacks[playerId] ?? null,
+      pool: session.pools[playerId] ?? [],
+    });
   }
 }
 
-/** Pushes each connected player their own deck export — never anyone else's. */
-function sendPrivateDeckExports(io: IoServer): void {
-  const session = lobbyManager.getSession();
-  if (!session || session.status !== "complete") return;
-  const exportsByPlayer = new Map(buildDeckExports(session).map((deckExport) => [deckExport.playerId, deckExport]));
+function broadcastDraftStateToAll(io: IoServer): void {
   for (const [socketId, playerId] of socketPlayers) {
-    const deckExport = exportsByPlayer.get(playerId);
-    if (deckExport) io.to(socketId).emit("draft:complete", deckExport);
+    sendDraftStateTo(io, socketId, playerId);
   }
 }
 
@@ -68,6 +73,24 @@ export function registerSocketHandlers(io: IoServer): void {
       }
     });
 
+    socket.on("lobby:reconnect", (payload, callback) => {
+      try {
+        const session = lobbyManager.getSession();
+        const player = session?.players.find((p) => p.id === payload.playerId);
+        if (!session || !player) {
+          throw new Error("No matching player found for this draft");
+        }
+
+        socketPlayers.set(socket.id, player.id);
+        lobbyManager.setPlayerConnected(player.id, true);
+        callback({ ok: true });
+        broadcastLobbyState(io);
+        sendDraftStateTo(io, socket.id, player.id);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
     socket.on("draft:start", (callback) => {
       try {
         const playerId = socketPlayers.get(socket.id);
@@ -78,7 +101,7 @@ export function registerSocketHandlers(io: IoServer): void {
         lobbyManager.beginDraft();
         callback({ ok: true });
         broadcastLobbyState(io);
-        sendPrivatePacks(io);
+        broadcastDraftStateToAll(io);
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
       }
@@ -93,14 +116,15 @@ export function registerSocketHandlers(io: IoServer): void {
         callback({ ok: true });
         broadcastLobbyState(io);
 
-        if (session.status === "complete") {
-          sendPrivateDeckExports(io);
-        } else if (session.waitingOn.length === session.players.length) {
-          // Every player is waiting again only once a fresh round has actually
-          // been dealt (rotation or a new pack) — that's the one moment packs
-          // change. Sending on every single pick would push stale/redundant
-          // packs to players who haven't picked yet this round.
-          sendPrivatePacks(io);
+        if (session.status === "complete" || session.waitingOn.length === session.players.length) {
+          // Either the draft just finished, or a fresh round was just dealt
+          // (rotation or a new pack) — that's the one moment everyone's
+          // pack/pool actually changes. Pushing a second, earlier update to
+          // just the picker (for "instant" pool feedback) sounds appealing
+          // but isn't worth it: it can arrive right before this broadcast,
+          // and anything race-sensitive about event order (including tests)
+          // has to handle two updates in one round instead of one.
+          broadcastDraftStateToAll(io);
         }
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });

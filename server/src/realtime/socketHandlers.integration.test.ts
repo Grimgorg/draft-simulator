@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { Server } from "socket.io";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
-import type { ClientToServerEvents, DeckExport, Pack, ServerToClientEvents } from "@draft-simulator/shared";
+import type { Card, ClientToServerEvents, DeckExport, Pack, ServerToClientEvents } from "@draft-simulator/shared";
 import * as lobbyManager from "../session/lobbyManager.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
 
@@ -18,6 +18,7 @@ import { registerSocketHandlers } from "./socketHandlers.js";
  */
 
 type DraftClientSocket = ClientSocket<ServerToClientEvents, ClientToServerEvents>;
+type MyState = { pack: Pack | null; pool: Card[] };
 
 function freshSnapshotPath(): string {
   return path.join(os.tmpdir(), `draft-simulator-itest-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
@@ -49,7 +50,7 @@ function connect(url: string): Promise<DraftClientSocket> {
   });
 }
 
-function waitForEvent<T>(socket: DraftClientSocket, event: "draft:packUpdate" | "draft:complete"): Promise<T> {
+function waitForEvent<T>(socket: DraftClientSocket, event: "draft:myState" | "draft:complete"): Promise<T> {
   return new Promise((resolve) => {
     socket.once(event, (payload: T) => resolve(payload));
   });
@@ -89,19 +90,20 @@ test(
       assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
       const guestId: string = joinResult.playerId;
 
-      const hostPackPromise = waitForEvent<Pack>(hostSocket, "draft:packUpdate");
-      const guestPackPromise = waitForEvent<Pack>(guestSocket, "draft:packUpdate");
+      const hostStatePromise = waitForEvent<MyState>(hostSocket, "draft:myState");
+      const guestStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
 
       const startResult = await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
       assert.equal(startResult.ok, true, JSON.stringify(startResult));
 
-      let hostPack = await hostPackPromise;
-      let guestPack = await guestPackPromise;
-      assert.equal(hostPack.cards.length, 3);
-      assert.equal(guestPack.cards.length, 3);
+      let hostState = await hostStatePromise;
+      let guestState = await guestStatePromise;
+      assert.equal(hostState.pack?.cards.length, 3);
+      assert.equal(guestState.pack?.cards.length, 3);
+      assert.equal(hostState.pool.length, 0);
 
-      const hostCardIds = new Set(hostPack.cards.map((c) => c.scryfallId));
-      const guestCardIds = new Set(guestPack.cards.map((c) => c.scryfallId));
+      const hostCardIds = new Set(hostState.pack!.cards.map((c) => c.scryfallId));
+      const guestCardIds = new Set(guestState.pack!.cards.map((c) => c.scryfallId));
       assert.equal(
         [...hostCardIds].some((id) => guestCardIds.has(id)),
         false,
@@ -114,11 +116,11 @@ test(
       // 3 synchronized pick rounds empty the single 3-card pack each and complete the draft.
       for (let round = 0; round < 3; round++) {
         const isLastRound = round === 2;
-        const nextHostPack = isLastRound ? undefined : waitForEvent<Pack>(hostSocket, "draft:packUpdate");
-        const nextGuestPack = isLastRound ? undefined : waitForEvent<Pack>(guestSocket, "draft:packUpdate");
+        const nextHostState = isLastRound ? undefined : waitForEvent<MyState>(hostSocket, "draft:myState");
+        const nextGuestState = isLastRound ? undefined : waitForEvent<MyState>(guestSocket, "draft:myState");
 
-        const hostPick = hostPack.cards[0]!.scryfallId;
-        const guestPick = guestPack.cards[0]!.scryfallId;
+        const hostPick = hostState.pack!.cards[0]!.scryfallId;
+        const guestPick = guestState.pack!.cards[0]!.scryfallId;
 
         const [hostPickResult, guestPickResult] = await Promise.all([
           new Promise<any>((resolve) => hostSocket.emit("draft:pick", { scryfallId: hostPick }, resolve)),
@@ -127,9 +129,10 @@ test(
         assert.equal(hostPickResult.ok, true, JSON.stringify(hostPickResult));
         assert.equal(guestPickResult.ok, true, JSON.stringify(guestPickResult));
 
-        if (nextHostPack && nextGuestPack) {
-          hostPack = await nextHostPack;
-          guestPack = await nextGuestPack;
+        if (nextHostState && nextGuestState) {
+          hostState = await nextHostState;
+          guestState = await nextGuestState;
+          assert.equal(hostState.pool.length, round + 1, "pool should grow by one each round");
         }
       }
 
@@ -147,6 +150,88 @@ test(
         3
       );
       assert.ok(hostExport.plainText.length > 0);
+    } finally {
+      hostSocket.close();
+      guestSocket.close();
+      await server.close();
+    }
+  }
+);
+
+test(
+  "reconnect: a dropped player's new socket resumes their exact pack/pool and can keep picking",
+  { timeout: 30_000 },
+  async () => {
+    lobbyManager.resetForTests(freshSnapshotPath());
+
+    const server = await startTestServer();
+    const hostSocket = await connect(server.url);
+    let guestSocket = await connect(server.url);
+
+    try {
+      const createResult = await new Promise<any>((resolve) =>
+        hostSocket.emit(
+          "lobby:create",
+          {
+            hostName: "Alice",
+            cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
+            packCount: 1,
+            packSize: 2,
+            playerCount: 2,
+          },
+          resolve
+        )
+      );
+      assert.equal(createResult.ok, true, JSON.stringify(createResult));
+
+      const joinResult = await new Promise<any>((resolve) =>
+        guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve)
+      );
+      assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
+      const guestId: string = joinResult.playerId;
+
+      const hostStatePromise = waitForEvent<MyState>(hostSocket, "draft:myState");
+      const guestStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const startResult = await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
+      assert.equal(startResult.ok, true, JSON.stringify(startResult));
+      const hostStateBeforeDrop = await hostStatePromise;
+      const guestStateBeforeDrop = await guestStatePromise;
+      assert.equal(guestStateBeforeDrop.pack?.cards.length, 2);
+      assert.equal(guestStateBeforeDrop.pool.length, 0);
+
+      // Host picks from their own pack; guest hasn't picked yet, so the round
+      // hasn't advanced — guest's pack/pool should still be exactly what they
+      // started with.
+      const hostPickResult = await new Promise<any>((resolve) =>
+        hostSocket.emit("draft:pick", { scryfallId: hostStateBeforeDrop.pack!.cards[0]!.scryfallId }, resolve)
+      );
+      assert.equal(hostPickResult.ok, true, JSON.stringify(hostPickResult));
+
+      // Simulate the guest's browser dropping and reconnecting: close the old
+      // socket, open a fresh one, and re-attach via lobby:reconnect.
+      guestSocket.close();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      guestSocket = await connect(server.url);
+      const reconnectStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const reconnectResult = await new Promise<any>((resolve) =>
+        guestSocket.emit("lobby:reconnect", { playerId: guestId }, resolve)
+      );
+      assert.equal(reconnectResult.ok, true, JSON.stringify(reconnectResult));
+
+      const resumedState = await reconnectStatePromise;
+      assert.equal(resumedState.pool.length, 0, "guest hadn't picked yet, so pool should still be empty");
+      assert.deepEqual(
+        resumedState.pack?.cards.map((c) => c.scryfallId).sort(),
+        guestStateBeforeDrop.pack!.cards.map((c) => c.scryfallId).sort(),
+        "reconnect should resume the exact same pack the guest had before dropping"
+      );
+
+      // And the reconnected socket should be fully functional, not just read-only.
+      const guestPickResult = await new Promise<any>((resolve) =>
+        guestSocket.emit("draft:pick", { scryfallId: resumedState.pack!.cards[0]!.scryfallId }, resolve)
+      );
+      assert.equal(guestPickResult.ok, true, JSON.stringify(guestPickResult));
     } finally {
       hostSocket.close();
       guestSocket.close();
