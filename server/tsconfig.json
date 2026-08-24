@@ -14,5 +14,6 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/draftEngine/testHelpers.ts"],
   "references": [{ "path": "../shared" }]
 }

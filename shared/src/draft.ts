@@ -25,7 +25,10 @@ export interface Pack {
 
 export interface Pick {
   playerId: string;
-  round: number;
+  /** 1-indexed: which pack this pick was made from. */
+  packNumber: number;
+  /** 1-indexed: which pick within that pack. */
+  pickNumber: number;
   scryfallId: string;
   timestamp: number;
 }
@@ -36,7 +39,11 @@ export interface DraftState {
   status: DraftStatus;
   settings: DraftSettings;
   players: Player[];
-  /** The pack each player currently holds, keyed by player id. Absent once the draft is complete. */
+  /** 1-indexed; 0 before the draft starts. */
+  currentPackNumber: number;
+  /** 1-indexed pick within the current pack; resets each new pack. */
+  currentPickNumber: number;
+  /** The pack each player currently holds, keyed by player id. Empty once the draft is complete. */
   currentPacks: Record<string, Pack>;
   /** Player ids who have not yet submitted a pick for the current round. */
   waitingOn: string[];

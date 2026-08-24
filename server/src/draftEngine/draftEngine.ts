@@ -1,0 +1,153 @@
+import type { Card, DraftSettings, DraftState, Pack, Player } from "@draft-simulator/shared";
+import { generatePacks } from "./packGenerator.js";
+
+/**
+ * Server-only draft session state: the wire-safe DraftState plus packs not
+ * yet dealt. Mutated in place by the functions below rather than treated
+ * immutably — this is a single-process, single-session-at-a-time engine, so
+ * there's no benefit to the immutability overhead.
+ */
+export interface DraftSession extends DraftState {
+  /** packQueue[round][seat]: packs not yet dealt. Consumed as pack rounds start. */
+  packQueue: Pack[][];
+}
+
+export function createDraftSession(id: string, settings: DraftSettings, players: Player[]): DraftSession {
+  const pools: Record<string, Card[]> = {};
+  for (const player of players) {
+    pools[player.id] = [];
+  }
+
+  return {
+    id,
+    status: "lobby",
+    settings,
+    players,
+    currentPackNumber: 0,
+    currentPickNumber: 0,
+    currentPacks: {},
+    waitingOn: [],
+    picks: [],
+    pools,
+    packQueue: [],
+  };
+}
+
+export function startDraft(session: DraftSession, cardPool: Card[]): DraftSession {
+  const packQueue = generatePacks(cardPool, session.settings, session.players.length);
+  return beginDraftWithPacks(session, packQueue);
+}
+
+/**
+ * Starts a draft from a pre-built pack queue, bypassing random pack
+ * generation. `startDraft` is the normal entry point; this is exported
+ * separately so the round/pass-direction state machine can be tested
+ * deterministically without depending on shuffle output.
+ */
+export function beginDraftWithPacks(session: DraftSession, packQueue: Pack[][]): DraftSession {
+  if (session.status !== "lobby") {
+    throw new Error(`Cannot start a draft in status "${session.status}"`);
+  }
+  if (session.players.length !== session.settings.playerCount) {
+    throw new Error(
+      `Draft configured for ${session.settings.playerCount} players but ${session.players.length} are seated`
+    );
+  }
+
+  session.packQueue = packQueue;
+  session.status = "drafting";
+  dealRound(session);
+  return session;
+}
+
+export function submitPick(session: DraftSession, playerId: string, scryfallId: string): DraftSession {
+  if (session.status !== "drafting") {
+    throw new Error(`Cannot pick while draft status is "${session.status}"`);
+  }
+  if (!session.waitingOn.includes(playerId)) {
+    throw new Error(`Player ${playerId} has already picked this round, or is not part of this draft`);
+  }
+
+  const pack = session.currentPacks[playerId];
+  if (!pack) {
+    throw new Error(`Player ${playerId} has no active pack`);
+  }
+  const cardIndex = pack.cards.findIndex((c) => c.scryfallId === scryfallId);
+  if (cardIndex === -1) {
+    throw new Error(`Card ${scryfallId} is not in player ${playerId}'s current pack`);
+  }
+
+  const [card] = pack.cards.splice(cardIndex, 1);
+  session.pools[playerId]!.push(card!);
+  session.picks.push({
+    playerId,
+    packNumber: session.currentPackNumber,
+    pickNumber: session.currentPickNumber,
+    scryfallId,
+    timestamp: Date.now(),
+  });
+  session.waitingOn = session.waitingOn.filter((id) => id !== playerId);
+
+  if (session.waitingOn.length === 0) {
+    advanceRound(session);
+  }
+
+  return session;
+}
+
+/** Deals the next queued pack round to every player, resetting waitingOn. */
+function dealRound(session: DraftSession): void {
+  const round = session.packQueue.shift();
+  if (!round) {
+    throw new Error("No more packs queued");
+  }
+
+  session.currentPackNumber += 1;
+  session.currentPickNumber = 1;
+
+  const currentPacks: Record<string, Pack> = {};
+  session.players.forEach((player, seat) => {
+    currentPacks[player.id] = round[seat]!;
+  });
+  session.currentPacks = currentPacks;
+  session.waitingOn = session.players.map((p) => p.id);
+}
+
+/** Standard alternating pass direction: pack 1 passes one way, pack 2 the other, and so on. */
+function passDirection(packNumber: number): 1 | -1 {
+  return packNumber % 2 === 1 ? 1 : -1;
+}
+
+/** Rotates every player's current pack to their neighbor, per the current pack's pass direction. */
+function rotatePacks(session: DraftSession): void {
+  const seats = session.players;
+  const n = seats.length;
+  const direction = passDirection(session.currentPackNumber);
+  const previous = session.currentPacks;
+
+  const next: Record<string, Pack> = {};
+  for (let i = 0; i < n; i++) {
+    const fromSeat = seats[(i - direction + n) % n]!;
+    next[seats[i]!.id] = previous[fromSeat.id]!;
+  }
+
+  session.currentPacks = next;
+  session.currentPickNumber += 1;
+  session.waitingOn = seats.map((p) => p.id);
+}
+
+function advanceRound(session: DraftSession): void {
+  const packsStillHaveCards = Object.values(session.currentPacks).some((pack) => pack.cards.length > 0);
+  if (packsStillHaveCards) {
+    rotatePacks(session);
+    return;
+  }
+
+  if (session.packQueue.length > 0) {
+    dealRound(session);
+    return;
+  }
+
+  session.status = "complete";
+  session.currentPacks = {};
+}
