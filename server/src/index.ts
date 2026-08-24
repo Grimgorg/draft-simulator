@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import { createServer } from "node:http";
+import path from "node:path";
 import express from "express";
 import cors from "cors";
 import { Server } from "socket.io";
@@ -22,6 +24,17 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/images/:scryfallId", serveCardImage);
+
+// Once the client is built (npm run build --workspace client), serve it
+// directly so everyone — host included — just opens this server's address
+// in a browser. In dev, the client runs separately on Vite's own port.
+const clientDist = path.join(import.meta.dirname, "../../client/dist");
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get("/", (_req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+}
 
 const httpServer = createServer(app);
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
