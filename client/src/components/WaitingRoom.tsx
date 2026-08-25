@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { LobbyStateView } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
+import { CancelDraftButton } from "./CancelDraftButton.js";
 
 interface WaitingRoomProps {
   lobbyState: LobbyStateView;
@@ -55,6 +56,7 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
           <button type="button" onClick={handleStart} disabled={!isFull || starting}>
             {starting ? "Starting..." : isFull ? "Start draft" : "Waiting for more players..."}
           </button>
+          <CancelDraftButton />
         </>
       ) : (
         <p className="subtitle">Waiting for the host to start the draft...</p>

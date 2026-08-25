@@ -28,6 +28,7 @@ export interface ClientToServerEvents {
   /** Re-attaches this socket to an existing player id, e.g. after a page refresh or a network blip. */
   "lobby:reconnect": (payload: { playerId: string }, callback: (result: ActionResult) => void) => void;
   "draft:start": (callback: (result: ActionResult) => void) => void;
+  "draft:cancel": (callback: (result: ActionResult) => void) => void;
   "draft:pick": (payload: { scryfallId: string }, callback: (result: ActionResult) => void) => void;
 }
 

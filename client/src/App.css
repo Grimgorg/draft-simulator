@@ -141,6 +141,11 @@ button:disabled {
   font-size: 0.8rem;
 }
 
+.cancel-draft-button {
+  color: #d1435b;
+  border-color: #d1435b;
+}
+
 .draft-screen {
   height: 100dvh;
   display: flex;

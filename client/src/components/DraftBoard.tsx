@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Card, LobbyStateView, Pack } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
+import { CancelDraftButton } from "./CancelDraftButton.js";
 import { CardImage } from "./CardImage.js";
 import { CardPile } from "./CardPile.js";
 
@@ -48,6 +49,7 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
     }
   }, [myPool.length]);
 
+  const isHost = lobbyState.hostId === myPlayerId;
   const stillWaitingOn = lobbyState.waitingOn ?? [];
   const isMyTurn = stillWaitingOn.includes(myPlayerId);
   const waitingOnNames = stillWaitingOn
@@ -126,6 +128,7 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
             <p className="subtitle">Waiting on: {waitingOnNames.join(", ")}</p>
           )}
           {error && <p className="error">{error}</p>}
+          {isHost && <CancelDraftButton />}
         </header>
 
         <section className="pack-grid">

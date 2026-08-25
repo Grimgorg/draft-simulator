@@ -149,6 +149,11 @@ export function beginDraft(): DraftSession {
   return started;
 }
 
+export function cancelDraft(): void {
+  state = { cardPool: [] };
+  persist();
+}
+
 export function pick(playerId: string, scryfallId: string): DraftSession {
   const session = getState().session;
   if (!session) throw new Error("No lobby has been created yet");
