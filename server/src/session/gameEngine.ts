@@ -159,6 +159,14 @@ export function moveCard(
   addToZone(board, toZone, card, toLibraryPosition, battlefieldTarget);
 }
 
+/** Permanently removes one of playerId's own tokens from whatever zone it's in — tokens have no card identity, so unlike moveCard there's nowhere meaningful to send them. Rejects a real drafted card. */
+export function deleteToken(match: MatchSession, playerId: string, instanceId: string): void {
+  const card = findOwnCard(match, playerId, instanceId);
+  if (card.card !== null || !card.tokenLabel) throw new Error("Only tokens can be deleted");
+  const board = requireBoard(match, playerId);
+  removeFromKnownZone(board, instanceId);
+}
+
 function requireBattlefieldCard(board: MatchPlayerBoard, instanceId: string): CardInstance {
   const card = board.battlefield.find((c) => c.instanceId === instanceId);
   if (!card) throw new Error("Card not found on your battlefield");

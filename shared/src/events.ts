@@ -88,6 +88,8 @@ export interface ClientToServerEvents {
   ) => void;
   /** Creates a free-text token directly on the caller's own battlefield. */
   "match:createToken": (payload: { label: string }, callback: (result: ActionResult) => void) => void;
+  /** Permanently deletes one of the caller's own tokens (never a real drafted card) from whatever zone it's currently in. */
+  "match:deleteToken": (payload: { instanceId: string }, callback: (result: ActionResult) => void) => void;
   /** Privately reveals the top `count` cards of the caller's own library (clamped to its size) via the callback — never broadcast. Pass a large count to "search" the whole library. */
   "match:peekLibrary": (
     payload: { count: number },

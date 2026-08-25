@@ -4,6 +4,7 @@ import { testCard } from "../draftEngine/testHelpers.js";
 import {
   createMatch,
   createToken,
+  deleteToken,
   drawCard,
   findOwnCard,
   flipFaceDown,
@@ -248,6 +249,25 @@ test("createToken adds a labeled, non-card token directly to the battlefield", (
   assert.equal(token.tapped, false);
 
   assert.throws(() => createToken(match, "alice", "   "), /label/i);
+});
+
+test("deleteToken removes a token permanently but rejects a real drafted card", () => {
+  const deck = [testCard("a")];
+  const match = createMatch("alice", deck, "bob", deck);
+  const board = match.boards["alice"]!;
+  createToken(match, "alice", "1/1 Soldier");
+  const token = board.battlefield[0]!;
+  const realCard = board.hand[0]!;
+  moveCard(match, "alice", realCard.instanceId, "battlefield");
+
+  assert.throws(() => deleteToken(match, "alice", realCard.instanceId), /only tokens/i);
+  assert.equal(board.battlefield.length, 2);
+
+  deleteToken(match, "alice", token.instanceId);
+  assert.equal(board.battlefield.length, 1);
+  assert.equal(board.battlefield[0]!.instanceId, realCard.instanceId);
+
+  assert.throws(() => deleteToken(match, "alice", "nope"), /not found/i);
 });
 
 test("peekLibrary reveals the top N cards without removing them, clamped to the library's size", () => {

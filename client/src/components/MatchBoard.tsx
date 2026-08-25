@@ -60,6 +60,7 @@ interface BattlefieldActions {
   onTapToggle: (instanceId: string, tapped: boolean) => void;
   onCounterChange: (instanceId: string, label: string, delta: number) => void;
   onFlip: (instanceId: string, faceDown: boolean) => void;
+  onDeleteToken: (instanceId: string) => void;
 }
 
 /** Vertical offset between stacked battlefield cards — mirrors CardPile's peek-stack technique, sized for the battlefield's narrower 90px cards. */
@@ -71,6 +72,7 @@ function BattlefieldCard({ instance, actions }: { instance: CardInstance; action
   const [expanded, setExpanded] = useState(false);
   const [counterLabel, setCounterLabel] = useState("");
   const mine = actions !== undefined;
+  const isToken = !!instance.tokenLabel;
   const counters = Object.entries(instance.counters ?? {});
 
   return (
@@ -145,6 +147,11 @@ function BattlefieldCard({ instance, actions }: { instance: CardInstance; action
             <button type="button" onClick={() => actions!.onFlip(instance.instanceId, !instance.faceDown)}>
               {instance.faceDown ? "Flip up" : "Flip down"}
             </button>
+            {isToken && (
+              <button type="button" className="cancel-draft-button" onClick={() => actions!.onDeleteToken(instance.instanceId)}>
+                Delete
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -439,6 +446,7 @@ interface PlayerActions {
   onSetCardCounter: (instanceId: string, label: string, delta: number) => void;
   onFlipFaceDown: (instanceId: string, faceDown: boolean) => void;
   onCreateToken: (label: string) => void;
+  onDeleteToken: (instanceId: string) => void;
   onSetPlayerCounter: (label: string, delta: number) => void;
   onPeek: (count: number) => void;
 }
@@ -493,6 +501,7 @@ function PlayerZoneStack({ board, revealHand, order, actions }: PlayerZoneStackP
     onTapToggle: actions.onTapCard,
     onCounterChange: actions.onSetCardCounter,
     onFlip: actions.onFlipFaceDown,
+    onDeleteToken: actions.onDeleteToken,
   };
 
   const battlefield = <Battlefield cards={board.battlefield} order={order} actions={battlefieldActions} />;
@@ -629,6 +638,10 @@ export function MatchBoard({ matchState }: MatchBoardProps) {
     socket.emit("match:createToken", { label }, report);
   }
 
+  function handleDeleteToken(instanceId: string) {
+    socket.emit("match:deleteToken", { instanceId }, report);
+  }
+
   function handleSetPlayerCounter(label: string, delta: number) {
     socket.emit("match:setPlayerCounter", { label, delta }, report);
   }
@@ -667,6 +680,7 @@ export function MatchBoard({ matchState }: MatchBoardProps) {
     onSetCardCounter: handleSetCardCounter,
     onFlipFaceDown: handleFlipFaceDown,
     onCreateToken: handleCreateToken,
+    onDeleteToken: handleDeleteToken,
     onSetPlayerCounter: handleSetPlayerCounter,
     onPeek: handlePeek,
   };

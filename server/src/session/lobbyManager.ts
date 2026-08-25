@@ -17,6 +17,7 @@ import {
   setBattlefieldSlot as engineSetBattlefieldSlot,
   flipFaceDown as engineFlipFaceDown,
   createToken as engineCreateToken,
+  deleteToken as engineDeleteToken,
   peekLibrary as enginePeekLibrary,
   findOwnCard as engineFindOwnCard,
   setPlayerCounter as engineSetPlayerCounter,
@@ -367,6 +368,13 @@ export function flipFaceDown(playerId: string, instanceId: string, faceDown: boo
 export function createToken(playerId: string, label: string): MatchSession {
   const match = requireActiveMatch(playerId);
   engineCreateToken(match, playerId, label);
+  persist();
+  return match;
+}
+
+export function deleteToken(playerId: string, instanceId: string): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineDeleteToken(match, playerId, instanceId);
   persist();
   return match;
 }

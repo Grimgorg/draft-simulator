@@ -419,6 +419,19 @@ export function registerSocketHandlers(io: IoServer): void {
       }
     });
 
+    socket.on("match:deleteToken", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.deleteToken(playerId, payload.instanceId);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
     socket.on("match:peekLibrary", (payload, callback) => {
       try {
         const playerId = socketPlayers.get(socket.id);
