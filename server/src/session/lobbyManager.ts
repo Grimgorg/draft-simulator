@@ -1,10 +1,27 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { Card, DraftSettings, Player } from "@draft-simulator/shared";
+import type { Card, CardInstance, DraftSettings, Player, Zone } from "@draft-simulator/shared";
 import { DATA_DIR } from "../db/database.js";
 import { importCubeFromCubeCobra } from "../cubeImport/cubeCobraImporter.js";
 import { createDraftSession, startDraft, submitPick, type DraftSession } from "../draftEngine/draftEngine.js";
+import {
+  createMatch,
+  drawCard as engineDrawCard,
+  shuffleLibrary as engineShuffleLibrary,
+  mulligan as engineMulligan,
+  moveCard as engineMoveCard,
+  tapCard as engineTapCard,
+  untapAll as engineUntapAll,
+  setCardCounter as engineSetCardCounter,
+  setBattlefieldPosition as engineSetBattlefieldPosition,
+  flipFaceDown as engineFlipFaceDown,
+  createToken as engineCreateToken,
+  peekLibrary as enginePeekLibrary,
+  findOwnCard as engineFindOwnCard,
+  setPlayerCounter as engineSetPlayerCounter,
+  type MatchSession,
+} from "./gameEngine.js";
 
 interface CubeMeta {
   cubeName: string;
@@ -16,11 +33,24 @@ interface LobbyManagerState {
   session?: DraftSession;
   cardPool: Card[];
   cubeMeta?: CubeMeta;
+  /** Decklists locked in via submitDeck, keyed by player id. A player is "ready" iff they have an entry here. */
+  readyPlayers: Record<string, Card[]>;
+  /** An incoming challenge for a player, keyed by the target player's id. At most one pending challenge per target. */
+  pendingChallenges: Record<string, { fromId: string }>;
+  /** Active matches, keyed by match id. */
+  matches: Record<string, MatchSession>;
+  /** The match a player is currently seated in, keyed by player id. */
+  activePlayerMatch: Record<string, string>;
 }
 
 // Lazily initialized so tests can point DRAFT_SNAPSHOT_PATH at an isolated
 // file (via resetForTests) before the first real disk read happens.
 let state: LobbyManagerState | undefined;
+
+/** The baseline shape, with every field defaulted. Also used to backfill a snapshot written by an older version of this file that predates some of these fields. */
+function emptyState(): LobbyManagerState {
+  return { cardPool: [], readyPlayers: {}, pendingChallenges: {}, matches: {}, activePlayerMatch: {} };
+}
 
 function snapshotPath(): string {
   return process.env.DRAFT_SNAPSHOT_PATH ?? path.join(DATA_DIR, "draft-session.json");
@@ -30,12 +60,13 @@ function loadState(): LobbyManagerState {
   try {
     const file = snapshotPath();
     if (fs.existsSync(file)) {
-      return JSON.parse(fs.readFileSync(file, "utf8")) as LobbyManagerState;
+      const onDisk = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<LobbyManagerState>;
+      return { ...emptyState(), ...onDisk };
     }
   } catch (err) {
     console.error("Failed to load draft session snapshot, starting fresh:", err);
   }
-  return { cardPool: [] };
+  return emptyState();
 }
 
 function getState(): LobbyManagerState {
@@ -54,7 +85,10 @@ function persist(): void {
 /** Test-only: forces a clean in-memory state pointed at an isolated snapshot file. */
 export function resetForTests(isolatedSnapshotPath: string): void {
   process.env.DRAFT_SNAPSHOT_PATH = isolatedSnapshotPath;
-  state = { cardPool: [] };
+  // Cleared rather than reset directly, so the next access goes through the
+  // normal loadState() path — including reading a pre-existing file at this
+  // path, which is how tests exercise backward-compatible snapshot loading.
+  state = undefined;
 }
 
 export function getSession(): DraftSession | undefined {
@@ -107,12 +141,12 @@ export function createLobbyFromResolvedCube(
   settings: DraftSettings
 ): { host: Player; cubeMeta: CubeMeta } {
   const cubeMeta: CubeMeta = { cubeName, cardCount: cards.length, unresolvedCardNames };
-  const newState: LobbyManagerState = {
+  state = {
+    ...emptyState(),
     session: createDraftSession(randomUUID(), settings, []),
     cardPool: cards,
     cubeMeta,
   };
-  state = newState;
 
   const host = addPlayer(hostName, true);
   return { host, cubeMeta };
@@ -150,7 +184,7 @@ export function beginDraft(): DraftSession {
 }
 
 export function cancelDraft(): void {
-  state = { cardPool: [] };
+  state = emptyState();
   persist();
 }
 
@@ -160,4 +194,198 @@ export function pick(playerId: string, scryfallId: string): DraftSession {
   const updated = submitPick(session, playerId, scryfallId);
   persist();
   return updated;
+}
+
+export function getReadyPlayers(): Record<string, Card[]> {
+  return getState().readyPlayers;
+}
+
+/**
+ * Locks in `scryfallIds` as playerId's deck, marking them ready to play.
+ * Each id must match an as-yet-unclaimed card in that player's own drafted
+ * pool — repeats are fine (that's how multiple copies get in), but you can't
+ * submit more copies of a card than you actually drafted.
+ */
+export function submitDeck(playerId: string, scryfallIds: string[]): void {
+  const session = getState().session;
+  if (!session) throw new Error("No lobby has been created yet");
+  if (session.status !== "complete") throw new Error("Cannot ready up before the draft is complete");
+  if (!session.players.some((p) => p.id === playerId)) throw new Error("Not part of this draft");
+  if (scryfallIds.length === 0) throw new Error("Deck cannot be empty");
+
+  const remainingPool = [...(session.pools[playerId] ?? [])];
+  const deck: Card[] = [];
+  for (const scryfallId of scryfallIds) {
+    const index = remainingPool.findIndex((c) => c.scryfallId === scryfallId);
+    if (index === -1) throw new Error("Deck contains a card not in your drafted pool");
+    deck.push(remainingPool.splice(index, 1)[0]!);
+  }
+
+  getState().readyPlayers[playerId] = deck;
+  persist();
+}
+
+export function unready(playerId: string): void {
+  if (getState().activePlayerMatch[playerId]) throw new Error("Cannot edit your deck while in a match");
+  delete getState().readyPlayers[playerId];
+  persist();
+}
+
+/** Ready, and not already seated in a match. */
+function isIdle(playerId: string): boolean {
+  const s = getState();
+  return Boolean(s.readyPlayers[playerId]) && !s.activePlayerMatch[playerId];
+}
+
+export function getPendingChallenge(playerId: string): { fromId: string } | undefined {
+  return getState().pendingChallenges[playerId];
+}
+
+export function challenge(fromId: string, opponentId: string): void {
+  if (fromId === opponentId) throw new Error("You can't challenge yourself");
+  if (!isIdle(fromId)) throw new Error("You must be ready and not already in a match to challenge someone");
+  if (!isIdle(opponentId)) throw new Error("That player isn't available to challenge right now");
+
+  getState().pendingChallenges[opponentId] = { fromId };
+  persist();
+}
+
+/** Accepts or declines the pending challenge from `fromId` to `playerId`, dealing an opening hand to both on acceptance. */
+export function respondToChallenge(playerId: string, fromId: string, accept: boolean): MatchSession | undefined {
+  const s = getState();
+  const pending = s.pendingChallenges[playerId];
+  if (!pending || pending.fromId !== fromId) throw new Error("No matching challenge to respond to");
+  delete s.pendingChallenges[playerId];
+
+  if (!accept) {
+    persist();
+    return undefined;
+  }
+  if (!isIdle(fromId) || !isIdle(playerId)) {
+    persist();
+    throw new Error("One of you is no longer available to play");
+  }
+
+  const match = createMatch(fromId, s.readyPlayers[fromId]!, playerId, s.readyPlayers[playerId]!);
+  s.matches[match.id] = match;
+  s.activePlayerMatch[fromId] = match.id;
+  s.activePlayerMatch[playerId] = match.id;
+  persist();
+  return match;
+}
+
+export function getActiveMatch(playerId: string): MatchSession | undefined {
+  const matchId = getState().activePlayerMatch[playerId];
+  return matchId ? getState().matches[matchId] : undefined;
+}
+
+function requireActiveMatch(playerId: string): MatchSession {
+  const match = getActiveMatch(playerId);
+  if (!match) throw new Error("You're not currently in a match");
+  return match;
+}
+
+/** Ends the match `playerId` is in, freeing both participants back to the hub. */
+export function concede(playerId: string): MatchSession {
+  const match = requireActiveMatch(playerId);
+  const s = getState();
+  delete s.matches[match.id];
+  for (const p of match.players) delete s.activePlayerMatch[p];
+  persist();
+  return match;
+}
+
+export function drawCard(playerId: string): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineDrawCard(match, playerId);
+  persist();
+  return match;
+}
+
+export function shuffleLibrary(playerId: string): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineShuffleLibrary(match, playerId);
+  persist();
+  return match;
+}
+
+export function mulligan(playerId: string): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineMulligan(match, playerId);
+  persist();
+  return match;
+}
+
+export function moveCard(
+  playerId: string,
+  instanceId: string,
+  toZone: Zone,
+  toLibraryPosition?: "top" | "bottom"
+): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineMoveCard(match, playerId, instanceId, toZone, toLibraryPosition);
+  persist();
+  return match;
+}
+
+export function tapCard(playerId: string, instanceId: string, tapped: boolean): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineTapCard(match, playerId, instanceId, tapped);
+  persist();
+  return match;
+}
+
+export function untapAll(playerId: string): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineUntapAll(match, playerId);
+  persist();
+  return match;
+}
+
+export function setCardCounter(playerId: string, instanceId: string, label: string, delta: number): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineSetCardCounter(match, playerId, instanceId, label, delta);
+  persist();
+  return match;
+}
+
+export function setBattlefieldPosition(playerId: string, instanceId: string, x: number, y: number): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineSetBattlefieldPosition(match, playerId, instanceId, x, y);
+  persist();
+  return match;
+}
+
+export function flipFaceDown(playerId: string, instanceId: string, faceDown: boolean): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineFlipFaceDown(match, playerId, instanceId, faceDown);
+  persist();
+  return match;
+}
+
+export function createToken(playerId: string, label: string): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineCreateToken(match, playerId, label);
+  persist();
+  return match;
+}
+
+/** Read-only: never mutates state, so no persist. */
+export function peekLibrary(playerId: string, count: number): CardInstance[] {
+  const match = requireActiveMatch(playerId);
+  return enginePeekLibrary(match, playerId, count);
+}
+
+/** Read-only: never mutates state, so no persist. Returns the match too, so the caller can find both participants' sockets. */
+export function findOwnCard(playerId: string, instanceId: string): { match: MatchSession; card: CardInstance } {
+  const match = requireActiveMatch(playerId);
+  const card = engineFindOwnCard(match, playerId, instanceId);
+  return { match, card };
+}
+
+export function setPlayerCounter(playerId: string, label: string, delta: number): MatchSession {
+  const match = requireActiveMatch(playerId);
+  engineSetPlayerCounter(match, playerId, label, delta);
+  persist();
+  return match;
 }

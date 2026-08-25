@@ -328,6 +328,285 @@ button:disabled {
   resize: vertical;
 }
 
+.ready-section {
+  margin-top: 1.5rem;
+}
+
+.challenge-banner {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--accent, #6a4cff);
+  border-radius: 8px;
+}
+
+.screen.match-board {
+  max-width: 1400px;
+}
+
+.player-half {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.player-half:last-child {
+  border-bottom: none;
+}
+
+.player-half-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.player-half-header h2 {
+  margin: 0;
+}
+
+.match-library-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.match-library-controls button {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.library-drop-zone {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.match-zone {
+  margin-top: 0.75rem;
+}
+
+.match-zone-label {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+}
+
+.match-zone-cards {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-height: 60px;
+}
+
+.match-zone-card {
+  width: 90px;
+  flex: none;
+}
+
+.match-zone-card[draggable="true"] {
+  cursor: grab;
+}
+
+.match-zone-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.match-zone-pair {
+  display: flex;
+  gap: 2rem;
+}
+
+.match-zone-pair .match-zone {
+  flex: 1;
+}
+
+.match-face-down {
+  aspect-ratio: 63 / 88;
+  background: var(--code-bg, #eee);
+  border-radius: 6px;
+}
+
+.match-token {
+  aspect-ratio: 63 / 88;
+  background: var(--code-bg, #eee);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 0.8rem;
+  padding: 0.4rem;
+  box-sizing: border-box;
+}
+
+.battlefield-surface {
+  position: relative;
+  min-height: 220px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  margin-top: 0.5rem;
+}
+
+.battlefield-card {
+  position: absolute;
+  width: 90px;
+}
+
+.battlefield-card-inner {
+  transition: transform 0.1s ease;
+}
+
+.battlefield-card-inner.tapped {
+  transform: rotate(90deg);
+}
+
+.battlefield-card[draggable="true"] .battlefield-card-inner {
+  cursor: grab;
+}
+
+.battlefield-counters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-top: 0.25rem;
+}
+
+.battlefield-card-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-top: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.battlefield-card-controls button {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+.counter-label-input {
+  width: 55px;
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.token-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.token-label-input {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  width: 130px;
+}
+
+.player-counters {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.player-counters button {
+  padding: 0.2rem 0.5rem;
+}
+
+.peek-count-input,
+.dice-sides-input {
+  width: 50px;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+
+.match-bottom-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.dice-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.peek-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 1.5rem;
+}
+
+.peek-modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+  max-width: 900px;
+  max-height: 85vh;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.peek-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.peek-modal-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.peek-modal-cards {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.peek-modal-card {
+  width: 130px;
+}
+
+.peek-modal-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.peek-modal-card-actions button {
+  padding: 0.2rem 0.4rem;
+  font-size: 0.7rem;
+}
+
 .new-draft-section {
   margin-top: 3rem;
   padding-top: 1.5rem;

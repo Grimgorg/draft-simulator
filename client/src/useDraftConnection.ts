@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Card, DeckExport, LobbyStateView, Pack } from "@draft-simulator/shared";
+import type { Card, DeckExport, HubStateView, LobbyStateView, MatchStateView, Pack } from "@draft-simulator/shared";
 import { socket } from "./socket.js";
 import { clearStoredPlayerId, getStoredPlayerId, storePlayerId } from "./playerIdentity.js";
 import { getStoredPassword, storePassword } from "./lobbyPassword.js";
@@ -13,6 +13,12 @@ export interface DraftConnection {
   /** Clears the eviction notice once the user has acknowledged it. */
   dismissEviction: () => void;
   lobbyState: LobbyStateView | null;
+  /** Post-draft hub: who's ready to play and who's mid-match. Empty player list until the draft is complete. */
+  hubState: HubStateView | null;
+  /** An incoming challenge nobody has responded to yet, or null. */
+  incomingChallenge: { fromId: string; fromName: string } | null;
+  /** My current match, or null when I'm not in one. */
+  matchState: MatchStateView | null;
   myPlayerId: string | null;
   /** Confirms an identity after create/join, and remembers it for reconnect-on-refresh. */
   setMyPlayerId: (id: string) => void;
@@ -34,6 +40,9 @@ export function useDraftConnection(): DraftConnection {
   const [reconnecting, setReconnecting] = useState(() => getStoredPlayerId() !== null);
   const [evicted, setEvicted] = useState(false);
   const [lobbyState, setLobbyState] = useState<LobbyStateView | null>(null);
+  const [hubState, setHubState] = useState<HubStateView | null>(null);
+  const [incomingChallenge, setIncomingChallenge] = useState<{ fromId: string; fromName: string } | null>(null);
+  const [matchState, setMatchState] = useState<MatchStateView | null>(null);
   const [myPlayerId, setMyPlayerIdState] = useState<string | null>(null);
   const [myPack, setMyPack] = useState<Pack | null>(null);
   const [myPool, setMyPool] = useState<Card[]>([]);
@@ -95,6 +104,19 @@ export function useDraftConnection(): DraftConnection {
     function onLobbyState(state: LobbyStateView) {
       setLobbyState(state);
     }
+    function onHubState(state: HubStateView) {
+      setHubState(state);
+    }
+    function onChallengeReceived(payload: { fromId: string; fromName: string }) {
+      setIncomingChallenge(payload);
+    }
+    function onMatchState(state: MatchStateView) {
+      setIncomingChallenge(null);
+      setMatchState(state);
+    }
+    function onMatchEnded() {
+      setMatchState(null);
+    }
     function onMyState(state: { pack: Pack | null; pool: Card[] }) {
       setMyPack(state.pack);
       setMyPool(state.pool);
@@ -108,6 +130,8 @@ export function useDraftConnection(): DraftConnection {
       setMyPack(null);
       setMyPool([]);
       setMyDeckExport(null);
+      setIncomingChallenge(null);
+      setMatchState(null);
       setEvicted(true);
     }
 
@@ -115,6 +139,10 @@ export function useDraftConnection(): DraftConnection {
     socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onConnectError);
     socket.on("lobby:state", onLobbyState);
+    socket.on("hub:state", onHubState);
+    socket.on("hub:challengeReceived", onChallengeReceived);
+    socket.on("match:state", onMatchState);
+    socket.on("match:ended", onMatchEnded);
     socket.on("draft:myState", onMyState);
     socket.on("draft:complete", onComplete);
     socket.on("identity:evicted", onEvicted);
@@ -128,6 +156,10 @@ export function useDraftConnection(): DraftConnection {
       socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
       socket.off("lobby:state", onLobbyState);
+      socket.off("hub:state", onHubState);
+      socket.off("hub:challengeReceived", onChallengeReceived);
+      socket.off("match:state", onMatchState);
+      socket.off("match:ended", onMatchEnded);
       socket.off("draft:myState", onMyState);
       socket.off("draft:complete", onComplete);
       socket.off("identity:evicted", onEvicted);
@@ -140,6 +172,9 @@ export function useDraftConnection(): DraftConnection {
     evicted,
     dismissEviction,
     lobbyState,
+    hubState,
+    incomingChallenge,
+    matchState,
     myPlayerId,
     setMyPlayerId,
     myPack,

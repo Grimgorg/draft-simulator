@@ -2,8 +2,10 @@ import "./App.css";
 import { CardPreviewProvider } from "./CardPreviewContext.js";
 import { CardPreviewOverlay } from "./components/CardPreviewOverlay.js";
 import { DraftBoard } from "./components/DraftBoard.js";
+import { GameHub } from "./components/GameHub.js";
 import { HostSetupScreen } from "./components/HostSetupScreen.js";
 import { LobbyPasswordScreen } from "./components/LobbyPasswordScreen.js";
+import { MatchBoard } from "./components/MatchBoard.js";
 import { RejoinScreen } from "./components/RejoinScreen.js";
 import { ResultsScreen } from "./components/ResultsScreen.js";
 import { WaitingRoom } from "./components/WaitingRoom.js";
@@ -30,6 +32,9 @@ function AppContent() {
     evicted,
     dismissEviction,
     lobbyState,
+    hubState,
+    incomingChallenge,
+    matchState,
     myPlayerId,
     setMyPlayerId,
     myPack,
@@ -87,6 +92,16 @@ function AppContent() {
   if (!iAmSeated) {
     return <RejoinScreen lobbyState={lobbyState} onIdentitySelected={setMyPlayerId} />;
   }
+
+  if (matchState) {
+    return <MatchBoard matchState={matchState} />;
+  }
+
+  const myHubStatus = hubState?.players.find((p) => p.id === myPlayerId)?.status;
+  if (myHubStatus && myHubStatus !== "not-ready") {
+    return <GameHub hubState={hubState!} myPlayerId={myPlayerId!} incomingChallenge={incomingChallenge} />;
+  }
+
   return (
     <ResultsScreen
       lobbyState={lobbyState}

@@ -3,6 +3,10 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@draft-simulato
 import * as lobbyManager from "../session/lobbyManager.js";
 import { buildLobbyStateView } from "../session/lobbyStateView.js";
 import { buildDeckExports } from "../session/deckExport.js";
+import { buildHubStateView } from "../session/hubStateView.js";
+import { buildMatchStateView } from "../session/matchStateView.js";
+import { rollDie } from "../session/gameEngine.js";
+import type { MatchSession } from "../session/gameEngine.js";
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -25,6 +29,10 @@ function bindSocketToPlayer(io: IoServer, socket: IoSocket, playerId: string): v
 
 function broadcastLobbyState(io: IoServer): void {
   io.emit("lobby:state", buildLobbyStateView());
+}
+
+function broadcastHubState(io: IoServer): void {
+  io.emit("hub:state", buildHubStateView());
 }
 
 /**
@@ -58,10 +66,50 @@ function broadcastDraftStateToAll(io: IoServer): void {
   }
 }
 
+/** Pushes one player's private match view (if they're currently in a match) to one specific socket. */
+function sendMatchStateTo(io: IoServer, socketId: string, playerId: string): void {
+  const match = lobbyManager.getActiveMatch(playerId);
+  if (match) io.to(socketId).emit("match:state", buildMatchStateView(match, playerId));
+}
+
+/** Pushes the current match state to both participants' live sockets, if connected. */
+function broadcastMatchState(io: IoServer, match: MatchSession): void {
+  for (const playerId of match.players) {
+    const socketId = playerSockets.get(playerId);
+    if (socketId) sendMatchStateTo(io, socketId, playerId);
+  }
+}
+
+/** Pushes a player's pending incoming challenge (if any) to one specific socket. */
+function sendPendingChallengeTo(io: IoServer, socketId: string, playerId: string): void {
+  const pending = lobbyManager.getPendingChallenge(playerId);
+  if (!pending) return;
+  const fromName = lobbyManager.getSession()?.players.find((p) => p.id === pending.fromId)?.name ?? "Someone";
+  io.to(socketId).emit("hub:challengeReceived", { fromId: pending.fromId, fromName });
+}
+
+function getPlayerName(playerId: string): string {
+  return lobbyManager.getSession()?.players.find((p) => p.id === playerId)?.name ?? "Someone";
+}
+
+/** Emits one event to both of a match's participants' live sockets, if connected. For transient events (reveal, dice) that never touch match:state. */
+function emitToParticipants<E extends keyof ServerToClientEvents>(
+  io: IoServer,
+  match: MatchSession,
+  event: E,
+  ...args: Parameters<ServerToClientEvents[E]>
+): void {
+  for (const playerId of match.players) {
+    const socketId = playerSockets.get(playerId);
+    if (socketId) io.to(socketId).emit(event, ...args);
+  }
+}
+
 export function registerSocketHandlers(io: IoServer): void {
   io.on("connection", (socket: IoSocket) => {
     console.log(`Client connected: ${socket.id}`);
     socket.emit("lobby:state", buildLobbyStateView());
+    socket.emit("hub:state", buildHubStateView());
 
     socket.on("lobby:create", async (payload, callback) => {
       try {
@@ -104,6 +152,8 @@ export function registerSocketHandlers(io: IoServer): void {
         callback({ ok: true });
         broadcastLobbyState(io);
         sendDraftStateTo(io, socket.id, player.id);
+        sendMatchStateTo(io, socket.id, player.id);
+        sendPendingChallengeTo(io, socket.id, player.id);
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
       }
@@ -160,6 +210,271 @@ export function registerSocketHandlers(io: IoServer): void {
           // has to handle two updates in one round instead of one.
           broadcastDraftStateToAll(io);
         }
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("deck:submit", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        lobbyManager.submitDeck(playerId, payload.scryfallIds);
+        callback({ ok: true });
+        broadcastHubState(io);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("deck:unready", (callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        lobbyManager.unready(playerId);
+        callback({ ok: true });
+        broadcastHubState(io);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("hub:challenge", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        lobbyManager.challenge(playerId, payload.opponentId);
+        callback({ ok: true });
+
+        const opponentSocketId = playerSockets.get(payload.opponentId);
+        if (opponentSocketId) sendPendingChallengeTo(io, opponentSocketId, payload.opponentId);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("hub:respondChallenge", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.respondToChallenge(playerId, payload.fromId, payload.accept);
+        callback({ ok: true });
+        broadcastHubState(io);
+        if (match) broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:concede", (callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.concede(playerId);
+        callback({ ok: true });
+        broadcastHubState(io);
+        for (const p of match.players) {
+          const socketId = playerSockets.get(p);
+          if (socketId) io.to(socketId).emit("match:ended");
+        }
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:drawCard", (callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.drawCard(playerId);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:shuffleLibrary", (callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.shuffleLibrary(playerId);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:mulligan", (callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.mulligan(playerId);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:moveCard", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.moveCard(playerId, payload.instanceId, payload.toZone, payload.toLibraryPosition);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:tapCard", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.tapCard(playerId, payload.instanceId, payload.tapped);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:untapAll", (callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.untapAll(playerId);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:setCardCounter", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.setCardCounter(playerId, payload.instanceId, payload.label, payload.delta);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:setBattlefieldPosition", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.setBattlefieldPosition(playerId, payload.instanceId, payload.x, payload.y);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:flipFaceDown", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.flipFaceDown(playerId, payload.instanceId, payload.faceDown);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:createToken", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.createToken(playerId, payload.label);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:peekLibrary", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const cards = lobbyManager.peekLibrary(playerId, payload.count);
+        callback({ ok: true, cards });
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:revealCard", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const { match, card } = lobbyManager.findOwnCard(playerId, payload.instanceId);
+        callback({ ok: true });
+        emitToParticipants(io, match, "match:revealed", {
+          fromPlayerId: playerId,
+          fromName: getPlayerName(playerId),
+          card: card.card,
+          tokenLabel: card.tokenLabel,
+        });
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:setPlayerCounter", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.setPlayerCounter(playerId, payload.label, payload.delta);
+        callback({ ok: true });
+        broadcastMatchState(io, match);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("match:rollDie", (payload, callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (!playerId) throw new Error("Not joined to this draft");
+
+        const match = lobbyManager.getActiveMatch(playerId);
+        if (!match) throw new Error("You're not currently in a match");
+        const result = rollDie(payload.sides);
+        callback({ ok: true });
+        emitToParticipants(io, match, "match:diceResult", {
+          fromPlayerId: playerId,
+          fromName: getPlayerName(playerId),
+          sides: payload.sides,
+          result,
+        });
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
       }

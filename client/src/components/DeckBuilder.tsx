@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Card } from "@draft-simulator/shared";
+import { socket } from "../socket.js";
 import { CardPile } from "./CardPile.js";
 
 interface DeckBuilderProps {
@@ -55,6 +56,8 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
   const [addedBasics, setAddedBasics] = useState<Instance[]>([]);
   const [copied, setCopied] = useState(false);
   const [exportMode, setExportMode] = useState<"deck" | "pool">("deck");
+  const [readying, setReadying] = useState(false);
+  const [readyError, setReadyError] = useState<string | null>(null);
 
   const nextPileId = useRef(0);
   const nextBasicId = useRef(0);
@@ -146,6 +149,16 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
   }
 
   const mainCards = deck.mainPiles.flatMap((p) => p.cards.map((id) => instanceById.get(id)!));
+
+  function handleReady() {
+    setReadying(true);
+    setReadyError(null);
+    socket.emit("deck:submit", { scryfallIds: mainCards.map((c) => c.scryfallId) }, (result) => {
+      setReadying(false);
+      if (!result.ok) setReadyError(result.error);
+    });
+  }
+
   const deckExportText = useMemo(() => buildExportText(mainCards), [mainCards]);
   const poolExportText = useMemo(() => buildExportText(pool), [pool]);
   const exportText = exportMode === "deck" ? deckExportText : poolExportText;
@@ -185,6 +198,13 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
             <CardPile cards={deck.cutPile.map((id) => ({ id, card: instanceById.get(id)! }))} onDropCard={handleDropOnCutPile} />
           </div>
         </div>
+      </div>
+
+      <div className="ready-section">
+        {readyError && <p className="error">{readyError}</p>}
+        <button type="button" onClick={handleReady} disabled={readying || mainCards.length === 0}>
+          {readying ? "Locking in..." : "Ready to play"}
+        </button>
       </div>
 
       <h2>Export</h2>
