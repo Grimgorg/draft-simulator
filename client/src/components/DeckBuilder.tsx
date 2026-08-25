@@ -76,6 +76,8 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
     }));
   }, [allInstances]);
 
+  /** Removes `id` from wherever it currently sits, then hands the resulting
+   * state to `place` to decide where (if anywhere) it lands. */
   function moveInstance(id: string, place: (withoutSource: DeckState) => DeckState) {
     setDeck((prev) => {
       const existed = prev.mainPiles.some((p) => p.cards.includes(id)) || prev.cutPile.includes(id);
@@ -86,6 +88,11 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
       };
       return place(withoutSource);
     });
+  }
+
+  /** Removes `id` outright, without placing it anywhere. */
+  function removeInstance(id: string) {
+    moveInstance(id, (withoutSource) => withoutSource);
   }
 
   function handleDropOnMainPile(id: string, targetPileId: number) {
@@ -103,6 +110,14 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
   }
 
   function handleDropOnCutPile(id: string) {
+    // Basic lands are synthesized locally, not drafted — dropping one on the
+    // cut stack removes it outright instead of just parking it there, since
+    // "not in deck" is a no-op for a card that isn't real inventory anyway.
+    if (id.startsWith("basic:")) {
+      removeInstance(id);
+      setAddedBasics((prev) => prev.filter((inst) => inst.id !== id));
+      return;
+    }
     moveInstance(id, (state) => ({ ...state, cutPile: [...state.cutPile, id] }));
   }
 
