@@ -54,6 +54,7 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
   const [deck, setDeck] = useState<DeckState>({ mainPiles: [], cutPile: [] });
   const [addedBasics, setAddedBasics] = useState<Instance[]>([]);
   const [copied, setCopied] = useState(false);
+  const [exportMode, setExportMode] = useState<"deck" | "pool">("deck");
 
   const nextPileId = useRef(0);
   const nextBasicId = useRef(0);
@@ -145,7 +146,10 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
   }
 
   const mainCards = deck.mainPiles.flatMap((p) => p.cards.map((id) => instanceById.get(id)!));
-  const exportText = useMemo(() => buildExportText(mainCards), [mainCards]);
+  const deckExportText = useMemo(() => buildExportText(mainCards), [mainCards]);
+  const poolExportText = useMemo(() => buildExportText(pool), [pool]);
+  const exportText = exportMode === "deck" ? deckExportText : poolExportText;
+  const exportFilenameSuffix = exportMode === "deck" ? "deck" : "pool";
 
   return (
     <>
@@ -184,6 +188,22 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
       </div>
 
       <h2>Export</h2>
+      <div className="export-mode-row">
+        <button
+          type="button"
+          className={exportMode === "deck" ? "active" : ""}
+          onClick={() => setExportMode("deck")}
+        >
+          Deck ({mainCards.length})
+        </button>
+        <button
+          type="button"
+          className={exportMode === "pool" ? "active" : ""}
+          onClick={() => setExportMode("pool")}
+        >
+          Whole pool ({pool.length})
+        </button>
+      </div>
       <textarea className="export-text" readOnly value={exportText} rows={12} />
       <div className="form-row">
         <button
@@ -197,7 +217,7 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
         >
           {copied ? "Copied!" : "Copy to clipboard"}
         </button>
-        <button type="button" onClick={() => downloadTextFile(`${playerName}-deck.txt`, exportText)}>
+        <button type="button" onClick={() => downloadTextFile(`${playerName}-${exportFilenameSuffix}.txt`, exportText)}>
           Download .txt
         </button>
       </div>

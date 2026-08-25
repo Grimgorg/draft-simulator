@@ -189,6 +189,22 @@ button:disabled {
   margin: 0.5rem 0 1rem;
 }
 
+.export-mode-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.export-mode-row button {
+  background: transparent;
+  color: var(--text-h);
+}
+
+.export-mode-row button.active {
+  background: var(--accent, #6a4cff);
+  color: white;
+}
+
 .draft-screen {
   height: 100dvh;
   display: flex;
