@@ -6,7 +6,8 @@ import cors from "cors";
 import { Server } from "socket.io";
 import type { ClientToServerEvents, ServerToClientEvents } from "@draft-simulator/shared";
 import { getDb } from "./db/database.js";
-import { countCards } from "./cardData/cardRepository.js";
+import { countCards, getLastImportedAt } from "./cardData/cardRepository.js";
+import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
 import { ensureImageDir, serveCardImage } from "./images/imageCache.js";
 import { registerSocketHandlers } from "./realtime/socketHandlers.js";
 
@@ -15,12 +16,21 @@ const PORT = Number(process.env.PORT ?? 4000);
 getDb();
 ensureImageDir();
 
+// An empty cache means the app can't resolve any cube at all, so block
+// startup on the first import. Otherwise — just stale — refresh in the
+// background so the host isn't stuck waiting right before a draft.
+if (countCards() === 0) {
+  await refreshCardDatabaseIfStale();
+} else {
+  refreshCardDatabaseIfStale();
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
-  res.json({ status: "ok", cardsCached: countCards() });
+  res.json({ status: "ok", cardsCached: countCards(), cardsLastImportedAt: getLastImportedAt() ?? null });
 });
 
 app.get("/images/:scryfallId", serveCardImage);

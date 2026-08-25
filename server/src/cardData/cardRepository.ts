@@ -68,3 +68,16 @@ export function countCards(): number {
   const row = getDb().prepare("SELECT COUNT(*) as count FROM cards").get() as { count: number };
   return row.count;
 }
+
+export function getLastImportedAt(): string | undefined {
+  const row = getDb().prepare("SELECT value FROM import_meta WHERE key = 'last_imported_at'").get() as
+    | { value: string }
+    | undefined;
+  return row?.value;
+}
+
+export function setLastImportedAt(iso: string): void {
+  getDb()
+    .prepare("INSERT INTO import_meta (key, value) VALUES ('last_imported_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run(iso);
+}

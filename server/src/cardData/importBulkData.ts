@@ -9,6 +9,7 @@ import readline from "node:readline";
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
 import { DB_PATH, getDb } from "../db/database.js";
+import { setLastImportedAt } from "./cardRepository.js";
 
 const USER_AGENT = "DraftSimulator/0.1 (personal cube draft tool; not for redistribution)";
 
@@ -83,7 +84,7 @@ function extractColors(card: ScryfallCard): string[] {
   return [...new Set(faceColors)];
 }
 
-async function main() {
+export async function importCardDatabase(): Promise<{ imported: number; skipped: number }> {
   console.log("Fetching Scryfall bulk data catalog...");
   const { data: entries } = await fetchJson<{ data: BulkDataEntry[] }>("https://api.scryfall.com/bulk-data");
 
@@ -134,9 +135,17 @@ async function main() {
 
   const { imported, skipped } = importAll(cards);
   console.log(`Imported ${imported} cards into ${DB_PATH} (skipped ${skipped} with no image).`);
+  setLastImportedAt(new Date().toISOString());
+  return { imported, skipped };
 }
 
-main().catch((err: unknown) => {
-  console.error("Card import failed:", err);
-  process.exitCode = 1;
-});
+// Only run automatically when this file is executed directly (`npm run
+// import-cards`) — not when `importCardDatabase` is imported and called
+// elsewhere, e.g. the server's startup staleness check.
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+  importCardDatabase().catch((err: unknown) => {
+    console.error("Card import failed:", err);
+    process.exitCode = 1;
+  });
+}

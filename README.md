@@ -20,11 +20,11 @@ nvm use --lts
 
 ```bash
 npm install
-npm run import-cards --workspace server
 ```
 
-- `npm install` installs dependencies for all three workspaces (`shared`, `server`, `client`). It may ask you to approve a couple of native install scripts (`better-sqlite3`, `esbuild`, `fsevents`) the first time — these are already recorded as approved in `package.json`, so a normal clone shouldn't prompt again.
-- `npm run import-cards --workspace server` downloads Scryfall's card database (~38,000 cards) into a local SQLite cache at `server/data/cards.sqlite3`. This is what lets the app resolve cube card lists and serve card images without hitting Scryfall on every request. Re-run it occasionally to pick up new sets — it's safe to run again any time.
+`npm install` installs dependencies for all three workspaces (`shared`, `server`, `client`). It may ask you to approve a couple of native install scripts (`better-sqlite3`, `esbuild`, `fsevents`) the first time — these are already recorded as approved in `package.json`, so a normal clone shouldn't prompt again.
+
+The Scryfall card database (~38,000 cards, cached locally at `server/data/cards.sqlite3` so the app can resolve cube card lists and serve card images without hitting Scryfall on every request) no longer needs a manual import step: the server checks it on every startup and downloads it automatically if it's missing or older than 30 days, so `npm start` alone bootstraps everything on a fresh clone. Startup blocks briefly only the very first time (nothing works with zero cached cards); a routine refresh of an already-populated cache happens in the background so the server is usable immediately. Override the staleness threshold with `CARD_CACHE_MAX_AGE_DAYS` (e.g. `CARD_CACHE_MAX_AGE_DAYS=7 npm start`), or force a refresh manually any time with `npm run import-cards --workspace server`.
 
 ## Running it
 

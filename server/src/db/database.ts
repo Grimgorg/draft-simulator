@@ -27,6 +27,11 @@ export function getDb(): Database.Database {
     );
     CREATE INDEX IF NOT EXISTS idx_cards_name_lower ON cards(name_lower);
     CREATE INDEX IF NOT EXISTS idx_cards_front_name_lower ON cards(front_name_lower);
+
+    CREATE TABLE IF NOT EXISTS import_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   return db;
