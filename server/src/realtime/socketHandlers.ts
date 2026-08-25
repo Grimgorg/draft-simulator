@@ -331,7 +331,9 @@ export function registerSocketHandlers(io: IoServer): void {
         const playerId = socketPlayers.get(socket.id);
         if (!playerId) throw new Error("Not joined to this draft");
 
-        const match = lobbyManager.moveCard(playerId, payload.instanceId, payload.toZone, payload.toLibraryPosition);
+        const battlefieldTarget =
+          payload.battlefieldRow !== undefined ? { row: payload.battlefieldRow, stackId: payload.battlefieldStackId } : undefined;
+        const match = lobbyManager.moveCard(playerId, payload.instanceId, payload.toZone, payload.toLibraryPosition, battlefieldTarget);
         callback({ ok: true });
         broadcastMatchState(io, match);
       } catch (err) {
@@ -378,12 +380,12 @@ export function registerSocketHandlers(io: IoServer): void {
       }
     });
 
-    socket.on("match:setBattlefieldPosition", (payload, callback) => {
+    socket.on("match:setBattlefieldSlot", (payload, callback) => {
       try {
         const playerId = socketPlayers.get(socket.id);
         if (!playerId) throw new Error("Not joined to this draft");
 
-        const match = lobbyManager.setBattlefieldPosition(playerId, payload.instanceId, payload.x, payload.y);
+        const match = lobbyManager.setBattlefieldSlot(playerId, payload.instanceId, payload.row, payload.stackId);
         callback({ ok: true });
         broadcastMatchState(io, match);
       } catch (err) {

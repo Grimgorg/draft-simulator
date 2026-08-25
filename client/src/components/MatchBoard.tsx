@@ -55,30 +55,89 @@ function ZoneRow({ label, cards, draggable, onDropCard }: ZoneRowProps) {
 }
 
 interface BattlefieldActions {
-  onDropCard: (instanceId: string) => void;
-  onReposition: (instanceId: string, x: number, y: number) => void;
+  onDropCard: (instanceId: string, row: number, stackId?: string) => void;
+  onSetSlot: (instanceId: string, row: number, stackId?: string) => void;
   onTapToggle: (instanceId: string, tapped: boolean) => void;
   onCounterChange: (instanceId: string, label: string, delta: number) => void;
   onFlip: (instanceId: string, faceDown: boolean) => void;
 }
 
+/** Vertical offset between stacked battlefield cards — mirrors CardPile's peek-stack technique, sized for the battlefield's narrower 90px cards. */
+const BATTLEFIELD_PEEK_HEIGHT = 20;
+/** Matches `.battlefield-stack`'s fixed width at Magic's card aspect ratio. */
+const BATTLEFIELD_CARD_HEIGHT = 126;
+
 function BattlefieldCard({ instance, actions }: { instance: CardInstance; actions?: BattlefieldActions }) {
-  const [counterLabel, setCounterLabel] = useState("+1/+1");
+  const [expanded, setExpanded] = useState(false);
+  const [counterLabel, setCounterLabel] = useState("");
   const mine = actions !== undefined;
   const counters = Object.entries(instance.counters ?? {});
 
   return (
     <div
       className="battlefield-card"
-      style={{ left: instance.x ?? 0, top: instance.y ?? 0 }}
       draggable={mine}
       onDragStart={mine ? (e) => handleDragStart(e, instance.instanceId) : undefined}
     >
-      <div
-        className={`battlefield-card-inner ${instance.tapped ? "tapped" : ""}`}
-        onClick={mine ? () => actions!.onTapToggle(instance.instanceId, !instance.tapped) : undefined}
-      >
-        <CardInstanceImage instance={instance} />
+      <div className="battlefield-card-art">
+        <div
+          className={`battlefield-card-inner ${instance.tapped ? "tapped" : ""}`}
+          onClick={mine ? () => actions!.onTapToggle(instance.instanceId, !instance.tapped) : undefined}
+        >
+          <CardInstanceImage instance={instance} />
+        </div>
+        {mine && (
+          <button type="button" className="battlefield-card-toggle" onClick={() => setExpanded((v) => !v)}>
+            ⚙
+          </button>
+        )}
+        {mine && expanded && (
+          <div className="battlefield-card-panel">
+            <div className="battlefield-card-panel-row">
+              <span className="tag">+1/+1</span>
+              <button type="button" onClick={() => actions!.onCounterChange(instance.instanceId, "+1/+1", 1)}>
+                +
+              </button>
+              <button type="button" onClick={() => actions!.onCounterChange(instance.instanceId, "+1/+1", -1)}>
+                -
+              </button>
+            </div>
+            <div className="battlefield-card-panel-row">
+              <span className="tag">Charge</span>
+              <button type="button" onClick={() => actions!.onCounterChange(instance.instanceId, "charge", 1)}>
+                +
+              </button>
+              <button type="button" onClick={() => actions!.onCounterChange(instance.instanceId, "charge", -1)}>
+                -
+              </button>
+            </div>
+            <div className="battlefield-card-panel-row">
+              <input
+                className="counter-label-input"
+                placeholder="custom counter"
+                value={counterLabel}
+                onChange={(e) => setCounterLabel(e.target.value)}
+              />
+              <button
+                type="button"
+                disabled={!counterLabel.trim()}
+                onClick={() => actions!.onCounterChange(instance.instanceId, counterLabel.trim(), 1)}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                disabled={!counterLabel.trim()}
+                onClick={() => actions!.onCounterChange(instance.instanceId, counterLabel.trim(), -1)}
+              >
+                -
+              </button>
+            </div>
+            <button type="button" onClick={() => actions!.onFlip(instance.instanceId, !instance.faceDown)}>
+              {instance.faceDown ? "Flip up" : "Flip down"}
+            </button>
+          </div>
+        )}
       </div>
       {counters.length > 0 && (
         <div className="battlefield-counters">
@@ -89,48 +148,116 @@ function BattlefieldCard({ instance, actions }: { instance: CardInstance; action
           ))}
         </div>
       )}
-      {mine && (
-        <div className="battlefield-card-controls">
-          <input
-            className="counter-label-input"
-            value={counterLabel}
-            onChange={(e) => setCounterLabel(e.target.value)}
-          />
-          <button type="button" onClick={() => actions!.onCounterChange(instance.instanceId, counterLabel, 1)}>
-            +
-          </button>
-          <button type="button" onClick={() => actions!.onCounterChange(instance.instanceId, counterLabel, -1)}>
-            -
-          </button>
-          <button type="button" onClick={() => actions!.onFlip(instance.instanceId, !instance.faceDown)}>
-            {instance.faceDown ? "Flip up" : "Flip down"}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
 
-function Battlefield({ cards, actions }: { cards: CardInstance[]; actions?: BattlefieldActions }) {
+/** Groups `cards` (already filtered to one row) into left-to-right stacks: cards sharing a stackId form one pile, ordered bottom to top by their order of appearance. Stacks themselves are ordered by each one's first appearance. */
+function groupBattlefieldStacks(cards: CardInstance[]): CardInstance[][] {
+  const order: string[] = [];
+  const groups = new Map<string, CardInstance[]>();
+  for (const card of cards) {
+    const key = card.stackId ?? card.instanceId;
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key)!.push(card);
+  }
+  return order.map((key) => groups.get(key)!);
+}
+
+function BattlefieldStack({
+  cards,
+  row,
+  actions,
+  isAlreadyOnBattlefield,
+}: {
+  cards: CardInstance[];
+  row: number;
+  actions?: BattlefieldActions;
+  isAlreadyOnBattlefield: (instanceId: string) => boolean;
+}) {
+  const stackId = cards[0]!.stackId ?? cards[0]!.instanceId;
+  const topIndex = cards.length - 1;
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const id = e.dataTransfer.getData("text/plain");
+    if (!id || !actions) return;
+    if (isAlreadyOnBattlefield(id)) actions.onSetSlot(id, row, stackId);
+    else actions.onDropCard(id, row, stackId);
+  }
+
+  return (
+    <div
+      className="battlefield-stack"
+      style={{ height: topIndex * BATTLEFIELD_PEEK_HEIGHT + BATTLEFIELD_CARD_HEIGHT }}
+      onDragOver={actions ? (e) => e.preventDefault() : undefined}
+      onDrop={actions ? handleDrop : undefined}
+    >
+      {cards.map((c, i) => (
+        <div key={c.instanceId} className="battlefield-stack-card" style={{ top: i * BATTLEFIELD_PEEK_HEIGHT, zIndex: i }}>
+          <BattlefieldCard instance={c} actions={actions} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BattlefieldRow({
+  row,
+  cards,
+  actions,
+  isAlreadyOnBattlefield,
+}: {
+  row: number;
+  cards: CardInstance[];
+  actions?: BattlefieldActions;
+  isAlreadyOnBattlefield: (instanceId: string) => boolean;
+}) {
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     const id = e.dataTransfer.getData("text/plain");
     if (!id || !actions) return;
-    const alreadyHere = cards.some((c) => c.instanceId === id);
-    if (alreadyHere) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      actions.onReposition(id, e.clientX - rect.left, e.clientY - rect.top);
-    } else {
-      actions.onDropCard(id);
-    }
+    if (isAlreadyOnBattlefield(id)) actions.onSetSlot(id, row);
+    else actions.onDropCard(id, row);
   }
+
+  const stacks = groupBattlefieldStacks(cards);
+
+  return (
+    <div className="battlefield-row" onDragOver={actions ? (e) => e.preventDefault() : undefined} onDrop={actions ? handleDrop : undefined}>
+      {stacks.map((stack) => (
+        <BattlefieldStack key={stack[0]!.stackId ?? stack[0]!.instanceId} cards={stack} row={row} actions={actions} isAlreadyOnBattlefield={isAlreadyOnBattlefield} />
+      ))}
+    </div>
+  );
+}
+
+function Battlefield({ cards, order, actions }: { cards: CardInstance[]; order: "battlefield-first" | "battlefield-last"; actions?: BattlefieldActions }) {
+  const isAlreadyOnBattlefield = (instanceId: string) => cards.some((c) => c.instanceId === instanceId);
+  const row0 = cards.filter((c) => (c.row ?? 0) === 0);
+  const row1 = cards.filter((c) => (c.row ?? 0) === 1);
+  // Row 0 always sits nearest the shared center strip between the two battlefields.
+  const rows =
+    order === "battlefield-first"
+      ? [
+          { row: 0, cards: row0 },
+          { row: 1, cards: row1 },
+        ]
+      : [
+          { row: 1, cards: row1 },
+          { row: 0, cards: row0 },
+        ];
 
   return (
     <div className="match-zone">
       <div className="match-zone-label">Battlefield ({cards.length})</div>
-      <div className="battlefield-surface" onDragOver={actions ? (e) => e.preventDefault() : undefined} onDrop={actions ? handleDrop : undefined}>
-        {cards.map((c) => (
-          <BattlefieldCard key={c.instanceId} instance={c} actions={actions} />
+      <div className="battlefield-surface">
+        {rows.map(({ row, cards: rowCards }) => (
+          <BattlefieldRow key={row} row={row} cards={rowCards} actions={actions} isAlreadyOnBattlefield={isAlreadyOnBattlefield} />
         ))}
       </div>
     </div>
@@ -297,11 +424,16 @@ function PeekModal({ cards, onMoveCard, onReveal, onClose }: PeekModalProps) {
 }
 
 interface PlayerActions {
-  onMoveCard: (instanceId: string, toZone: Zone, toLibraryPosition?: "top" | "bottom") => void;
+  onMoveCard: (
+    instanceId: string,
+    toZone: Zone,
+    toLibraryPosition?: "top" | "bottom",
+    battlefieldTarget?: { row: number; stackId?: string }
+  ) => void;
   onDraw: () => void;
   onShuffle: () => void;
   onMulligan: () => void;
-  onSetBattlefieldPosition: (instanceId: string, x: number, y: number) => void;
+  onSetBattlefieldSlot: (instanceId: string, row: number, stackId?: string) => void;
   onTapCard: (instanceId: string, tapped: boolean) => void;
   onUntapAll: () => void;
   onSetCardCounter: (instanceId: string, label: string, delta: number) => void;
@@ -356,14 +488,14 @@ function PlayerZoneStack({ board, revealHand, order, actions }: PlayerZoneStackP
   const mine = actions !== undefined;
   const dropTo = (zone: Zone) => (actions ? (instanceId: string) => actions.onMoveCard(instanceId, zone) : undefined);
   const battlefieldActions: BattlefieldActions | undefined = actions && {
-    onDropCard: dropTo("battlefield")!,
-    onReposition: actions.onSetBattlefieldPosition,
+    onDropCard: (instanceId, row, stackId) => actions.onMoveCard(instanceId, "battlefield", undefined, { row, stackId }),
+    onSetSlot: actions.onSetBattlefieldSlot,
     onTapToggle: actions.onTapCard,
     onCounterChange: actions.onSetCardCounter,
     onFlip: actions.onFlipFaceDown,
   };
 
-  const battlefield = <Battlefield cards={board.battlefield} actions={battlefieldActions} />;
+  const battlefield = <Battlefield cards={board.battlefield} order={order} actions={battlefieldActions} />;
   const otherZones = (
     <>
       {revealHand && board.hand.cards ? (
@@ -448,8 +580,17 @@ export function MatchBoard({ matchState }: MatchBoardProps) {
     });
   }
 
-  function handleMoveCard(instanceId: string, toZone: Zone, toLibraryPosition?: "top" | "bottom") {
-    socket.emit("match:moveCard", { instanceId, toZone, toLibraryPosition }, report);
+  function handleMoveCard(
+    instanceId: string,
+    toZone: Zone,
+    toLibraryPosition?: "top" | "bottom",
+    battlefieldTarget?: { row: number; stackId?: string }
+  ) {
+    socket.emit(
+      "match:moveCard",
+      { instanceId, toZone, toLibraryPosition, battlefieldRow: battlefieldTarget?.row, battlefieldStackId: battlefieldTarget?.stackId },
+      report
+    );
   }
 
   function handleDraw() {
@@ -464,8 +605,8 @@ export function MatchBoard({ matchState }: MatchBoardProps) {
     socket.emit("match:mulligan", report);
   }
 
-  function handleSetBattlefieldPosition(instanceId: string, x: number, y: number) {
-    socket.emit("match:setBattlefieldPosition", { instanceId, x, y }, report);
+  function handleSetBattlefieldSlot(instanceId: string, row: number, stackId?: string) {
+    socket.emit("match:setBattlefieldSlot", { instanceId, row, stackId }, report);
   }
 
   function handleTapCard(instanceId: string, tapped: boolean) {
@@ -520,7 +661,7 @@ export function MatchBoard({ matchState }: MatchBoardProps) {
     onDraw: handleDraw,
     onShuffle: handleShuffle,
     onMulligan: handleMulligan,
-    onSetBattlefieldPosition: handleSetBattlefieldPosition,
+    onSetBattlefieldSlot: handleSetBattlefieldSlot,
     onTapCard: handleTapCard,
     onUntapAll: handleUntapAll,
     onSetCardCounter: handleSetCardCounter,

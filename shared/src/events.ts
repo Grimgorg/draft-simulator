@@ -50,9 +50,21 @@ export interface ClientToServerEvents {
   "match:shuffleLibrary": (callback: (result: ActionResult) => void) => void;
   /** Shuffles the caller's hand back into their library and draws a fresh opening hand. No rules enforcement — callable any time, repeatedly. */
   "match:mulligan": (callback: (result: ActionResult) => void) => void;
-  /** The universal move primitive: relocates one of the caller's own cards (from hand/battlefield/graveyard/exile) to any zone, including their own library (top or bottom, default top). */
+  /**
+   * The universal move primitive: relocates one of the caller's own cards
+   * (from hand/battlefield/graveyard/exile) to any zone, including their own
+   * library (top or bottom, default top). When moving onto the battlefield,
+   * `battlefieldRow`/`battlefieldStackId` place it in a specific row/stack
+   * (defaulting to row 0, its own new singleton stack).
+   */
   "match:moveCard": (
-    payload: { instanceId: string; toZone: Zone; toLibraryPosition?: "top" | "bottom" },
+    payload: {
+      instanceId: string;
+      toZone: Zone;
+      toLibraryPosition?: "top" | "bottom";
+      battlefieldRow?: number;
+      battlefieldStackId?: string;
+    },
     callback: (result: ActionResult) => void
   ) => void;
   /** Taps or untaps one of the caller's own battlefield cards. */
@@ -64,9 +76,9 @@ export interface ClientToServerEvents {
     payload: { instanceId: string; label: string; delta: number },
     callback: (result: ActionResult) => void
   ) => void;
-  /** Repositions one of the caller's own battlefield cards (free-drag placement). */
-  "match:setBattlefieldPosition": (
-    payload: { instanceId: string; x: number; y: number },
+  /** Moves one of the caller's own battlefield cards to a row/stack slot — omit `stackId` to break it out into its own new stack. */
+  "match:setBattlefieldSlot": (
+    payload: { instanceId: string; row: number; stackId?: string },
     callback: (result: ActionResult) => void
   ) => void;
   /** Flips one of the caller's own battlefield cards face-down or face-up. Its identity is withheld from the opponent while face-down. */

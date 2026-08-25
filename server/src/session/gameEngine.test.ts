@@ -11,7 +11,7 @@ import {
   mulligan,
   peekLibrary,
   rollDie,
-  setBattlefieldPosition,
+  setBattlefieldSlot,
   setCardCounter,
   setPlayerCounter,
   shuffleLibrary,
@@ -118,6 +118,8 @@ test("moveCard relocates a card between zones and clears battlefield-only state 
   assert.equal(board.graveyard.length, 1);
   assert.equal(board.graveyard[0]!.tapped, undefined);
   assert.equal(board.graveyard[0]!.counters, undefined);
+  assert.equal(board.graveyard[0]!.row, undefined);
+  assert.equal(board.graveyard[0]!.stackId, undefined);
 });
 
 test("moveCard can place a card on the top (default) or bottom of the library", () => {
@@ -199,18 +201,25 @@ test("setCardCounter accumulates and removes the counter once it reaches zero", 
   assert.equal(board.battlefield[0]!.counters!["+1/+1"], undefined);
 });
 
-test("setBattlefieldPosition moves a card and rejects a card not on the battlefield", () => {
-  const deck = [testCard("a")];
+test("setBattlefieldSlot moves a card to a row, can merge it into another card's stack, and rejects a card not on the battlefield", () => {
+  const deck = [testCard("a"), testCard("b")];
   const match = createMatch("alice", deck, "bob", deck);
   const board = match.boards["alice"]!;
-  const handCard = board.hand[0]!;
-  moveCard(match, "alice", handCard.instanceId, "battlefield");
+  const [first, second] = board.hand;
+  moveCard(match, "alice", first!.instanceId, "battlefield");
+  moveCard(match, "alice", second!.instanceId, "battlefield");
 
-  setBattlefieldPosition(match, "alice", handCard.instanceId, 250, 75);
-  assert.equal(board.battlefield[0]!.x, 250);
-  assert.equal(board.battlefield[0]!.y, 75);
+  setBattlefieldSlot(match, "alice", first!.instanceId, 1);
+  assert.equal(board.battlefield.find((c) => c.instanceId === first!.instanceId)!.row, 1);
+  assert.equal(board.battlefield.find((c) => c.instanceId === first!.instanceId)!.stackId, first!.instanceId);
 
-  assert.throws(() => setBattlefieldPosition(match, "alice", "nope", 0, 0), /not found/i);
+  setBattlefieldSlot(match, "alice", second!.instanceId, 1, first!.instanceId);
+  const merged = board.battlefield.find((c) => c.instanceId === second!.instanceId)!;
+  assert.equal(merged.row, 1);
+  assert.equal(merged.stackId, first!.instanceId);
+  assert.equal(board.battlefield[board.battlefield.length - 1]!.instanceId, second!.instanceId);
+
+  assert.throws(() => setBattlefieldSlot(match, "alice", "nope", 0), /not found/i);
 });
 
 test("flipFaceDown toggles the face-down flag on a battlefield card", () => {

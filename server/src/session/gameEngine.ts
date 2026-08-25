@@ -106,30 +106,34 @@ export function findOwnCard(match: MatchSession, playerId: string, instanceId: s
   throw new Error("Card not found in any of your own zones");
 }
 
-/** A simple staggered grid so newly-arrived cards don't all land exactly on top of each other; freely draggable afterward. */
-function nextBattlefieldPosition(board: MatchPlayerBoard): { x: number; y: number } {
-  const index = board.battlefield.length;
-  return { x: (index % 6) * 110, y: Math.floor(index / 6) * 150 };
+interface BattlefieldTarget {
+  row: number;
+  stackId?: string;
 }
 
-function addToZone(board: MatchPlayerBoard, zone: Zone, card: CardInstance, libraryPosition: "top" | "bottom"): void {
+function addToZone(
+  board: MatchPlayerBoard,
+  zone: Zone,
+  card: CardInstance,
+  libraryPosition: "top" | "bottom",
+  battlefieldTarget?: BattlefieldTarget
+): void {
   if (zone === "library") {
     if (libraryPosition === "top") board.library.unshift(card);
     else board.library.push(card);
     return;
   }
   if (zone === "battlefield") {
-    const { x, y } = nextBattlefieldPosition(board);
     card.tapped = false;
     card.counters = {};
-    card.x = x;
-    card.y = y;
+    card.row = battlefieldTarget?.row ?? 0;
+    card.stackId = battlefieldTarget?.stackId ?? card.instanceId;
   } else {
     // Battlefield-only state doesn't carry into a hidden or public non-battlefield zone.
     delete card.tapped;
     delete card.counters;
-    delete card.x;
-    delete card.y;
+    delete card.row;
+    delete card.stackId;
     delete card.faceDown;
   }
   board[zone].push(card);
@@ -138,18 +142,21 @@ function addToZone(board: MatchPlayerBoard, zone: Zone, card: CardInstance, libr
 /**
  * The universal move primitive: relocates one of playerId's own cards from
  * hand/battlefield/graveyard/exile to any zone, including their own library
- * (top or bottom). Only ever touches the caller's own board.
+ * (top or bottom). `battlefieldTarget` places a card landing on the
+ * battlefield into a specific row/stack (defaulting to row 0, its own new
+ * stack). Only ever touches the caller's own board.
  */
 export function moveCard(
   match: MatchSession,
   playerId: string,
   instanceId: string,
   toZone: Zone,
-  toLibraryPosition: "top" | "bottom" = "top"
+  toLibraryPosition: "top" | "bottom" = "top",
+  battlefieldTarget?: BattlefieldTarget
 ): void {
   const board = requireBoard(match, playerId);
   const card = removeFromKnownZone(board, instanceId);
-  addToZone(board, toZone, card, toLibraryPosition);
+  addToZone(board, toZone, card, toLibraryPosition, battlefieldTarget);
 }
 
 function requireBattlefieldCard(board: MatchPlayerBoard, instanceId: string): CardInstance {
@@ -184,11 +191,15 @@ export function setCardCounter(
   else counters[label] = next;
 }
 
-export function setBattlefieldPosition(match: MatchSession, playerId: string, instanceId: string, x: number, y: number): void {
+/** Moves a battlefield card to a row/stack slot — omitting `stackId` breaks it out into its own new stack, appended to the end (rightmost) of that row. */
+export function setBattlefieldSlot(match: MatchSession, playerId: string, instanceId: string, row: number, stackId?: string): void {
   const board = requireBoard(match, playerId);
   const card = requireBattlefieldCard(board, instanceId);
-  card.x = x;
-  card.y = y;
+  card.row = row;
+  card.stackId = stackId ?? instanceId;
+  // Re-append so it renders as the new top of its (possibly newly-merged) stack.
+  board.battlefield.splice(board.battlefield.indexOf(card), 1);
+  board.battlefield.push(card);
 }
 
 /** Flips a battlefield permanent face-down or face-up. A face-down card's identity is withheld from the opponent (see matchStateView.ts), never from its own owner. */
@@ -203,15 +214,15 @@ export function createToken(match: MatchSession, playerId: string, label: string
   const trimmed = label.trim();
   if (!trimmed) throw new Error("Token needs a label");
 
-  const { x, y } = nextBattlefieldPosition(board);
+  const instanceId = randomUUID();
   board.battlefield.push({
-    instanceId: randomUUID(),
+    instanceId,
     card: null,
     tokenLabel: trimmed,
     tapped: false,
     counters: {},
-    x,
-    y,
+    row: 0,
+    stackId: instanceId,
   });
 }
 

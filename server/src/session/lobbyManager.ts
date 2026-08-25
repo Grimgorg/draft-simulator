@@ -14,7 +14,7 @@ import {
   tapCard as engineTapCard,
   untapAll as engineUntapAll,
   setCardCounter as engineSetCardCounter,
-  setBattlefieldPosition as engineSetBattlefieldPosition,
+  setBattlefieldSlot as engineSetBattlefieldSlot,
   flipFaceDown as engineFlipFaceDown,
   createToken as engineCreateToken,
   peekLibrary as enginePeekLibrary,
@@ -320,10 +320,11 @@ export function moveCard(
   playerId: string,
   instanceId: string,
   toZone: Zone,
-  toLibraryPosition?: "top" | "bottom"
+  toLibraryPosition?: "top" | "bottom",
+  battlefieldTarget?: { row: number; stackId?: string }
 ): MatchSession {
   const match = requireActiveMatch(playerId);
-  engineMoveCard(match, playerId, instanceId, toZone, toLibraryPosition);
+  engineMoveCard(match, playerId, instanceId, toZone, toLibraryPosition, battlefieldTarget);
   persist();
   return match;
 }
@@ -349,9 +350,9 @@ export function setCardCounter(playerId: string, instanceId: string, label: stri
   return match;
 }
 
-export function setBattlefieldPosition(playerId: string, instanceId: string, x: number, y: number): MatchSession {
+export function setBattlefieldSlot(playerId: string, instanceId: string, row: number, stackId?: string): MatchSession {
   const match = requireActiveMatch(playerId);
-  engineSetBattlefieldPosition(match, playerId, instanceId, x, y);
+  engineSetBattlefieldSlot(match, playerId, instanceId, row, stackId);
   persist();
   return match;
 }

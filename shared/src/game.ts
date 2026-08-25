@@ -16,9 +16,15 @@ export interface CardInstance {
   faceDown?: boolean;
   /** Only meaningful on the battlefield. */
   counters?: Record<string, number>;
-  /** Only meaningful on the battlefield — free-drag position. */
-  x?: number;
-  y?: number;
+  /** Only meaningful on the battlefield — which of the two lanes this card sits in (0 or 1). */
+  row?: number;
+  /**
+   * Only meaningful on the battlefield — groups cards into one visual stack
+   * (e.g. an aura stacked on its creature). Defaults to the card's own
+   * instanceId when it isn't sharing a stack with anything. Cards sharing a
+   * stackId render as one pile, in `battlefield` array order (bottom to top).
+   */
+  stackId?: string;
   /** Only meaningful on the battlefield. */
   tapped?: boolean;
 }
