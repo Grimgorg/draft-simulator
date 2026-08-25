@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Card, DeckExport, LobbyStateView, Pack } from "@draft-simulator/shared";
 import { socket } from "./socket.js";
 import { clearStoredPlayerId, getStoredPlayerId, storePlayerId } from "./playerIdentity.js";
+import { getStoredPassword, storePassword } from "./lobbyPassword.js";
 
 export interface DraftConnection {
   connected: boolean;
@@ -21,6 +22,11 @@ export interface DraftConnection {
   myPool: Card[];
   /** Set once, when the draft completes while I'm connected (or on reconnect after completion). */
   myDeckExport: DeckExport | null;
+  /** True when the server requires a lobby password we haven't supplied (or supplied wrong). */
+  passwordRequired: boolean;
+  passwordError: string | null;
+  /** Stores the password, retries the connection with it, and clears any prior error. */
+  submitPassword: (password: string) => void;
 }
 
 export function useDraftConnection(): DraftConnection {
@@ -32,6 +38,8 @@ export function useDraftConnection(): DraftConnection {
   const [myPack, setMyPack] = useState<Pack | null>(null);
   const [myPool, setMyPool] = useState<Card[]>([]);
   const [myDeckExport, setMyDeckExport] = useState<DeckExport | null>(null);
+  const [passwordRequired, setPasswordRequired] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const setMyPlayerId = useCallback((id: string) => {
     storePlayerId(id);
@@ -39,6 +47,13 @@ export function useDraftConnection(): DraftConnection {
   }, []);
 
   const dismissEviction = useCallback(() => setEvicted(false), []);
+
+  const submitPassword = useCallback((password: string) => {
+    storePassword(password);
+    setPasswordError(null);
+    socket.auth = { password };
+    socket.connect();
+  }, []);
 
   useEffect(() => {
     function attemptReconnect() {
@@ -60,10 +75,22 @@ export function useDraftConnection(): DraftConnection {
 
     function onConnect() {
       setConnected(true);
+      setPasswordRequired(false);
+      setPasswordError(null);
       attemptReconnect();
     }
     function onDisconnect() {
       setConnected(false);
+    }
+    function onConnectError(err: Error) {
+      if (err.message !== "invalid_password") return;
+      setPasswordRequired(true);
+      // A first-time visitor never sent a password at all — only show an
+      // "incorrect" error when one was actually tried and rejected.
+      setPasswordError(getStoredPassword() ? "Incorrect password." : null);
+      // Without this, socket.io's default reconnection logic would keep
+      // retrying with the same known-bad credentials in a loop.
+      socket.disconnect();
     }
     function onLobbyState(state: LobbyStateView) {
       setLobbyState(state);
@@ -86,6 +113,7 @@ export function useDraftConnection(): DraftConnection {
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onConnectError);
     socket.on("lobby:state", onLobbyState);
     socket.on("draft:myState", onMyState);
     socket.on("draft:complete", onComplete);
@@ -98,6 +126,7 @@ export function useDraftConnection(): DraftConnection {
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onConnectError);
       socket.off("lobby:state", onLobbyState);
       socket.off("draft:myState", onMyState);
       socket.off("draft:complete", onComplete);
@@ -116,5 +145,8 @@ export function useDraftConnection(): DraftConnection {
     myPack,
     myPool,
     myDeckExport,
+    passwordRequired,
+    passwordError,
+    submitPassword,
   };
 }

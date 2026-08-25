@@ -47,6 +47,14 @@ npm run dev:client   # Vite dev server with hot reload, port 5173
 
 In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.development` to talk to the server on 4000).
 
+### Configuration
+
+Environment variables the server reads at startup:
+
+- `PORT` — defaults to `4000`.
+- `CARD_CACHE_MAX_AGE_DAYS` — defaults to `30`; see the card database note above.
+- `LOBBY_PASSWORD` — unset by default (no password required). If set, everyone must enter this password before they can connect at all — useful if you're exposing the server beyond your LAN (e.g. port-forwarding it to the internet for a remote draft). It's a single shared password for the whole server, not per-draft.
+
 ## How a draft works
 
 1. The host opens the app, pastes a CubeCobra cube URL (or ID), sets the number of players / packs / cards per pack, and clicks **Create draft**.
@@ -73,4 +81,4 @@ Most tests are network-free. One integration test drives the real Socket.IO serv
 ## Known limitations
 
 - One draft at a time per server instance — the host has to finish (or the host can start a fresh one from the results screen) before a new one can begin.
-- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, stop the server and delete `server/data/draft-session.json` to reset it.
+- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, stop the server and delete `server/data/draft-session.json` to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.

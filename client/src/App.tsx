@@ -3,6 +3,7 @@ import { CardPreviewProvider } from "./CardPreviewContext.js";
 import { CardPreviewOverlay } from "./components/CardPreviewOverlay.js";
 import { DraftBoard } from "./components/DraftBoard.js";
 import { HostSetupScreen } from "./components/HostSetupScreen.js";
+import { LobbyPasswordScreen } from "./components/LobbyPasswordScreen.js";
 import { RejoinScreen } from "./components/RejoinScreen.js";
 import { ResultsScreen } from "./components/ResultsScreen.js";
 import { WaitingRoom } from "./components/WaitingRoom.js";
@@ -33,6 +34,9 @@ function AppContent() {
     setMyPlayerId,
     myPack,
     myPool,
+    passwordRequired,
+    passwordError,
+    submitPassword,
   } = useDraftConnection();
 
   // Checked ahead of the connection screens: eviction force-disconnects the
@@ -45,6 +49,9 @@ function AppContent() {
         action={{ label: "Continue", onClick: dismissEviction }}
       />
     );
+  }
+  if (passwordRequired) {
+    return <LobbyPasswordScreen error={passwordError} onSubmit={submitPassword} />;
   }
   if (!connected) {
     return <StatusScreen message="Connecting to server..." />;
