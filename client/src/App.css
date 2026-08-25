@@ -343,31 +343,50 @@ button:disabled {
   max-width: 1400px;
 }
 
-.player-half {
-  padding: 1rem 0;
+.player-zone-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.player-zone-stack > .match-zone:first-child {
+  margin-top: 0;
+}
+
+.match-center-row {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
 
-.player-half:last-child {
-  border-bottom: none;
-}
-
-.player-half-header {
+.match-center-half {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex: none;
 }
 
-.player-half-header h2 {
+.match-center-half h2 {
   margin: 0;
+  white-space: nowrap;
+}
+
+.match-center-divider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+  flex: none;
 }
 
 .match-library-controls {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-left: auto;
 }
 
 .match-library-controls button {

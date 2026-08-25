@@ -296,7 +296,7 @@ function PeekModal({ cards, onMoveCard, onReveal, onClose }: PeekModalProps) {
   );
 }
 
-interface PlayerHalfActions {
+interface PlayerActions {
   onMoveCard: (instanceId: string, toZone: Zone, toLibraryPosition?: "top" | "bottom") => void;
   onDraw: () => void;
   onShuffle: () => void;
@@ -311,14 +311,48 @@ interface PlayerHalfActions {
   onPeek: (count: number) => void;
 }
 
-interface PlayerHalfProps {
+interface PlayerControlsProps {
   name: string;
-  board: PlayerBoardView;
-  revealHand: boolean;
-  actions?: PlayerHalfActions;
+  counters: Record<string, number>;
+  libraryCount: number;
+  actions?: PlayerActions;
 }
 
-function PlayerHalf({ name, board, revealHand, actions }: PlayerHalfProps) {
+function PlayerControls({ name, counters, libraryCount, actions }: PlayerControlsProps) {
+  return (
+    <div className="match-center-half">
+      <h2>{name}</h2>
+      <PlayerCounters counters={counters} onChange={actions?.onSetPlayerCounter} />
+      {actions && (
+        <button type="button" onClick={actions.onUntapAll}>
+          Untap all
+        </button>
+      )}
+      {actions && <TokenControls onCreateToken={actions.onCreateToken} />}
+      {actions ? (
+        <LibraryControls
+          count={libraryCount}
+          onDraw={actions.onDraw}
+          onShuffle={actions.onShuffle}
+          onMulligan={actions.onMulligan}
+          onDropToLibrary={(instanceId, position) => actions.onMoveCard(instanceId, "library", position)}
+          onPeek={actions.onPeek}
+        />
+      ) : (
+        <span className="tag">Library ({libraryCount})</span>
+      )}
+    </div>
+  );
+}
+
+interface PlayerZoneStackProps {
+  board: PlayerBoardView;
+  revealHand: boolean;
+  order: "battlefield-first" | "battlefield-last";
+  actions?: PlayerActions;
+}
+
+function PlayerZoneStack({ board, revealHand, order, actions }: PlayerZoneStackProps) {
   const mine = actions !== undefined;
   const dropTo = (zone: Zone) => (actions ? (instanceId: string) => actions.onMoveCard(instanceId, zone) : undefined);
   const battlefieldActions: BattlefieldActions | undefined = actions && {
@@ -329,31 +363,9 @@ function PlayerHalf({ name, board, revealHand, actions }: PlayerHalfProps) {
     onFlip: actions.onFlipFaceDown,
   };
 
-  return (
-    <div className="player-half">
-      <div className="player-half-header">
-        <h2>{name}</h2>
-        <PlayerCounters counters={board.counters} onChange={actions?.onSetPlayerCounter} />
-        {actions && (
-          <button type="button" onClick={actions.onUntapAll}>
-            Untap all
-          </button>
-        )}
-        {actions && <TokenControls onCreateToken={actions.onCreateToken} />}
-        {actions ? (
-          <LibraryControls
-            count={board.library.count}
-            onDraw={actions.onDraw}
-            onShuffle={actions.onShuffle}
-            onMulligan={actions.onMulligan}
-            onDropToLibrary={(instanceId, position) => actions.onMoveCard(instanceId, "library", position)}
-            onPeek={actions.onPeek}
-          />
-        ) : (
-          <span className="tag">Library ({board.library.count})</span>
-        )}
-      </div>
-      <Battlefield cards={board.battlefield} actions={battlefieldActions} />
+  const battlefield = <Battlefield cards={board.battlefield} actions={battlefieldActions} />;
+  const otherZones = (
+    <>
       {revealHand && board.hand.cards ? (
         <ZoneRow label="Hand" cards={board.hand.cards} draggable={mine} onDropCard={dropTo("hand")} />
       ) : (
@@ -365,6 +377,22 @@ function PlayerHalf({ name, board, revealHand, actions }: PlayerHalfProps) {
         <ZoneRow label="Graveyard" cards={board.graveyard} draggable={mine} onDropCard={dropTo("graveyard")} />
         <ZoneRow label="Exile" cards={board.exile} draggable={mine} onDropCard={dropTo("exile")} />
       </div>
+    </>
+  );
+
+  return (
+    <div className="player-zone-stack">
+      {order === "battlefield-first" ? (
+        <>
+          {battlefield}
+          {otherZones}
+        </>
+      ) : (
+        <>
+          {otherZones}
+          {battlefield}
+        </>
+      )}
     </div>
   );
 }
@@ -487,28 +515,34 @@ export function MatchBoard({ matchState }: MatchBoardProps) {
     socket.emit("match:revealCard", { instanceId }, report);
   }
 
+  const myActions: PlayerActions = {
+    onMoveCard: handleMoveCard,
+    onDraw: handleDraw,
+    onShuffle: handleShuffle,
+    onMulligan: handleMulligan,
+    onSetBattlefieldPosition: handleSetBattlefieldPosition,
+    onTapCard: handleTapCard,
+    onUntapAll: handleUntapAll,
+    onSetCardCounter: handleSetCardCounter,
+    onFlipFaceDown: handleFlipFaceDown,
+    onCreateToken: handleCreateToken,
+    onSetPlayerCounter: handleSetPlayerCounter,
+    onPeek: handlePeek,
+  };
+
   return (
     <div className="screen match-board">
-      <PlayerHalf name={matchState.opponentName} board={matchState.opponent} revealHand={false} />
-      <PlayerHalf
-        name="You"
-        board={matchState.me}
-        revealHand
-        actions={{
-          onMoveCard: handleMoveCard,
-          onDraw: handleDraw,
-          onShuffle: handleShuffle,
-          onMulligan: handleMulligan,
-          onSetBattlefieldPosition: handleSetBattlefieldPosition,
-          onTapCard: handleTapCard,
-          onUntapAll: handleUntapAll,
-          onSetCardCounter: handleSetCardCounter,
-          onFlipFaceDown: handleFlipFaceDown,
-          onCreateToken: handleCreateToken,
-          onSetPlayerCounter: handleSetPlayerCounter,
-          onPeek: handlePeek,
-        }}
-      />
+      <PlayerZoneStack board={matchState.opponent} revealHand={false} order="battlefield-last" />
+      <div className="match-center-row">
+        <PlayerControls
+          name={matchState.opponentName}
+          counters={matchState.opponent.counters}
+          libraryCount={matchState.opponent.library.count}
+        />
+        <div className="match-center-divider" />
+        <PlayerControls name="You" counters={matchState.me.counters} libraryCount={matchState.me.library.count} actions={myActions} />
+      </div>
+      <PlayerZoneStack board={matchState.me} revealHand order="battlefield-first" actions={myActions} />
       {eventLog && <p className="subtitle">{eventLog}</p>}
       {error && <p className="error">{error}</p>}
       <div className="match-bottom-row">
