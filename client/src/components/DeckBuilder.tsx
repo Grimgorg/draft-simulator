@@ -63,17 +63,30 @@ export function DeckBuilder({ pool, basicLands, playerName }: DeckBuilderProps) 
   const allInstances = useMemo(() => [...poolInstances, ...addedBasics], [poolInstances, addedBasics]);
   const instanceById = useMemo(() => new Map(allInstances.map((inst) => [inst.id, inst.card])), [allInstances]);
 
-  // Every drafted card, and every newly-added basic land, starts out as its
-  // own pile in the main deck — nothing here disturbs piles the player
-  // already arranged.
+  // Every drafted card starts out as its own pile in the main deck — nothing
+  // here disturbs piles the player already arranged. A newly-added basic
+  // land instead joins whichever existing pile already holds a basic of the
+  // same type, if any, so repeated "+ Mountain" clicks stack up rather than
+  // scattering across the row.
   useEffect(() => {
     const fresh = allInstances.filter((inst) => !seenInstanceIds.current.has(inst.id));
     if (fresh.length === 0) return;
     fresh.forEach((inst) => seenInstanceIds.current.add(inst.id));
-    setDeck((prev) => ({
-      ...prev,
-      mainPiles: [...prev.mainPiles, ...fresh.map((inst) => ({ id: nextPileId.current++, cards: [inst.id] }))],
-    }));
+    setDeck((prev) => {
+      let mainPiles = prev.mainPiles;
+      const newPiles: Pile[] = [];
+      for (const inst of fresh) {
+        const existingPile = inst.id.startsWith("basic:")
+          ? mainPiles.find((p) => p.cards.some((cardId) => cardId.startsWith(`basic:${inst.card.name}:`)))
+          : undefined;
+        if (existingPile) {
+          mainPiles = mainPiles.map((p) => (p.id === existingPile.id ? { ...p, cards: [...p.cards, inst.id] } : p));
+        } else {
+          newPiles.push({ id: nextPileId.current++, cards: [inst.id] });
+        }
+      }
+      return { ...prev, mainPiles: [...mainPiles, ...newPiles] };
+    });
   }, [allInstances]);
 
   /** Removes `id` from wherever it currently sits, then hands the resulting
