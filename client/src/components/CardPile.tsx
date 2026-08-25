@@ -2,13 +2,13 @@ import type { Card } from "@draft-simulator/shared";
 import { CardImage } from "./CardImage.js";
 
 interface PiledCard {
-  poolIndex: number;
+  id: string;
   card: Card;
 }
 
 interface CardPileProps {
   cards: PiledCard[];
-  onDropCard: (poolIndex: number) => void;
+  onDropCard: (id: string) => void;
 }
 
 /** Vertical offset between stacked cards — small enough to fan tightly, tall
@@ -22,16 +22,16 @@ const CARD_HEIGHT = 210;
 export function CardPile({ cards, onDropCard }: CardPileProps) {
   const topIndex = cards.length - 1;
 
-  function handleDragStart(e: React.DragEvent, poolIndex: number) {
-    e.dataTransfer.setData("text/plain", String(poolIndex));
+  function handleDragStart(e: React.DragEvent, id: string) {
+    e.dataTransfer.setData("text/plain", id);
     e.dataTransfer.effectAllowed = "move";
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const poolIndex = Number(e.dataTransfer.getData("text/plain"));
-    if (!Number.isNaN(poolIndex)) onDropCard(poolIndex);
+    const id = e.dataTransfer.getData("text/plain");
+    if (id) onDropCard(id);
   }
 
   return (
@@ -41,13 +41,13 @@ export function CardPile({ cards, onDropCard }: CardPileProps) {
       onDragOver={(e) => e.preventDefault()}
       onDrop={handleDrop}
     >
-      {cards.map(({ poolIndex, card }, i) => (
+      {cards.map(({ id, card }, i) => (
         <div
-          key={poolIndex}
+          key={id}
           className="pile-card"
           style={{ top: i * PEEK_HEIGHT, zIndex: i }}
           draggable
-          onDragStart={(e) => handleDragStart(e, poolIndex)}
+          onDragStart={(e) => handleDragStart(e, id)}
         >
           <CardImage card={card} />
         </div>

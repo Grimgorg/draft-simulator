@@ -146,6 +146,49 @@ button:disabled {
   border-color: #d1435b;
 }
 
+.screen.results-screen {
+  max-width: 1400px;
+}
+
+.deckbuilder {
+  display: flex;
+  align-items: flex-start;
+}
+
+.deck-pane {
+  flex: 3 1 0;
+  min-width: 0;
+}
+
+.cut-pane {
+  flex: 1 1 0;
+  min-width: 220px;
+  border-left: 1px solid var(--border);
+  padding-left: 1.5rem;
+  margin-left: 1.5rem;
+}
+
+.deck-pane-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.deck-count {
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.deck-count-warning {
+  color: #b5872b;
+}
+
+.basic-land-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1rem;
+}
+
 .draft-screen {
   height: 100dvh;
   display: flex;

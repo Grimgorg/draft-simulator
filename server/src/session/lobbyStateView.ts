@@ -1,5 +1,8 @@
 import type { LobbyStateView } from "@draft-simulator/shared";
+import { findCardsByNames } from "../cardData/cardRepository.js";
 import * as lobbyManager from "./lobbyManager.js";
+
+const BASIC_LAND_NAMES = ["Plains", "Island", "Swamp", "Mountain", "Forest"];
 
 export function buildLobbyStateView(): LobbyStateView {
   const session = lobbyManager.getSession();
@@ -9,6 +12,7 @@ export function buildLobbyStateView(): LobbyStateView {
 
   const cubeMeta = lobbyManager.getCubeMeta();
   const isDrafting = session.status === "drafting";
+  const isComplete = session.status === "complete";
 
   return {
     status: session.status,
@@ -21,5 +25,6 @@ export function buildLobbyStateView(): LobbyStateView {
     currentPackNumber: isDrafting ? session.currentPackNumber : undefined,
     currentPickNumber: isDrafting ? session.currentPickNumber : undefined,
     waitingOn: isDrafting ? session.waitingOn : undefined,
+    basicLands: isComplete ? [...findCardsByNames(BASIC_LAND_NAMES).values()] : undefined,
   };
 }

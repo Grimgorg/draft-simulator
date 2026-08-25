@@ -1,3 +1,4 @@
+import type { Card } from "./card.js";
 import type { DraftSettings, DraftStatus, Player } from "./draft.js";
 
 /**
@@ -18,4 +19,6 @@ export interface LobbyStateView {
   currentPackNumber?: number;
   currentPickNumber?: number;
   waitingOn?: string[];
+  /** The five basic lands, available once the draft is complete so players can add them while deck building. */
+  basicLands?: Card[];
 }

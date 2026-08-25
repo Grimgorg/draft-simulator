@@ -37,6 +37,11 @@ function sendDraftStateTo(io: IoServer, socketId: string, playerId: string): voi
   if (!session) return;
 
   if (session.status === "complete") {
+    // The final round's picks never get their own draft:myState broadcast
+    // (the round that completes the draft only triggers draft:complete), so
+    // without this the client's local pool would be missing the last pack's
+    // worth of picks.
+    io.to(socketId).emit("draft:myState", { pack: null, pool: session.pools[playerId] ?? [] });
     const deckExport = buildDeckExports(session).find((e) => e.playerId === playerId);
     if (deckExport) io.to(socketId).emit("draft:complete", deckExport);
   } else if (session.status === "drafting") {

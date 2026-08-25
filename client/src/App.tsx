@@ -33,7 +33,6 @@ function AppContent() {
     setMyPlayerId,
     myPack,
     myPool,
-    myDeckExport,
   } = useDraftConnection();
 
   // Checked ahead of the connection screens: eviction force-disconnects the
@@ -85,7 +84,7 @@ function AppContent() {
     <ResultsScreen
       lobbyState={lobbyState}
       myPlayerId={myPlayerId!}
-      myDeckExport={myDeckExport}
+      myPool={myPool}
       onNewDraftCreated={setMyPlayerId}
     />
   );

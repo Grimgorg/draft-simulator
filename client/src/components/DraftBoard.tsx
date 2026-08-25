@@ -162,8 +162,8 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
           {piles.map((pile) => (
             <CardPile
               key={pile.id}
-              cards={pile.cards.map((i) => ({ poolIndex: i, card: myPool[i] }))}
-              onDropCard={(poolIndex) => handleDropOnPile(poolIndex, pile.id)}
+              cards={pile.cards.map((i) => ({ id: String(i), card: myPool[i] }))}
+              onDropCard={(id) => handleDropOnPile(Number(id), pile.id)}
             />
           ))}
         </div>
