@@ -6,7 +6,14 @@ import path from "node:path";
 import test from "node:test";
 import { Server } from "socket.io";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
-import type { Card, ClientToServerEvents, DeckExport, Pack, ServerToClientEvents } from "@draft-simulator/shared";
+import type {
+  Card,
+  ClientToServerEvents,
+  DeckExport,
+  LobbyStateView,
+  Pack,
+  ServerToClientEvents,
+} from "@draft-simulator/shared";
 import * as lobbyManager from "../session/lobbyManager.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
 
@@ -54,6 +61,18 @@ function waitForEvent<T>(socket: DraftClientSocket, event: "draft:myState" | "dr
   return new Promise((resolve) => {
     socket.once(event, (payload: T) => resolve(payload));
   });
+}
+
+function waitForEviction(socket: DraftClientSocket): Promise<void> {
+  return new Promise((resolve) => socket.once("identity:evicted", () => resolve()));
+}
+
+function waitForDisconnect(socket: DraftClientSocket): Promise<void> {
+  return new Promise((resolve) => socket.once("disconnect", () => resolve()));
+}
+
+function waitForLobbyState(socket: DraftClientSocket): Promise<LobbyStateView> {
+  return new Promise((resolve) => socket.once("lobby:state", resolve));
 }
 
 test(
@@ -235,6 +254,90 @@ test(
     } finally {
       hostSocket.close();
       guestSocket.close();
+      await server.close();
+    }
+  }
+);
+
+test(
+  "rejoin mid-draft: picking a still-connected player from another tab evicts the old session",
+  { timeout: 30_000 },
+  async () => {
+    lobbyManager.resetForTests(freshSnapshotPath());
+
+    const server = await startTestServer();
+    const hostSocket = await connect(server.url);
+    const guestSocket = await connect(server.url);
+    let secondGuestSocket: DraftClientSocket | undefined;
+
+    try {
+      const createResult = await new Promise<any>((resolve) =>
+        hostSocket.emit(
+          "lobby:create",
+          {
+            hostName: "Alice",
+            cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
+            packCount: 1,
+            packSize: 2,
+            playerCount: 2,
+          },
+          resolve
+        )
+      );
+      assert.equal(createResult.ok, true, JSON.stringify(createResult));
+
+      const joinResult = await new Promise<any>((resolve) =>
+        guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve)
+      );
+      assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
+      const guestId: string = joinResult.playerId;
+
+      const hostStatePromise = waitForEvent<MyState>(hostSocket, "draft:myState");
+      const guestStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const startResult = await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
+      assert.equal(startResult.ok, true, JSON.stringify(startResult));
+      await hostStatePromise;
+      const guestStateBeforeRejoin = await guestStatePromise;
+
+      // A second tab/browser picks "Bob" from the rejoin list while the
+      // original guest socket is still very much connected.
+      const evictionPromise = waitForEviction(guestSocket);
+      const staleDisconnectPromise = waitForDisconnect(guestSocket);
+
+      secondGuestSocket = await connect(server.url);
+      const rejoinStatePromise = waitForEvent<MyState>(secondGuestSocket, "draft:myState");
+      const rejoinResult = await new Promise<any>((resolve) =>
+        secondGuestSocket!.emit("lobby:reconnect", { playerId: guestId }, resolve)
+      );
+      assert.equal(rejoinResult.ok, true, JSON.stringify(rejoinResult));
+
+      await evictionPromise;
+      await staleDisconnectPromise;
+
+      const rejoinState = await rejoinStatePromise;
+      assert.deepEqual(
+        rejoinState.pack?.cards.map((c) => c.scryfallId).sort(),
+        guestStateBeforeRejoin.pack!.cards.map((c) => c.scryfallId).sort(),
+        "the newly claimed session should resume the exact same pack"
+      );
+
+      // lobby:state should still show Bob as connected (via the new socket),
+      // never dropped to disconnected by the stale socket's disconnect handler.
+      const lobbyStatePromise = waitForLobbyState(hostSocket);
+      const secondPickResult = await new Promise<any>((resolve) =>
+        secondGuestSocket!.emit("draft:pick", { scryfallId: rejoinState.pack!.cards[0]!.scryfallId }, resolve)
+      );
+      assert.equal(secondPickResult.ok, true, JSON.stringify(secondPickResult));
+      const lobbyState = await lobbyStatePromise;
+      assert.equal(
+        lobbyState.players.find((p) => p.id === guestId)?.connected,
+        true,
+        "Bob should still show connected after the eviction, driven by the new socket"
+      );
+    } finally {
+      hostSocket.close();
+      guestSocket.close();
+      secondGuestSocket?.close();
       await server.close();
     }
   }

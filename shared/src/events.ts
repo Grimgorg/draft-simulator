@@ -39,4 +39,6 @@ export interface ServerToClientEvents {
   "draft:myState": (state: { pack: Pack | null; pool: Card[] }) => void;
   /** Sent privately: only to the socket of the player this export belongs to. */
   "draft:complete": (deckExport: DeckExport) => void;
+  /** Sent privately: this socket's identity was just claimed by another socket via lobby:reconnect. */
+  "identity:evicted": () => void;
 }

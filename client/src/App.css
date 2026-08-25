@@ -121,6 +121,26 @@ button:disabled {
   color: var(--text);
 }
 
+.rejoin-list li {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.rejoin-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--code-bg, #eee);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+}
+
+.warning-inline {
+  color: #b5872b;
+  font-size: 0.8rem;
+}
+
 .draft-header {
   margin-bottom: 1rem;
 }

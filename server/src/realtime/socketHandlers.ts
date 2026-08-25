@@ -9,6 +9,19 @@ type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
 /** socket.id -> playerId. The server, never the client, decides who is picking. */
 const socketPlayers = new Map<string, string>();
+/** playerId -> socket.id, the reverse of socketPlayers. Lets a rejoin evict a stale live session. */
+const playerSockets = new Map<string, string>();
+
+function bindSocketToPlayer(io: IoServer, socket: IoSocket, playerId: string): void {
+  const staleSocketId = playerSockets.get(playerId);
+  if (staleSocketId && staleSocketId !== socket.id) {
+    io.to(staleSocketId).emit("identity:evicted");
+    socketPlayers.delete(staleSocketId);
+    io.sockets.sockets.get(staleSocketId)?.disconnect(true);
+  }
+  socketPlayers.set(socket.id, playerId);
+  playerSockets.set(playerId, socket.id);
+}
 
 function broadcastLobbyState(io: IoServer): void {
   io.emit("lobby:state", buildLobbyStateView());
@@ -54,7 +67,7 @@ export function registerSocketHandlers(io: IoServer): void {
           payload.packSize,
           payload.playerCount
         );
-        socketPlayers.set(socket.id, host.id);
+        bindSocketToPlayer(io, socket, host.id);
         callback({ ok: true, playerId: host.id, ...cubeMeta });
         broadcastLobbyState(io);
       } catch (err) {
@@ -65,7 +78,7 @@ export function registerSocketHandlers(io: IoServer): void {
     socket.on("lobby:join", (payload, callback) => {
       try {
         const player = lobbyManager.addPlayer(payload.playerName);
-        socketPlayers.set(socket.id, player.id);
+        bindSocketToPlayer(io, socket, player.id);
         callback({ ok: true, playerId: player.id });
         broadcastLobbyState(io);
       } catch (err) {
@@ -81,7 +94,7 @@ export function registerSocketHandlers(io: IoServer): void {
           throw new Error("No matching player found for this draft");
         }
 
-        socketPlayers.set(socket.id, player.id);
+        bindSocketToPlayer(io, socket, player.id);
         lobbyManager.setPlayerConnected(player.id, true);
         callback({ ok: true });
         broadcastLobbyState(io);
@@ -135,8 +148,13 @@ export function registerSocketHandlers(io: IoServer): void {
       console.log(`Client disconnected: ${socket.id}`);
       const playerId = socketPlayers.get(socket.id);
       if (playerId) {
-        lobbyManager.setPlayerConnected(playerId, false);
         socketPlayers.delete(socket.id);
+        // Only clear the reverse mapping if it still points at this socket —
+        // an eviction may have already rebound the player to a newer socket.
+        if (playerSockets.get(playerId) === socket.id) {
+          playerSockets.delete(playerId);
+          lobbyManager.setPlayerConnected(playerId, false);
+        }
         broadcastLobbyState(io);
       }
     });

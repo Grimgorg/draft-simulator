@@ -53,7 +53,7 @@ In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.d
 2. Everyone else opens the same URL and joins with their name.
 3. Once every seat is filled, the host clicks **Start draft**.
 4. Everyone picks from their own pack each round; packs rotate automatically once everyone's picked. There's no time limit.
-5. If someone's browser refreshes or their connection drops, reopening the same URL in the same browser resumes them automatically — no progress lost.
+5. If someone's browser refreshes or their connection drops, reopening the same URL in the same browser resumes them automatically. If it's a new browser or device (or the old one lost its storage), open the URL and pick your name from the "Rejoin as..." list — this works at any point in the draft, not just the lobby.
 6. Once the last pack is empty, everyone gets their own pool and can copy or download their picks as a decklist.
 
 ## Project structure
@@ -73,4 +73,4 @@ Most tests are network-free. One integration test drives the real Socket.IO serv
 ## Known limitations
 
 - One draft at a time per server instance — the host has to finish (or the host can start a fresh one from the results screen) before a new one can begin.
-- Reconnect is tied to the browser: it resumes you automatically in the same browser you joined from, but not from a different device or after clearing site data. If a draft ever gets stuck because everyone lost their browser storage, stop the server and delete `server/data/draft-session.json` to reset it.
+- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, stop the server and delete `server/data/draft-session.json` to reset it.

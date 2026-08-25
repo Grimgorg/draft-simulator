@@ -7,6 +7,7 @@ interface JoinScreenProps {
   onJoined: (playerId: string) => void;
 }
 
+/** The "new player" form, embedded inside RejoinScreen whenever the lobby still has an open seat. */
 export function JoinScreen({ lobbyState, onJoined }: JoinScreenProps) {
   const [playerName, setPlayerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -28,12 +29,8 @@ export function JoinScreen({ lobbyState, onJoined }: JoinScreenProps) {
   }
 
   return (
-    <div className="screen">
-      <h1>{lobbyState.cubeName ?? "Draft Simulator"}</h1>
-      <p className="subtitle">
-        {lobbyState.cardCount} cards &middot; {lobbyState.settings?.playerCount} players &middot;{" "}
-        {lobbyState.settings?.packCount} packs of {lobbyState.settings?.packSize}
-      </p>
+    <>
+      <h2>Join as a new player</h2>
       <p className="subtitle">
         {lobbyState.players.length} / {lobbyState.settings?.playerCount} joined
       </p>
@@ -47,6 +44,6 @@ export function JoinScreen({ lobbyState, onJoined }: JoinScreenProps) {
           {submitting ? "Joining..." : "Join draft"}
         </button>
       </form>
-    </div>
+    </>
   );
 }

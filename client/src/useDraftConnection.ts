@@ -7,6 +7,10 @@ export interface DraftConnection {
   connected: boolean;
   /** True while a stored identity is being re-validated against the server after connect. */
   reconnecting: boolean;
+  /** True after another device/tab just claimed this identity via lobby:reconnect. */
+  evicted: boolean;
+  /** Clears the eviction notice once the user has acknowledged it. */
+  dismissEviction: () => void;
   lobbyState: LobbyStateView | null;
   myPlayerId: string | null;
   /** Confirms an identity after create/join, and remembers it for reconnect-on-refresh. */
@@ -22,6 +26,7 @@ export interface DraftConnection {
 export function useDraftConnection(): DraftConnection {
   const [connected, setConnected] = useState(socket.connected);
   const [reconnecting, setReconnecting] = useState(() => getStoredPlayerId() !== null);
+  const [evicted, setEvicted] = useState(false);
   const [lobbyState, setLobbyState] = useState<LobbyStateView | null>(null);
   const [myPlayerId, setMyPlayerIdState] = useState<string | null>(null);
   const [myPack, setMyPack] = useState<Pack | null>(null);
@@ -32,6 +37,8 @@ export function useDraftConnection(): DraftConnection {
     storePlayerId(id);
     setMyPlayerIdState(id);
   }, []);
+
+  const dismissEviction = useCallback(() => setEvicted(false), []);
 
   useEffect(() => {
     function attemptReconnect() {
@@ -68,12 +75,21 @@ export function useDraftConnection(): DraftConnection {
     function onComplete(deckExport: DeckExport) {
       setMyDeckExport(deckExport);
     }
+    function onEvicted() {
+      clearStoredPlayerId();
+      setMyPlayerIdState(null);
+      setMyPack(null);
+      setMyPool([]);
+      setMyDeckExport(null);
+      setEvicted(true);
+    }
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("lobby:state", onLobbyState);
     socket.on("draft:myState", onMyState);
     socket.on("draft:complete", onComplete);
+    socket.on("identity:evicted", onEvicted);
 
     // The socket may already be connected by the time this effect runs
     // (it connects at module load), in which case "connect" won't fire again.
@@ -85,8 +101,20 @@ export function useDraftConnection(): DraftConnection {
       socket.off("lobby:state", onLobbyState);
       socket.off("draft:myState", onMyState);
       socket.off("draft:complete", onComplete);
+      socket.off("identity:evicted", onEvicted);
     };
   }, []);
 
-  return { connected, reconnecting, lobbyState, myPlayerId, setMyPlayerId, myPack, myPool, myDeckExport };
+  return {
+    connected,
+    reconnecting,
+    evicted,
+    dismissEviction,
+    lobbyState,
+    myPlayerId,
+    setMyPlayerId,
+    myPack,
+    myPool,
+    myDeckExport,
+  };
 }
