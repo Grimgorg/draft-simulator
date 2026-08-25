@@ -86,6 +86,15 @@ function BattlefieldCard({ instance, actions }: { instance: CardInstance; action
         >
           <CardInstanceImage instance={instance} />
         </div>
+        {counters.length > 0 && (
+          <div className="battlefield-counters">
+            {counters.map(([label, value]) => (
+              <span key={label} className="tag">
+                {label}: {value}
+              </span>
+            ))}
+          </div>
+        )}
         {mine && (
           <button type="button" className="battlefield-card-toggle" onClick={() => setExpanded((v) => !v)}>
             ⚙
@@ -139,15 +148,6 @@ function BattlefieldCard({ instance, actions }: { instance: CardInstance; action
           </div>
         )}
       </div>
-      {counters.length > 0 && (
-        <div className="battlefield-counters">
-          {counters.map(([label, value]) => (
-            <span key={label} className="tag">
-              {label}: {value}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
