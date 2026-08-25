@@ -213,6 +213,22 @@ test("loading a pre-existing snapshot written before hub/match support backfills
   fs.rmSync(snapshotPath);
 });
 
+test("loading a corrupt snapshot quarantines it instead of silently discarding it, and starts a fresh state", () => {
+  const snapshotPath = freshSnapshotPath();
+  fs.writeFileSync(snapshotPath, "{ not valid json");
+
+  lobbyManager.resetForTests(snapshotPath);
+
+  assert.equal(lobbyManager.getSession(), undefined, "a corrupt snapshot must not crash startup");
+  assert.equal(fs.existsSync(snapshotPath), false, "the corrupt file must be moved aside, not left in place");
+
+  const quarantined = fs.readdirSync(path.dirname(snapshotPath)).find((f) => f.startsWith(`${path.basename(snapshotPath)}.corrupt-`));
+  assert.ok(quarantined, "the original corrupt bytes must be preserved under a .corrupt-<timestamp> name");
+  assert.equal(fs.readFileSync(path.join(path.dirname(snapshotPath), quarantined!), "utf8"), "{ not valid json");
+
+  fs.rmSync(path.join(path.dirname(snapshotPath), quarantined!));
+});
+
 test("marks a player disconnected without removing them", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
   lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());

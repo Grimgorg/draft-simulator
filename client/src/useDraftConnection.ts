@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { Socket } from "socket.io-client";
 import type { Card, DeckExport, HubStateView, LobbyStateView, MatchStateView, Pack } from "@draft-simulator/shared";
 import { socket } from "./socket.js";
 import { clearStoredPlayerId, getStoredPlayerId, storePlayerId } from "./playerIdentity.js";
@@ -88,8 +89,14 @@ export function useDraftConnection(): DraftConnection {
       setPasswordError(null);
       attemptReconnect();
     }
-    function onDisconnect() {
+    function onDisconnect(reason: Socket.DisconnectReason) {
       setConnected(false);
+      // A server-forced disconnect (e.g. this identity got claimed elsewhere)
+      // is the one disconnect reason socket.io-client won't auto-reconnect
+      // from on its own — every other reason already retries by itself.
+      if (reason === "io server disconnect") {
+        socket.connect();
+      }
     }
     function onConnectError(err: Error) {
       if (err.message !== "invalid_password") return;

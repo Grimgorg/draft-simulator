@@ -58,14 +58,26 @@ function snapshotPath(): string {
 }
 
 function loadState(): LobbyManagerState {
+  const file = snapshotPath();
   try {
-    const file = snapshotPath();
     if (fs.existsSync(file)) {
       const onDisk = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<LobbyManagerState>;
       return { ...emptyState(), ...onDisk };
     }
   } catch (err) {
-    console.error("Failed to load draft session snapshot, starting fresh:", err);
+    // Renamed aside rather than left in place or deleted: starting fresh
+    // still needs to write a new snapshot to this same path, and the
+    // corrupt original is the only copy of whatever progress it held.
+    const quarantined = `${file}.corrupt-${Date.now()}`;
+    console.error(
+      `Failed to load draft session snapshot; moved it to ${quarantined} and starting fresh:`,
+      err
+    );
+    try {
+      fs.renameSync(file, quarantined);
+    } catch {
+      // ignore — best-effort preservation
+    }
   }
   return emptyState();
 }
@@ -80,7 +92,14 @@ function getState(): LobbyManagerState {
 function persist(): void {
   const file = snapshotPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(getState(), null, 2));
+  // Written to a temp file and renamed into place rather than overwritten
+  // directly: a crash mid-write would otherwise risk leaving a truncated,
+  // unparseable snapshot on disk — losing the whole draft instead of just
+  // the latest action. Rename is atomic on the same filesystem, so the real
+  // file is always either the old or the new complete snapshot, never a mix.
+  const tmpFile = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmpFile, JSON.stringify(getState(), null, 2));
+  fs.renameSync(tmpFile, file);
 }
 
 /** Test-only: forces a clean in-memory state pointed at an isolated snapshot file. */
