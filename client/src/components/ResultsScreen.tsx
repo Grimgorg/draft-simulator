@@ -19,7 +19,13 @@ export function ResultsScreen({ lobbyState, myPlayerId, myPool, onNewDraftCreate
     <div className="screen results-screen">
       <h1>Draft complete!</h1>
 
-      <DeckBuilder pool={myPool} basicLands={lobbyState.basicLands ?? []} playerName={myPlayerName} />
+      <DeckBuilder
+        pool={myPool}
+        basicLands={lobbyState.basicLands ?? []}
+        playerName={myPlayerName}
+        sessionId={lobbyState.sessionId}
+        myPlayerId={myPlayerId}
+      />
 
       <h2>Players</h2>
       <ul className="player-list">

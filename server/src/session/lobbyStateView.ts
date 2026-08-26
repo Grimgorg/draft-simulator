@@ -16,6 +16,7 @@ export function buildLobbyStateView(): LobbyStateView {
 
   return {
     status: session.status,
+    sessionId: session.id,
     hostId: session.players.find((p) => p.isHost)?.id,
     settings: session.settings,
     cubeName: cubeMeta?.cubeName,

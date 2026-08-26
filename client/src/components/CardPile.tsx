@@ -8,7 +8,9 @@ interface PiledCard {
 
 interface CardPileProps {
   cards: PiledCard[];
-  onDropCard: (id: string) => void;
+  /** Called with the dragged card's id plus every id stacked on top of it,
+   * bottom to top — dragging a card always brings its whole "run" along. */
+  onDropCard: (ids: string[]) => void;
 }
 
 /** Vertical offset between stacked cards — small enough to fan tightly, tall
@@ -22,16 +24,20 @@ const CARD_HEIGHT = 210;
 export function CardPile({ cards, onDropCard }: CardPileProps) {
   const topIndex = cards.length - 1;
 
-  function handleDragStart(e: React.DragEvent, id: string) {
-    e.dataTransfer.setData("text/plain", id);
+  function handleDragStart(e: React.DragEvent, index: number) {
+    // Everything stacked above the dragged card (higher index, per the
+    // z-index convention below) comes along as one rigid run.
+    const movingIds = cards.slice(index).map((c) => c.id);
+    e.dataTransfer.setData("text/plain", movingIds.join(","));
     e.dataTransfer.effectAllowed = "move";
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    const id = e.dataTransfer.getData("text/plain");
-    if (id) onDropCard(id);
+    const raw = e.dataTransfer.getData("text/plain");
+    const ids = raw ? raw.split(",") : [];
+    if (ids.length > 0) onDropCard(ids);
   }
 
   return (
@@ -47,7 +53,7 @@ export function CardPile({ cards, onDropCard }: CardPileProps) {
           className="pile-card"
           style={{ top: i * PEEK_HEIGHT, zIndex: i }}
           draggable
-          onDragStart={(e) => handleDragStart(e, id)}
+          onDragStart={(e) => handleDragStart(e, i)}
         >
           <CardImage card={card} />
         </div>

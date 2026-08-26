@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Card, LobbyStateView, Pack } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
+import { buildDraftPilesKey, getStoredDraftPiles, storeDraftPiles } from "../pileStorage.js";
 import { CancelDraftButton } from "./CancelDraftButton.js";
 import { CardImage } from "./CardImage.js";
 import { CardPile } from "./CardPile.js";
@@ -26,11 +27,20 @@ const DEFAULT_POOL_PANE_HEIGHT = 280;
 export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoardProps) {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [piles, setPiles] = useState<Pile[]>([]);
+
+  // Present for the whole "drafting" -> "complete" lifecycle of one session,
+  // so this key also doubles as the hand-off point DeckBuilder reads from.
+  const storageKey = lobbyState.sessionId ? buildDraftPilesKey(lobbyState.sessionId, myPlayerId) : null;
+
+  const [piles, setPiles] = useState<Pile[]>(() => (storageKey && getStoredDraftPiles(storageKey)) || []);
   const [poolPaneHeight, setPoolPaneHeight] = useState(DEFAULT_POOL_PANE_HEIGHT);
 
-  const seenPoolLength = useRef(0);
-  const nextPileId = useRef(0);
+  // Resumed once at mount from whatever `piles` was just restored from —
+  // every pool index appears in exactly one pile, so a plain count/max is
+  // enough to keep new picks and new pile ids from colliding with restored
+  // ones.
+  const seenPoolLength = useRef(piles.reduce((sum, p) => sum + p.cards.length, 0));
+  const nextPileId = useRef(piles.reduce((max, p) => Math.max(max, p.id + 1), 0));
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingDivider = useRef(false);
 
@@ -48,6 +58,12 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
       seenPoolLength.current = myPool.length;
     }
   }, [myPool.length]);
+
+  // Keeps the pool arrangement across a refresh, and doubles as the source
+  // DeckBuilder reads from to carry the arrangement into deck building.
+  useEffect(() => {
+    if (storageKey) storeDraftPiles(storageKey, piles);
+  }, [storageKey, piles]);
 
   const isHost = lobbyState.hostId === myPlayerId;
   const stillWaitingOn = lobbyState.waitingOn ?? [];
@@ -68,34 +84,43 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
     });
   }
 
-  function movePoolIndex(poolIndex: number, apply: (withoutSource: Pile[], removedCard: number) => Pile[]) {
+  /** Moves a whole dragged run (a card plus everything stacked on top of it)
+   * from wherever it currently sits to wherever `apply` decides to place it.
+   * Piles emptied by the move are kept (not pre-filtered) until after
+   * `apply` runs, so dropping a run back onto its own now-empty source pile
+   * still finds that pile to append to. */
+  function movePoolIndices(poolIndices: number[], apply: (withoutSource: Pile[], removedCards: number[]) => Pile[]) {
     setPiles((prev) => {
-      let removedCard: number | null = null;
+      const movingSet = new Set(poolIndices);
       const withoutSource = prev.map((pile) => {
-        if (pile.cards.includes(poolIndex)) {
-          removedCard = poolIndex;
-          return { ...pile, cards: pile.cards.filter((i) => i !== poolIndex) };
-        }
-        return pile;
+        const kept = pile.cards.filter((i) => !movingSet.has(i));
+        return kept.length === pile.cards.length ? pile : { ...pile, cards: kept };
       });
-      if (removedCard === null) return prev;
-      return apply(withoutSource, removedCard).filter((pile) => pile.cards.length > 0);
+      // Preserve the dragged run's own bottom-to-top order rather than
+      // whichever order piles happen to be scanned in.
+      const removedCards = poolIndices.filter((i) => prev.some((pile) => pile.cards.includes(i)));
+      if (removedCards.length === 0) return prev;
+      return apply(withoutSource, removedCards).filter((pile) => pile.cards.length > 0);
     });
   }
 
-  function handleDropOnPile(poolIndex: number, targetPileId: number) {
-    movePoolIndex(poolIndex, (withoutSource, removedCard) =>
-      withoutSource.map((pile) => (pile.id === targetPileId ? { ...pile, cards: [...pile.cards, removedCard] } : pile)),
+  function handleDropOnPile(poolIndices: number[], targetPileId: number) {
+    movePoolIndices(poolIndices, (withoutSource, removedCards) =>
+      withoutSource.map((pile) => (pile.id === targetPileId ? { ...pile, cards: [...pile.cards, ...removedCards] } : pile)),
     );
   }
 
   function handleDropOnBackground(e: React.DragEvent) {
     e.preventDefault();
-    const poolIndex = Number(e.dataTransfer.getData("text/plain"));
-    if (Number.isNaN(poolIndex)) return;
-    movePoolIndex(poolIndex, (withoutSource, removedCard) => [
+    const poolIndices = e.dataTransfer
+      .getData("text/plain")
+      .split(",")
+      .map(Number)
+      .filter((n) => !Number.isNaN(n));
+    if (poolIndices.length === 0) return;
+    movePoolIndices(poolIndices, (withoutSource, removedCards) => [
       ...withoutSource,
-      { id: nextPileId.current++, cards: [removedCard] },
+      { id: nextPileId.current++, cards: removedCards },
     ]);
   }
 
@@ -162,8 +187,14 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
           {piles.map((pile) => (
             <CardPile
               key={pile.id}
-              cards={pile.cards.map((i) => ({ id: String(i), card: myPool[i] }))}
-              onDropCard={(id) => handleDropOnPile(Number(id), pile.id)}
+              // Piles restored from storage can briefly reference indices
+              // before `myPool` (arriving over the socket after reconnect)
+              // has caught up — filtering rather than trusting every index
+              // keeps render safe for that window; it self-heals once
+              // `myPool` arrives since piles aren't re-derived, only
+              // re-rendered.
+              cards={pile.cards.flatMap((i) => (myPool[i] ? [{ id: String(i), card: myPool[i]! }] : []))}
+              onDropCard={(ids) => handleDropOnPile(ids.map(Number), pile.id)}
             />
           ))}
         </div>

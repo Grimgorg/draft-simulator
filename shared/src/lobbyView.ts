@@ -10,6 +10,11 @@ import type { DraftSettings, DraftStatus, Player } from "./draft.js";
 export interface LobbyStateView {
   /** "empty" = no lobby has been created on this server yet. */
   status: DraftStatus | "empty";
+  /** Stable id of the current draft session — the same value across the whole
+   * "drafting" -> "complete" lifecycle, so clients can key per-session local
+   * state (e.g. pool pile arrangement) that should survive a refresh and
+   * carry over into deck building. */
+  sessionId?: string;
   hostId?: string;
   settings?: DraftSettings;
   cubeName?: string;
