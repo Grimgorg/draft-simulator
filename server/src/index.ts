@@ -29,6 +29,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Optional password gate for the whole site (HTTP Basic Auth), for when the
+// server is exposed beyond a trusted LAN. Unset by default — no password
+// required. Distinct from LOBBY_PASSWORD below, which only gates the draft
+// socket connection; this gates every HTTP request, including the page and
+// static assets.
+const SITE_PASSWORD = process.env.SITE_PASSWORD;
+if (SITE_PASSWORD) {
+  app.use((req, res, next) => {
+    const [scheme, encoded] = req.headers.authorization?.split(" ") ?? [];
+    const password =
+      scheme === "Basic" && encoded ? Buffer.from(encoded, "base64").toString("utf8").split(":")[1] : undefined;
+    if (password === SITE_PASSWORD) {
+      next();
+    } else {
+      res.set("WWW-Authenticate", 'Basic realm="Draft Simulator"');
+      res.status(401).send("Password required");
+    }
+  });
+}
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", cardsCached: countCards(), cardsLastImportedAt: getLastImportedAt() ?? null });
 });
