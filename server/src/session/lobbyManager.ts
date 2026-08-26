@@ -27,13 +27,26 @@ function snapshotPath(): string {
 }
 
 function loadState(): LobbyManagerState {
+  const file = snapshotPath();
   try {
-    const file = snapshotPath();
     if (fs.existsSync(file)) {
       return JSON.parse(fs.readFileSync(file, "utf8")) as LobbyManagerState;
     }
   } catch (err) {
-    console.error("Failed to load draft session snapshot, starting fresh:", err);
+    // Don't just fall back to an empty draft and let the next persist()
+    // overwrite the only copy of it — preserve the unreadable file so
+    // there's something to recover from, and make the loss loud rather
+    // than a quiet fresh start.
+    const backupFile = `${file}.corrupt.${Date.now()}`;
+    console.error(
+      `Failed to load draft session snapshot; starting fresh. The unreadable file was preserved at ${backupFile} for recovery.`,
+      err
+    );
+    try {
+      fs.renameSync(file, backupFile);
+    } catch (renameErr) {
+      console.error(`Could not preserve the corrupt snapshot at ${file}:`, renameErr);
+    }
   }
   return { cardPool: [] };
 }
@@ -45,10 +58,27 @@ function getState(): LobbyManagerState {
   return state;
 }
 
+/**
+ * Writes via a temp file + rename rather than straight to `file`. A plain
+ * `writeFileSync` on the live path leaves a truncated, unparseable file if
+ * the process dies mid-write (crash, OOM kill, power loss); `loadState`
+ * would then silently fall back to an empty session, discarding the whole
+ * draft. `rename` is atomic on POSIX filesystems, so `file` always holds
+ * either the fully-old or fully-new snapshot, never a partial one.
+ */
 function persist(): void {
   const file = snapshotPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(getState(), null, 2));
+  const dir = path.dirname(file);
+  fs.mkdirSync(dir, { recursive: true });
+  const tmpFile = path.join(dir, `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`);
+  const fd = fs.openSync(tmpFile, "w");
+  try {
+    fs.writeSync(fd, JSON.stringify(getState(), null, 2));
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmpFile, file);
 }
 
 /** Test-only: forces a clean in-memory state pointed at an isolated snapshot file. */
