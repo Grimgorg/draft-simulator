@@ -179,13 +179,14 @@ export function registerSocketHandlers(io: IoServer): void {
       try {
         const playerId = socketPlayers.get(socket.id);
         const session = lobbyManager.getSession();
-        if (!session || session.status === "complete") throw new Error("No draft in progress to cancel");
+        if (!session) throw new Error("No draft in progress to cancel");
         const isHost = session.players.find((p) => p.id === playerId)?.isHost === true;
         if (!isHost) throw new Error("Only the host can cancel the draft");
 
         lobbyManager.cancelDraft();
         callback({ ok: true });
         broadcastLobbyState(io);
+        broadcastHubState(io);
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
       }

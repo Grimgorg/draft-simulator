@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Card, CardInstance, MatchStateView, PlayerBoardView, Zone } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
+import { CancelDraftButton } from "./CancelDraftButton.js";
 import { CardImage } from "./CardImage.js";
 
 interface MatchBoardProps {
   matchState: MatchStateView;
+  isHost: boolean;
 }
 
 function CardInstanceImage({ instance }: { instance: CardInstance }) {
@@ -553,7 +555,7 @@ function DiceControls({ onRoll }: { onRoll: (sides: number) => void }) {
   );
 }
 
-export function MatchBoard({ matchState }: MatchBoardProps) {
+export function MatchBoard({ matchState, isHost }: MatchBoardProps) {
   const [conceding, setConceding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [peekedCards, setPeekedCards] = useState<CardInstance[] | null>(null);
@@ -705,6 +707,12 @@ export function MatchBoard({ matchState }: MatchBoardProps) {
         <button type="button" className="cancel-draft-button" onClick={handleConcede} disabled={conceding}>
           {conceding ? "..." : "Concede"}
         </button>
+        {isHost && (
+          <CancelDraftButton
+            label="End session"
+            confirmMessage="End this draft session for everyone and start over? All decks, matches, and progress will be lost. This cannot be undone."
+          />
+        )}
       </div>
       {peekedCards && (
         <PeekModal

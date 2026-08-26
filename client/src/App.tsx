@@ -73,6 +73,7 @@ function AppContent() {
   }
 
   const iAmSeated = myPlayerId !== null && lobbyState.players.some((p) => p.id === myPlayerId);
+  const isHost = myPlayerId !== null && lobbyState.hostId === myPlayerId;
 
   if (lobbyState.status === "lobby") {
     if (!iAmSeated) {
@@ -94,12 +95,14 @@ function AppContent() {
   }
 
   if (matchState) {
-    return <MatchBoard matchState={matchState} />;
+    return <MatchBoard matchState={matchState} isHost={isHost} />;
   }
 
   const myHubStatus = hubState?.players.find((p) => p.id === myPlayerId)?.status;
   if (myHubStatus && myHubStatus !== "not-ready") {
-    return <GameHub hubState={hubState!} myPlayerId={myPlayerId!} incomingChallenge={incomingChallenge} />;
+    return (
+      <GameHub hubState={hubState!} myPlayerId={myPlayerId!} incomingChallenge={incomingChallenge} isHost={isHost} />
+    );
   }
 
   return (

@@ -1,11 +1,13 @@
 import { useState } from "react";
 import type { HubStateView } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
+import { CancelDraftButton } from "./CancelDraftButton.js";
 
 interface GameHubProps {
   hubState: HubStateView;
   myPlayerId: string;
   incomingChallenge: { fromId: string; fromName: string } | null;
+  isHost: boolean;
 }
 
 function statusLabel(status: HubStateView["players"][number]["status"]): string {
@@ -19,7 +21,7 @@ function statusLabel(status: HubStateView["players"][number]["status"]): string 
   }
 }
 
-export function GameHub({ hubState, myPlayerId, incomingChallenge }: GameHubProps) {
+export function GameHub({ hubState, myPlayerId, incomingChallenge, isHost }: GameHubProps) {
   const [unreadying, setUnreadying] = useState(false);
   const [challengingId, setChallengingId] = useState<string | null>(null);
   const [responding, setResponding] = useState(false);
@@ -96,6 +98,12 @@ export function GameHub({ hubState, myPlayerId, incomingChallenge }: GameHubProp
       <button type="button" onClick={handleEditDeck} disabled={unreadying}>
         {unreadying ? "..." : "Edit deck"}
       </button>
+      {isHost && (
+        <CancelDraftButton
+          label="End session"
+          confirmMessage="End this draft session for everyone and start over? All decks, matches, and progress will be lost. This cannot be undone."
+        />
+      )}
     </div>
   );
 }

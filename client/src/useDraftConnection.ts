@@ -110,6 +110,18 @@ export function useDraftConnection(): DraftConnection {
     }
     function onLobbyState(state: LobbyStateView) {
       setLobbyState(state);
+      // "empty" unambiguously means no session exists on the server, so any
+      // leftover per-session state (e.g. a match a player was in when the
+      // host ended the session) is now stale. Without this, it would
+      // resurface the next time this player's session reaches "complete"
+      // again, before they've actually joined anything new.
+      if (state.status === "empty") {
+        setMatchState(null);
+        setIncomingChallenge(null);
+        setMyPack(null);
+        setMyPool([]);
+        setMyDeckExport(null);
+      }
     }
     function onHubState(state: HubStateView) {
       setHubState(state);

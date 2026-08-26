@@ -10,6 +10,7 @@ import type {
   Card,
   ClientToServerEvents,
   DeckExport,
+  HubStateView,
   LobbyStateView,
   Pack,
   ServerToClientEvents,
@@ -73,6 +74,10 @@ function waitForDisconnect(socket: DraftClientSocket): Promise<void> {
 
 function waitForLobbyState(socket: DraftClientSocket): Promise<LobbyStateView> {
   return new Promise((resolve) => socket.once("lobby:state", resolve));
+}
+
+function waitForHubState(socket: DraftClientSocket): Promise<HubStateView> {
+  return new Promise((resolve) => socket.once("hub:state", resolve));
 }
 
 test(
@@ -338,6 +343,111 @@ test(
       hostSocket.close();
       guestSocket.close();
       secondGuestSocket?.close();
+      await server.close();
+    }
+  }
+);
+
+test(
+  "host can end the session after the draft is complete, even mid-match, resetting everyone to an empty lobby",
+  { timeout: 30_000 },
+  async () => {
+    lobbyManager.resetForTests(freshSnapshotPath());
+
+    const server = await startTestServer();
+    const hostSocket = await connect(server.url);
+    const guestSocket = await connect(server.url);
+
+    try {
+      const createResult = await new Promise<any>((resolve) =>
+        hostSocket.emit(
+          "lobby:create",
+          {
+            hostName: "Alice",
+            cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
+            packCount: 1,
+            packSize: 1,
+            playerCount: 2,
+          },
+          resolve
+        )
+      );
+      assert.equal(createResult.ok, true, JSON.stringify(createResult));
+      const hostId: string = createResult.playerId;
+
+      const joinResult = await new Promise<any>((resolve) =>
+        guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve)
+      );
+      assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
+      const guestId: string = joinResult.playerId;
+
+      const hostStatePromise = waitForEvent<MyState>(hostSocket, "draft:myState");
+      const guestStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const startResult = await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
+      assert.equal(startResult.ok, true, JSON.stringify(startResult));
+      const hostState = await hostStatePromise;
+      const guestState = await guestStatePromise;
+
+      const hostExportPromise = waitForEvent<DeckExport>(hostSocket, "draft:complete");
+      const guestExportPromise = waitForEvent<DeckExport>(guestSocket, "draft:complete");
+
+      // A single 1-card pack: one pick each completes the draft outright.
+      const [hostPickResult, guestPickResult] = await Promise.all([
+        new Promise<any>((resolve) =>
+          hostSocket.emit("draft:pick", { scryfallId: hostState.pack!.cards[0]!.scryfallId }, resolve)
+        ),
+        new Promise<any>((resolve) =>
+          guestSocket.emit("draft:pick", { scryfallId: guestState.pack!.cards[0]!.scryfallId }, resolve)
+        ),
+      ]);
+      assert.equal(hostPickResult.ok, true, JSON.stringify(hostPickResult));
+      assert.equal(guestPickResult.ok, true, JSON.stringify(guestPickResult));
+
+      const hostExport = await hostExportPromise;
+      const guestExport = await guestExportPromise;
+
+      const hostReadyResult = await new Promise<any>((resolve) =>
+        hostSocket.emit("deck:submit", { scryfallIds: hostExport.cards.map((c) => c.scryfallId) }, resolve)
+      );
+      assert.equal(hostReadyResult.ok, true, JSON.stringify(hostReadyResult));
+      const guestReadyResult = await new Promise<any>((resolve) =>
+        guestSocket.emit("deck:submit", { scryfallIds: guestExport.cards.map((c) => c.scryfallId) }, resolve)
+      );
+      assert.equal(guestReadyResult.ok, true, JSON.stringify(guestReadyResult));
+
+      const guestChallengedPromise = new Promise<void>((resolve) =>
+        guestSocket.once("hub:challengeReceived", () => resolve())
+      );
+      const hostMatchStatePromise = new Promise<void>((resolve) => hostSocket.once("match:state", () => resolve()));
+      const guestMatchStatePromise = new Promise<void>((resolve) => guestSocket.once("match:state", () => resolve()));
+
+      const challengeResult = await new Promise<any>((resolve) =>
+        hostSocket.emit("hub:challenge", { opponentId: guestId }, resolve)
+      );
+      assert.equal(challengeResult.ok, true, JSON.stringify(challengeResult));
+      await guestChallengedPromise;
+
+      const respondResult = await new Promise<any>((resolve) =>
+        guestSocket.emit("hub:respondChallenge", { fromId: hostId, accept: true }, resolve)
+      );
+      assert.equal(respondResult.ok, true, JSON.stringify(respondResult));
+      await hostMatchStatePromise;
+      await guestMatchStatePromise;
+
+      // Host ends the session while both players are mid-match — this is
+      // exactly the scenario that used to be a dead end.
+      const lobbyStatePromise = waitForLobbyState(hostSocket);
+      const hubStatePromise = waitForHubState(hostSocket);
+      const cancelResult = await new Promise<any>((resolve) => hostSocket.emit("draft:cancel", resolve));
+      assert.equal(cancelResult.ok, true, JSON.stringify(cancelResult));
+
+      const lobbyState = await lobbyStatePromise;
+      assert.equal(lobbyState.status, "empty");
+      const hubState = await hubStatePromise;
+      assert.deepEqual(hubState.players, []);
+    } finally {
+      hostSocket.close();
+      guestSocket.close();
       await server.close();
     }
   }
