@@ -173,27 +173,27 @@ button:disabled {
 }
 
 .deckbuilder {
-  display: flex;
-  align-items: flex-start;
-  gap: 1.5rem;
+  display: grid;
+  grid-template-columns: 3fr minmax(220px, 1fr);
+  column-gap: 1.5rem;
+  row-gap: 0.75rem;
 }
 
+.deckbuilder-header {
+  min-width: 0;
+}
+
+/* Boxed drop zones — grid auto-placement puts these directly under their
+   header (deckbuilder-header / the "Not in deck" h2) in the row below, and
+   the default stretch alignment makes both start and end at the same
+   height regardless of how much content either side has. */
 .deck-pane,
 .cut-pane {
   background: var(--code-bg, #2e303a);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1rem 1rem 0.25rem;
-}
-
-.deck-pane {
-  flex: 3 1 0;
   min-width: 0;
-}
-
-.cut-pane {
-  flex: 1 1 0;
-  min-width: 220px;
 }
 
 .deck-pane-header {

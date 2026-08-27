@@ -288,7 +288,7 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
   return (
     <>
       <div className="deckbuilder">
-        <div className="deck-pane">
+        <div className="deckbuilder-header">
           <div className="deck-pane-header">
             <h2>Deck</h2>
             <span className={`deck-count ${mainCards.length < DECK_TARGET ? "deck-count-warning" : ""}`}>
@@ -302,6 +302,11 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
               </button>
             ))}
           </div>
+        </div>
+
+        <h2>Not in deck ({deck.cutPile.length})</h2>
+
+        <div className="deck-pane">
           <div className="pile-row" onDragOver={(e) => e.preventDefault()} onDrop={handleDropOnMainBackground}>
             {deck.mainPiles.map((pile) => (
               <CardPile
@@ -314,7 +319,6 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
         </div>
 
         <div className="cut-pane">
-          <h2>Not in deck ({deck.cutPile.length})</h2>
           <div className="pile-row" onDragOver={(e) => e.preventDefault()} onDrop={handleDropOnCutBackground}>
             <CardPile cards={resolveInstances(deck.cutPile)} onDropCard={handleDropOnCutPile} />
           </div>
