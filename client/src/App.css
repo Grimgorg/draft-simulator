@@ -146,6 +146,27 @@ button:disabled {
   border-color: #d1435b;
 }
 
+.confirm-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.confirm-prompt .subtitle {
+  margin: 0;
+}
+
+.confirm-prompt-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.confirm-prompt-dismiss {
+  background: transparent;
+  color: var(--text);
+}
+
 .screen.results-screen {
   max-width: 1400px;
 }

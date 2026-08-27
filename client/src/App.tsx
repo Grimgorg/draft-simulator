@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import "./App.css";
 import { CardPreviewProvider } from "./CardPreviewContext.js";
 import { CardPreviewOverlay } from "./components/CardPreviewOverlay.js";
@@ -38,6 +39,14 @@ function AppContent() {
     passwordError,
     submitPassword,
   } = useDraftConnection();
+
+  // Screens vary wildly in height (a long results/deck-builder page vs. a
+  // short waiting room), and React doesn't reset scroll on its own — without
+  // this, switching to a shorter screen can leave the viewport scrolled past
+  // the end of the new page, making it look blank/unresponsive.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [connected, reconnecting, evicted, passwordRequired, lobbyState?.status, myPlayerId]);
 
   // Checked ahead of the connection screens: eviction force-disconnects the
   // stale socket, so this browser briefly cycles disconnected -> reconnected
@@ -87,14 +96,7 @@ function AppContent() {
   if (!iAmSeated) {
     return <RejoinScreen lobbyState={lobbyState} onIdentitySelected={setMyPlayerId} />;
   }
-  return (
-    <ResultsScreen
-      lobbyState={lobbyState}
-      myPlayerId={myPlayerId!}
-      myPool={myPool}
-      onNewDraftCreated={setMyPlayerId}
-    />
-  );
+  return <ResultsScreen lobbyState={lobbyState} myPlayerId={myPlayerId!} myPool={myPool} />;
 }
 
 function App() {

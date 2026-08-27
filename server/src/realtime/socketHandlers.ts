@@ -141,6 +141,22 @@ export function registerSocketHandlers(io: IoServer): void {
       }
     });
 
+    socket.on("lobby:reset", (callback) => {
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        const session = lobbyManager.getSession();
+        if (!session || session.status !== "complete") throw new Error("No completed draft to reset");
+        const isHost = session.players.find((p) => p.id === playerId)?.isHost === true;
+        if (!isHost) throw new Error("Only the host can reset the draft");
+
+        lobbyManager.cancelDraft();
+        callback({ ok: true });
+        broadcastLobbyState(io);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
     socket.on("draft:pick", (payload, callback) => {
       try {
         const playerId = socketPlayers.get(socket.id);

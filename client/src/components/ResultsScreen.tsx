@@ -1,17 +1,14 @@
-import { useState } from "react";
 import type { Card, LobbyStateView } from "@draft-simulator/shared";
 import { DeckBuilder } from "./DeckBuilder.js";
-import { HostSetupScreen } from "./HostSetupScreen.js";
+import { ResetDraftButton } from "./ResetDraftButton.js";
 
 interface ResultsScreenProps {
   lobbyState: LobbyStateView;
   myPlayerId: string;
   myPool: Card[];
-  onNewDraftCreated: (playerId: string) => void;
 }
 
-export function ResultsScreen({ lobbyState, myPlayerId, myPool, onNewDraftCreated }: ResultsScreenProps) {
-  const [showNewDraftForm, setShowNewDraftForm] = useState(false);
+export function ResultsScreen({ lobbyState, myPlayerId, myPool }: ResultsScreenProps) {
   const isHost = lobbyState.hostId === myPlayerId;
   const myPlayerName = lobbyState.players.find((p) => p.id === myPlayerId)?.name ?? "player";
 
@@ -37,17 +34,7 @@ export function ResultsScreen({ lobbyState, myPlayerId, myPool, onNewDraftCreate
         ))}
       </ul>
 
-      {isHost && (
-        <div className="new-draft-section">
-          {showNewDraftForm ? (
-            <HostSetupScreen onCreated={onNewDraftCreated} />
-          ) : (
-            <button type="button" onClick={() => setShowNewDraftForm(true)}>
-              Start a new draft
-            </button>
-          )}
-        </div>
-      )}
+      {isHost && <ResetDraftButton />}
     </div>
   );
 }

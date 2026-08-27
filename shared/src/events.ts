@@ -29,6 +29,9 @@ export interface ClientToServerEvents {
   "lobby:reconnect": (payload: { playerId: string }, callback: (result: ActionResult) => void) => void;
   "draft:start": (callback: (result: ActionResult) => void) => void;
   "draft:cancel": (callback: (result: ActionResult) => void) => void;
+  /** Host-only, only once the draft is complete: wipes the session entirely so the server goes back to its
+   * fresh-install "empty" state for every connected client, the same state a brand-new server starts in. */
+  "lobby:reset": (callback: (result: ActionResult) => void) => void;
   "draft:pick": (payload: { scryfallId: string }, callback: (result: ActionResult) => void) => void;
 }
 
