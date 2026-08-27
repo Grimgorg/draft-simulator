@@ -63,6 +63,30 @@ function waitForEvent<T>(socket: DraftClientSocket, event: "draft:myState" | "dr
   });
 }
 
+/**
+ * Waits for a draft:myState whose pool has grown to `expectedPoolSize`,
+ * then settles on the *last* one seen within a short window rather than the
+ * first. A pick now produces two possible updates for the same player: an
+ * instant one the moment their own pick lands (pool already grown, pack
+ * mid-round), and — only once every player has picked and the round
+ * actually advances — a second one with the new round's pack. Both carry
+ * the same (already-final) pool size, so grabbing the first would race
+ * against the second and hand back a pack that's about to be rotated away.
+ */
+function waitForPoolUpdate(socket: DraftClientSocket, expectedPoolSize: number): Promise<MyState> {
+  return new Promise((resolve) => {
+    let latest: MyState | undefined;
+    function onState(payload: MyState) {
+      if (payload.pool.length === expectedPoolSize) latest = payload;
+    }
+    socket.on("draft:myState", onState);
+    setTimeout(() => {
+      socket.off("draft:myState", onState);
+      resolve(latest!);
+    }, 100);
+  });
+}
+
 function waitForEviction(socket: DraftClientSocket): Promise<void> {
   return new Promise((resolve) => socket.once("identity:evicted", () => resolve()));
 }
@@ -135,8 +159,8 @@ test(
       // 3 synchronized pick rounds empty the single 3-card pack each and complete the draft.
       for (let round = 0; round < 3; round++) {
         const isLastRound = round === 2;
-        const nextHostState = isLastRound ? undefined : waitForEvent<MyState>(hostSocket, "draft:myState");
-        const nextGuestState = isLastRound ? undefined : waitForEvent<MyState>(guestSocket, "draft:myState");
+        const nextHostState = isLastRound ? undefined : waitForPoolUpdate(hostSocket, round + 1);
+        const nextGuestState = isLastRound ? undefined : waitForPoolUpdate(guestSocket, round + 1);
 
         const hostPick = hostState.pack!.cards[0]!.scryfallId;
         const guestPick = guestState.pack!.cards[0]!.scryfallId;

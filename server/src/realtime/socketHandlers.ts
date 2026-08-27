@@ -166,15 +166,21 @@ export function registerSocketHandlers(io: IoServer): void {
         callback({ ok: true });
         broadcastLobbyState(io);
 
-        if (session.status === "complete" || session.waitingOn.length === session.players.length) {
+        const roundJustAdvanced = session.status === "complete" || session.waitingOn.length === session.players.length;
+        if (roundJustAdvanced) {
           // Either the draft just finished, or a fresh round was just dealt
-          // (rotation or a new pack) — that's the one moment everyone's
-          // pack/pool actually changes. Pushing a second, earlier update to
-          // just the picker (for "instant" pool feedback) sounds appealing
-          // but isn't worth it: it can arrive right before this broadcast,
-          // and anything race-sensitive about event order (including tests)
-          // has to handle two updates in one round instead of one.
+          // (rotation or a new pack) — that's the moment everyone's pack/pool
+          // actually changes, this picker included.
           broadcastDraftStateToAll(io);
+        } else {
+          // The picker's own pool already grew inside lobbyManager.pick
+          // above, so push it to them right away rather than making them
+          // wait on everyone else to finish the round. Skipped when the
+          // round just advanced (branch above) so this exact pick never
+          // fires two draft:myState updates at once for the same player —
+          // this player may still get a second, later update once someone
+          // else's pick finally completes the round.
+          sendDraftStateTo(io, socket.id, playerId);
         }
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
