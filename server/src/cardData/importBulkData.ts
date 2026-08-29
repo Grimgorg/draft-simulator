@@ -1,7 +1,9 @@
 /**
- * One-off/occasional import script: pulls Scryfall's "oracle_cards" bulk data
- * file (one entry per unique card, not per printing) and loads it into the
- * local SQLite cache used for CubeCobra import resolution and image serving.
+ * One-off/occasional import script: pulls Scryfall's "default_cards" bulk
+ * data file (every printing of every card), reduces each card down to its
+ * first (earliest-released) normal paper-set printing, and loads the result
+ * into the local SQLite cache used for CubeCobra import resolution and image
+ * serving.
  *
  * Run with: npm run import-cards --workspace server
  */
@@ -21,8 +23,12 @@ interface ScryfallCardFace {
 
 interface ScryfallCard {
   id: string;
+  oracle_id: string;
   name: string;
   lang: string;
+  released_at: string;
+  digital?: boolean;
+  promo?: boolean;
   mana_cost?: string;
   cmc?: number;
   colors?: string[];
@@ -49,7 +55,7 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 /** Downloads and decompresses Scryfall's gzip-compressed JSONL bulk data file (one card object per line). */
-async function fetchOracleCards(url: string): Promise<ScryfallCard[]> {
+async function fetchBulkCards(url: string): Promise<ScryfallCard[]> {
   const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
   if (!res.ok || !res.body) {
     throw new Error(`Request to ${url} failed: ${res.status} ${res.statusText}`);
@@ -84,19 +90,49 @@ function extractColors(card: ScryfallCard): string[] {
   return [...new Set(faceColors)];
 }
 
+/**
+ * Reduces every printing of every card down to a single "first printing" per
+ * card: the earliest-released, normal paper-set printing. Falls back to
+ * promo/digital/imageless printings only when a card has no better option,
+ * so no card is ever dropped for lack of an eligible "normal" printing.
+ */
+function selectFirstPrintings(cards: ScryfallCard[]): ScryfallCard[] {
+  const groups = new Map<string, ScryfallCard[]>();
+  for (const card of cards) {
+    const key = card.oracle_id ?? card.name.toLowerCase();
+    const group = groups.get(key);
+    if (group) group.push(card);
+    else groups.set(key, [card]);
+  }
+
+  const selected: ScryfallCard[] = [];
+  for (const printings of groups.values()) {
+    const withImage = printings.filter((c) => extractImageUri(c));
+    const pool = withImage.length > 0 ? withImage : printings;
+
+    const normalPrintings = pool.filter((c) => !c.digital && !c.promo);
+    const candidates = normalPrintings.length > 0 ? normalPrintings : pool;
+
+    selected.push(candidates.reduce((earliest, c) => (c.released_at < earliest.released_at ? c : earliest)));
+  }
+  return selected;
+}
+
 export async function importCardDatabase(): Promise<{ imported: number; skipped: number }> {
   console.log("Fetching Scryfall bulk data catalog...");
   const { data: entries } = await fetchJson<{ data: BulkDataEntry[] }>("https://api.scryfall.com/bulk-data");
 
-  const oracleCards = entries.find((entry) => entry.type === "oracle_cards");
-  if (!oracleCards) {
-    throw new Error("Could not find an 'oracle_cards' entry in the Scryfall bulk data catalog");
+  const defaultCards = entries.find((entry) => entry.type === "default_cards");
+  if (!defaultCards) {
+    throw new Error("Could not find a 'default_cards' entry in the Scryfall bulk data catalog");
   }
 
-  const sizeMb = (oracleCards.compressed_size / 1_000_000).toFixed(1);
-  console.log(`Downloading oracle_cards (${sizeMb} MB compressed, last updated ${oracleCards.updated_at})...`);
-  const cards = await fetchOracleCards(oracleCards.jsonl_download_uri);
-  console.log(`Downloaded ${cards.length} cards. Importing into local database...`);
+  const sizeMb = (defaultCards.compressed_size / 1_000_000).toFixed(1);
+  console.log(`Downloading default_cards (${sizeMb} MB compressed, last updated ${defaultCards.updated_at})...`);
+  const printings = await fetchBulkCards(defaultCards.jsonl_download_uri);
+  console.log(`Downloaded ${printings.length} printings. Selecting first printing per card...`);
+  const cards = selectFirstPrintings(printings);
+  console.log(`Resolved to ${cards.length} unique cards. Importing into local database...`);
 
   const db = getDb();
   const insert = db.prepare(`
