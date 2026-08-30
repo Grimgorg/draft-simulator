@@ -23,7 +23,8 @@ export function getDb(): Database.Database {
       cmc REAL NOT NULL,
       colors TEXT NOT NULL,
       type_line TEXT NOT NULL,
-      source_image_uri TEXT NOT NULL
+      source_image_uri TEXT NOT NULL,
+      back_image_uri TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_cards_name_lower ON cards(name_lower);
     CREATE INDEX IF NOT EXISTS idx_cards_front_name_lower ON cards(front_name_lower);
@@ -33,6 +34,13 @@ export function getDb(): Database.Database {
       value TEXT NOT NULL
     );
   `);
+
+  // The CREATE TABLE above only applies to a fresh database — existing
+  // installs need their already-created `cards` table migrated in place.
+  const cardColumns = db.prepare("PRAGMA table_info(cards)").all() as { name: string }[];
+  if (!cardColumns.some((column) => column.name === "back_image_uri")) {
+    db.exec("ALTER TABLE cards ADD COLUMN back_image_uri TEXT");
+  }
 
   return db;
 }

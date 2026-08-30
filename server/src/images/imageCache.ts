@@ -3,7 +3,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import type { Request, Response } from "express";
 import { DATA_DIR } from "../db/database.js";
-import { getSourceImageUri } from "../cardData/cardRepository.js";
+import { getBackImageUri, getSourceImageUri } from "../cardData/cardRepository.js";
 
 const IMAGE_DIR = path.join(DATA_DIR, "images");
 const USER_AGENT = "DraftSimulator/0.1 (personal cube draft tool; not for redistribution)";
@@ -13,20 +13,19 @@ export function ensureImageDir(): void {
 }
 
 /**
- * Serves a card image from the local cache, downloading and caching it from
- * Scryfall on first request. Keeps the client from ever talking to Scryfall
- * directly and keeps the draft usable if the host's internet drops mid-session.
+ * Serves one card image from the local cache (keyed by `cacheKey`),
+ * downloading and caching it from `sourceUri` on first request. Keeps the
+ * client from ever talking to Scryfall directly and keeps the draft usable
+ * if the host's internet drops mid-session.
  */
-export async function serveCardImage(req: Request, res: Response): Promise<void> {
-  const { scryfallId } = req.params;
-  const cachedPath = path.join(IMAGE_DIR, `${scryfallId}.jpg`);
+async function serveImage(res: Response, sourceUri: string | undefined, cacheKey: string): Promise<void> {
+  const cachedPath = path.join(IMAGE_DIR, `${cacheKey}.jpg`);
 
   if (fs.existsSync(cachedPath)) {
     res.sendFile(cachedPath);
     return;
   }
 
-  const sourceUri = getSourceImageUri(scryfallId);
   if (!sourceUri) {
     res.status(404).json({ error: "Unknown card" });
     return;
@@ -42,7 +41,18 @@ export async function serveCardImage(req: Request, res: Response): Promise<void>
     await fsp.writeFile(cachedPath, buffer);
     res.type("image/jpeg").send(buffer);
   } catch (err) {
-    console.error(`Failed to fetch/cache image for ${scryfallId}:`, err);
+    console.error(`Failed to fetch/cache image for ${cacheKey}:`, err);
     res.status(502).json({ error: "Failed to fetch card image" });
   }
+}
+
+export async function serveCardImage(req: Request, res: Response): Promise<void> {
+  const { scryfallId } = req.params;
+  await serveImage(res, getSourceImageUri(scryfallId), scryfallId!);
+}
+
+/** Serves the back face of a double-faced card; 404s for single-faced cards. */
+export async function serveCardBackImage(req: Request, res: Response): Promise<void> {
+  const { scryfallId } = req.params;
+  await serveImage(res, getBackImageUri(scryfallId), `${scryfallId}_back`);
 }

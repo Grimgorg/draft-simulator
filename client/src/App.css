@@ -393,6 +393,17 @@ button:disabled {
   display: block;
 }
 
+.card-preview-overlay--dfc {
+  width: 640px;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.card-preview-overlay--dfc img {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

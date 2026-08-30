@@ -8,7 +8,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@draft-simulato
 import { getDb } from "./db/database.js";
 import { countCards, getLastImportedAt } from "./cardData/cardRepository.js";
 import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
-import { ensureImageDir, serveCardImage } from "./images/imageCache.js";
+import { ensureImageDir, serveCardBackImage, serveCardImage } from "./images/imageCache.js";
 import { registerSocketHandlers } from "./realtime/socketHandlers.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -34,6 +34,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/images/:scryfallId", serveCardImage);
+app.get("/images/:scryfallId/back", serveCardBackImage);
 
 // Once the client is built (npm run build --workspace client), serve it
 // directly so everyone — host included — just opens this server's address

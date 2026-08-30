@@ -11,6 +11,7 @@ interface CardRow {
   colors: string;
   type_line: string;
   source_image_uri: string;
+  back_image_uri: string | null;
 }
 
 function rowToCard(row: CardRow): Card {
@@ -23,6 +24,7 @@ function rowToCard(row: CardRow): Card {
     typeLine: row.type_line,
     // Local, server-served path — the client never talks to Scryfall directly.
     imageUrl: `/images/${row.scryfall_id}`,
+    ...(row.back_image_uri ? { backImageUrl: `/images/${row.scryfall_id}/back` } : {}),
   };
 }
 
@@ -62,6 +64,13 @@ export function getSourceImageUri(scryfallId: string): string | undefined {
     .prepare("SELECT source_image_uri FROM cards WHERE scryfall_id = ?")
     .get(scryfallId) as { source_image_uri: string } | undefined;
   return row?.source_image_uri;
+}
+
+export function getBackImageUri(scryfallId: string): string | undefined {
+  const row = getDb()
+    .prepare("SELECT back_image_uri FROM cards WHERE scryfall_id = ?")
+    .get(scryfallId) as { back_image_uri: string | null } | undefined;
+  return row?.back_image_uri ?? undefined;
 }
 
 export function countCards(): number {

@@ -9,6 +9,8 @@ export interface Card {
   typeLine: string;
   /** Path served by the local server (server/data/images), not a raw Scryfall URL. */
   imageUrl: string;
+  /** Set only for double-faced cards (transform, modal DFC, etc.) — the back face's image path. */
+  backImageUrl?: string;
 }
 
 /** One card entry as it appears in an imported CubeCobra cube list. */

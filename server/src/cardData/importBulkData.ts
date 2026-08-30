@@ -81,6 +81,20 @@ function extractImageUri(card: ScryfallCard): string | undefined {
   return card.image_uris?.normal ?? card.card_faces?.find((f) => f.image_uris?.normal)?.image_uris?.normal;
 }
 
+/**
+ * True for genuine two-sided physical cards (transform, modal DFC, etc.) —
+ * as opposed to split/flip/adventure cards, which pack both halves into one
+ * face and so still carry a top-level `image_uris`.
+ */
+function isDoubleSided(card: ScryfallCard): boolean {
+  return !card.image_uris && (card.card_faces?.filter((f) => f.image_uris?.normal).length ?? 0) >= 2;
+}
+
+function extractBackImageUri(card: ScryfallCard): string | undefined {
+  if (!isDoubleSided(card)) return undefined;
+  return card.card_faces![1]!.image_uris?.normal;
+}
+
 function extractManaCost(card: ScryfallCard): string {
   if (card.mana_cost !== undefined) return card.mana_cost;
   const faceCosts = card.card_faces?.map((f) => f.mana_cost ?? "").filter(Boolean) ?? [];
@@ -152,8 +166,8 @@ export async function importCardDatabase(): Promise<{ imported: number; skipped:
 
   const db = getDb();
   const insert = db.prepare(`
-    INSERT INTO cards (scryfall_id, name, name_lower, front_name_lower, mana_cost, cmc, colors, type_line, source_image_uri)
-    VALUES (@scryfall_id, @name, @name_lower, @front_name_lower, @mana_cost, @cmc, @colors, @type_line, @source_image_uri)
+    INSERT INTO cards (scryfall_id, name, name_lower, front_name_lower, mana_cost, cmc, colors, type_line, source_image_uri, back_image_uri)
+    VALUES (@scryfall_id, @name, @name_lower, @front_name_lower, @mana_cost, @cmc, @colors, @type_line, @source_image_uri, @back_image_uri)
   `);
 
   const importAll = db.transaction((rows: ScryfallCard[]) => {
@@ -179,6 +193,7 @@ export async function importCardDatabase(): Promise<{ imported: number; skipped:
         colors: JSON.stringify(extractColors(card)),
         type_line: card.type_line ?? "",
         source_image_uri: imageUri,
+        back_image_uri: extractBackImageUri(card) ?? null,
       });
       imported++;
     }
