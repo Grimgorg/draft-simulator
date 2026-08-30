@@ -1,8 +1,16 @@
 import { useState } from "react";
+import type { Card } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
+import { CubePreviewModal } from "./CubePreviewModal.js";
 
 interface HostSetupScreenProps {
   onCreated: (playerId: string) => void;
+}
+
+interface CubePreviewData {
+  cubeName: string;
+  cards: Card[];
+  unresolvedNames: string[];
 }
 
 export function HostSetupScreen({ onCreated }: HostSetupScreenProps) {
@@ -13,6 +21,9 @@ export function HostSetupScreen({ onCreated }: HostSetupScreenProps) {
   const [playerCount, setPlayerCount] = useState(8);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<CubePreviewData | null>(null);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,6 +40,20 @@ export function HostSetupScreen({ onCreated }: HostSetupScreenProps) {
     });
   }
 
+  function handlePreview() {
+    setPreviewing(true);
+    setPreviewError(null);
+
+    socket.emit("cube:preview", { cubeIdOrUrl }, (result) => {
+      setPreviewing(false);
+      if (result.ok) {
+        setPreviewData({ cubeName: result.cubeName, cards: result.cards, unresolvedNames: result.unresolvedNames });
+      } else {
+        setPreviewError(result.error);
+      }
+    });
+  }
+
   return (
     <div className="screen">
       <h1>Draft Simulator</h1>
@@ -40,13 +65,19 @@ export function HostSetupScreen({ onCreated }: HostSetupScreenProps) {
         </label>
         <label>
           CubeCobra cube URL or ID
-          <input
-            value={cubeIdOrUrl}
-            onChange={(e) => setCubeIdOrUrl(e.target.value)}
-            placeholder="https://cubecobra.com/cube/overview/..."
-            required
-          />
+          <div className="input-with-button">
+            <input
+              value={cubeIdOrUrl}
+              onChange={(e) => setCubeIdOrUrl(e.target.value)}
+              placeholder="https://cubecobra.com/cube/overview/..."
+              required
+            />
+            <button type="button" onClick={handlePreview} disabled={!cubeIdOrUrl.trim() || previewing}>
+              {previewing ? "Loading..." : "Preview cube"}
+            </button>
+          </div>
         </label>
+        {previewError && <p className="error">{previewError}</p>}
         <div className="form-row">
           <label>
             Number of players
@@ -84,6 +115,14 @@ export function HostSetupScreen({ onCreated }: HostSetupScreenProps) {
           {submitting ? "Importing cube..." : "Create draft"}
         </button>
       </form>
+      {previewData && (
+        <CubePreviewModal
+          cubeName={previewData.cubeName}
+          cards={previewData.cards}
+          unresolvedNames={previewData.unresolvedNames}
+          onClose={() => setPreviewData(null)}
+        />
+      )}
     </div>
   );
 }

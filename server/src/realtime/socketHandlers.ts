@@ -3,6 +3,7 @@ import type { ClientToServerEvents, ServerToClientEvents } from "@draft-simulato
 import * as lobbyManager from "../session/lobbyManager.js";
 import { buildLobbyStateView } from "../session/lobbyStateView.js";
 import { buildDeckExports } from "../session/deckExport.js";
+import { importCubeFromCubeCobra } from "../cubeImport/cubeCobraImporter.js";
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -75,6 +76,15 @@ export function registerSocketHandlers(io: IoServer): void {
         bindSocketToPlayer(io, socket, host.id);
         callback({ ok: true, playerId: host.id, ...cubeMeta });
         broadcastLobbyState(io);
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("cube:preview", async (payload, callback) => {
+      try {
+        const result = await importCubeFromCubeCobra(payload.cubeIdOrUrl);
+        callback({ ok: true, cubeName: result.cubeName, cards: result.cards, unresolvedNames: result.unresolvedNames });
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
       }

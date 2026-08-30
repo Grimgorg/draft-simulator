@@ -33,6 +33,13 @@ export interface ClientToServerEvents {
    * fresh-install "empty" state for every connected client, the same state a brand-new server starts in. */
   "lobby:reset": (callback: (result: ActionResult) => void) => void;
   "draft:pick": (payload: { scryfallId: string }, callback: (result: ActionResult) => void) => void;
+  /** Fetches and resolves a cube's cards for a quick look, without creating a lobby. */
+  "cube:preview": (
+    payload: { cubeIdOrUrl: string },
+    callback: (
+      result: ActionResultWithData<{ cubeName: string; cards: Card[]; unresolvedNames: string[] }>
+    ) => void
+  ) => void;
 }
 
 /** Events the server emits to clients. */
