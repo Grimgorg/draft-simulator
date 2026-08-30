@@ -162,6 +162,12 @@ button:disabled {
   border-color: #d1435b;
 }
 
+.waiting-room-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
 .confirm-prompt {
   display: flex;
   flex-direction: column;

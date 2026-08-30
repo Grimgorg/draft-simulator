@@ -53,10 +53,12 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
       {isHost ? (
         <>
           {error && <p className="error">{error}</p>}
-          <button type="button" onClick={handleStart} disabled={!isFull || starting}>
-            {starting ? "Starting..." : isFull ? "Start draft" : "Waiting for more players..."}
-          </button>
-          <CancelDraftButton />
+          <div className="waiting-room-actions">
+            <button type="button" onClick={handleStart} disabled={!isFull || starting}>
+              {starting ? "Starting..." : isFull ? "Start draft" : "Waiting for more players..."}
+            </button>
+            <CancelDraftButton />
+          </div>
         </>
       ) : (
         <p className="subtitle">Waiting for the host to start the draft...</p>
