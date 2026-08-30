@@ -29,6 +29,9 @@ interface ScryfallCard {
   released_at: string;
   digital?: boolean;
   promo?: boolean;
+  full_art?: boolean;
+  border_color?: string;
+  frame_effects?: string[];
   mana_cost?: string;
   cmc?: number;
   colors?: string[];
@@ -90,11 +93,21 @@ function extractColors(card: ScryfallCard): string[] {
   return [...new Set(faceColors)];
 }
 
+const SPECIAL_FRAME_EFFECTS = new Set(["extendedart", "showcase", "etched"]);
+
+/** True for full-art, borderless, extended-art/showcase, or etched-foil treatments — as opposed to a plain/standard card frame. */
+function isSpecialArt(card: ScryfallCard): boolean {
+  if (card.full_art) return true;
+  if (card.border_color === "borderless") return true;
+  return (card.frame_effects ?? []).some((effect) => SPECIAL_FRAME_EFFECTS.has(effect));
+}
+
 /**
  * Reduces every printing of every card down to a single "first printing" per
- * card: the earliest-released, normal paper-set printing. Falls back to
- * promo/digital/imageless printings only when a card has no better option,
- * so no card is ever dropped for lack of an eligible "normal" printing.
+ * card: the earliest-released, normal paper-set printing with a standard
+ * card frame. Falls back to promo/digital/special-art/imageless printings
+ * only when a card has no better option, so no card is ever dropped for
+ * lack of an eligible "normal" printing.
  */
 function selectFirstPrintings(cards: ScryfallCard[]): ScryfallCard[] {
   const groups = new Map<string, ScryfallCard[]>();
@@ -111,7 +124,10 @@ function selectFirstPrintings(cards: ScryfallCard[]): ScryfallCard[] {
     const pool = withImage.length > 0 ? withImage : printings;
 
     const normalPrintings = pool.filter((c) => !c.digital && !c.promo);
-    const candidates = normalPrintings.length > 0 ? normalPrintings : pool;
+    const nonPromo = normalPrintings.length > 0 ? normalPrintings : pool;
+
+    const normalFrame = nonPromo.filter((c) => !isSpecialArt(c));
+    const candidates = normalFrame.length > 0 ? normalFrame : nonPromo;
 
     selected.push(candidates.reduce((earliest, c) => (c.released_at < earliest.released_at ? c : earliest)));
   }
