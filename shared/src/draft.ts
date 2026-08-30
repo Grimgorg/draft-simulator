@@ -16,6 +16,11 @@ export interface DraftSettings {
 
 export type DraftStatus = "lobby" | "drafting" | "complete";
 
+/** Standard alternating pass direction: pack 1 passes one way, pack 2 the other, and so on. */
+export function passDirection(packNumber: number): 1 | -1 {
+  return packNumber % 2 === 1 ? 1 : -1;
+}
+
 export interface Pack {
   id: string;
   /** 1-indexed: which pack in the draft (e.g. 1 of 3). Determines pass direction. */

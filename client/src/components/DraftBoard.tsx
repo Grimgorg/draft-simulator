@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Card, LobbyStateView, Pack } from "@draft-simulator/shared";
+import { passDirection } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
 import { buildDraftPilesKey, getStoredDraftPiles, storeDraftPiles } from "../pileStorage.js";
 import { CancelDraftButton } from "./CancelDraftButton.js";
@@ -71,6 +72,13 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
   const waitingOnNames = stillWaitingOn
     .filter((id) => id !== myPlayerId)
     .map((id) => lobbyState.players.find((p) => p.id === id)?.name ?? "someone");
+
+  const seats = lobbyState.players;
+  const mySeat = seats.findIndex((p) => p.id === myPlayerId);
+  const hasNeighbors = seats.length > 1 && mySeat !== -1 && !!lobbyState.currentPackNumber;
+  const direction = hasNeighbors ? passDirection(lobbyState.currentPackNumber!) : 1;
+  const passingTo = hasNeighbors ? seats[(mySeat + direction + seats.length) % seats.length] : null;
+  const passingFrom = hasNeighbors ? seats[(mySeat - direction + seats.length) % seats.length] : null;
 
   function handlePick(card: Card) {
     if (picking) return;
@@ -149,6 +157,12 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
             Pack {lobbyState.currentPackNumber} of {lobbyState.settings?.packCount}, pick{" "}
             {lobbyState.currentPickNumber}
           </h1>
+          {passingFrom && passingTo && (
+            <div className="pass-info">
+              <span className="tag">◀ Receiving from {passingFrom.name}</span>
+              <span className="tag">Passing to {passingTo.name} ▶</span>
+            </div>
+          )}
           {waitingOnNames.length > 0 && (
             <p className="subtitle">Waiting on: {waitingOnNames.join(", ")}</p>
           )}

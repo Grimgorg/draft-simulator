@@ -274,6 +274,12 @@ button:disabled {
   margin-bottom: 1rem;
 }
 
+.pass-info {
+  display: flex;
+  justify-content: space-between;
+  margin: 0.35rem 0;
+}
+
 .pack-grid,
 .pool-grid {
   display: grid;

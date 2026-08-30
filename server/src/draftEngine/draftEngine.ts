@@ -1,4 +1,5 @@
 import type { Card, DraftSettings, DraftState, Pack, Player } from "@draft-simulator/shared";
+import { passDirection } from "@draft-simulator/shared";
 import { generatePacks } from "./packGenerator.js";
 
 /**
@@ -111,11 +112,6 @@ function dealRound(session: DraftSession): void {
   });
   session.currentPacks = currentPacks;
   session.waitingOn = session.players.map((p) => p.id);
-}
-
-/** Standard alternating pass direction: pack 1 passes one way, pack 2 the other, and so on. */
-function passDirection(packNumber: number): 1 | -1 {
-  return packNumber % 2 === 1 ? 1 : -1;
 }
 
 /** Rotates every player's current pack to their neighbor, per the current pack's pass direction. */
