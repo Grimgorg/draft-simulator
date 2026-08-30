@@ -12,12 +12,15 @@ export interface DraftSettings {
   packCount: number;
   packSize: number;
   playerCount: number;
+  /** When true, pack 1 passes one way, pack 2 the other, and so on. When false, every pack passes the same way. */
+  alternatingDraft: boolean;
 }
 
 export type DraftStatus = "lobby" | "drafting" | "complete";
 
-/** Standard alternating pass direction: pack 1 passes one way, pack 2 the other, and so on. */
-export function passDirection(packNumber: number): 1 | -1 {
+/** Pass direction for a given pack. If `alternatingDraft` is false, always passes the same way. */
+export function passDirection(packNumber: number, alternatingDraft: boolean): 1 | -1 {
+  if (!alternatingDraft) return 1;
   return packNumber % 2 === 1 ? 1 : -1;
 }
 

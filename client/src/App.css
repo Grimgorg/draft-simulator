@@ -56,6 +56,19 @@ h2 {
   color: var(--text-h);
 }
 
+.checkbox-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
 .input-with-button {
   display: flex;
   gap: 0.5rem;

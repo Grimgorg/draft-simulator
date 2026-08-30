@@ -119,6 +119,7 @@ test(
             packCount: 1,
             packSize: 3,
             playerCount: 2,
+            alternatingDraft: true,
           },
           resolve
         )
@@ -221,6 +222,7 @@ test(
             packCount: 1,
             packSize: 2,
             playerCount: 2,
+            alternatingDraft: true,
           },
           resolve
         )
@@ -304,6 +306,7 @@ test(
             packCount: 1,
             packSize: 2,
             playerCount: 2,
+            alternatingDraft: true,
           },
           resolve
         )

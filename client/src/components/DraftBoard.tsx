@@ -76,7 +76,9 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
   const seats = lobbyState.players;
   const mySeat = seats.findIndex((p) => p.id === myPlayerId);
   const hasNeighbors = seats.length > 1 && mySeat !== -1 && !!lobbyState.currentPackNumber;
-  const direction = hasNeighbors ? passDirection(lobbyState.currentPackNumber!) : 1;
+  const direction = hasNeighbors
+    ? passDirection(lobbyState.currentPackNumber!, lobbyState.settings?.alternatingDraft ?? true)
+    : 1;
   const passingTo = hasNeighbors ? seats[(mySeat + direction + seats.length) % seats.length] : null;
   const passingFrom = hasNeighbors ? seats[(mySeat - direction + seats.length) % seats.length] : null;
 

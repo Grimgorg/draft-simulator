@@ -111,7 +111,8 @@ export async function createLobby(
   cubeIdOrUrl: string,
   packCount: number,
   packSize: number,
-  playerCount: number
+  playerCount: number,
+  alternatingDraft: boolean
 ): Promise<{ host: Player; cubeMeta: CubeMeta }> {
   validateNewLobbyInputs(hostName, packCount, packSize, playerCount);
   const imported = await importCubeFromCubeCobra(cubeIdOrUrl);
@@ -120,6 +121,7 @@ export async function createLobby(
     packCount,
     packSize,
     playerCount,
+    alternatingDraft,
   });
 }
 

@@ -71,7 +71,8 @@ export function registerSocketHandlers(io: IoServer): void {
           payload.cubeIdOrUrl,
           payload.packCount,
           payload.packSize,
-          payload.playerCount
+          payload.playerCount,
+          payload.alternatingDraft
         );
         bindSocketToPlayer(io, socket, host.id);
         callback({ ok: true, playerId: host.id, ...cubeMeta });

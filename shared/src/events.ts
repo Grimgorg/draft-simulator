@@ -10,7 +10,7 @@ export interface ClientToServerEvents {
   "lobby:create": (
     payload: { hostName: string; cubeIdOrUrl: string } & Pick<
       DraftSettings,
-      "packCount" | "packSize" | "playerCount"
+      "packCount" | "packSize" | "playerCount" | "alternatingDraft"
     >,
     callback: (
       result: ActionResultWithData<{

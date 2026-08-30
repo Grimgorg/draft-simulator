@@ -118,7 +118,7 @@ function dealRound(session: DraftSession): void {
 function rotatePacks(session: DraftSession): void {
   const seats = session.players;
   const n = seats.length;
-  const direction = passDirection(session.currentPackNumber);
+  const direction = passDirection(session.currentPackNumber, session.settings.alternatingDraft);
   const previous = session.currentPacks;
 
   const next: Record<string, Pack> = {};

@@ -5,7 +5,7 @@ import { testCard } from "./testHelpers.js";
 
 test("splits the card pool into the right number of packs of the right size", () => {
   const pool = Array.from({ length: 12 }, (_, i) => testCard(`c${i}`));
-  const queue = generatePacks(pool, { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3 }, 3);
+  const queue = generatePacks(pool, { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3, alternatingDraft: true }, 3);
 
   assert.equal(queue.length, 2);
   for (const round of queue) {
@@ -23,7 +23,7 @@ test("splits the card pool into the right number of packs of the right size", ()
 test("throws when the cube doesn't have enough cards", () => {
   const pool = Array.from({ length: 5 }, (_, i) => testCard(`c${i}`));
   assert.throws(
-    () => generatePacks(pool, { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3 }, 3),
+    () => generatePacks(pool, { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3, alternatingDraft: true }, 3),
     /needed/
   );
 });

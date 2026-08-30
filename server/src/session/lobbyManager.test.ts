@@ -12,7 +12,7 @@ function freshSnapshotPath(): string {
 }
 
 function settings(overrides: Partial<DraftSettings> = {}): DraftSettings {
-  return { cubeId: "test-cube", packCount: 1, packSize: 2, playerCount: 2, ...overrides };
+  return { cubeId: "test-cube", packCount: 1, packSize: 2, playerCount: 2, alternatingDraft: true, ...overrides };
 }
 
 const fourCards = [testCard("c1"), testCard("c2"), testCard("c3"), testCard("c4")];

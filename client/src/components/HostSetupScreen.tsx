@@ -19,6 +19,7 @@ export function HostSetupScreen({ onCreated }: HostSetupScreenProps) {
   const [packCount, setPackCount] = useState(3);
   const [packSize, setPackSize] = useState(15);
   const [playerCount, setPlayerCount] = useState(8);
+  const [alternatingDraft, setAlternatingDraft] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -30,14 +31,18 @@ export function HostSetupScreen({ onCreated }: HostSetupScreenProps) {
     setSubmitting(true);
     setError(null);
 
-    socket.emit("lobby:create", { hostName, cubeIdOrUrl, packCount, packSize, playerCount }, (result) => {
-      setSubmitting(false);
-      if (result.ok) {
-        onCreated(result.playerId);
-      } else {
-        setError(result.error);
+    socket.emit(
+      "lobby:create",
+      { hostName, cubeIdOrUrl, packCount, packSize, playerCount, alternatingDraft },
+      (result) => {
+        setSubmitting(false);
+        if (result.ok) {
+          onCreated(result.playerId);
+        } else {
+          setError(result.error);
+        }
       }
-    });
+    );
   }
 
   function handlePreview() {
@@ -110,6 +115,14 @@ export function HostSetupScreen({ onCreated }: HostSetupScreenProps) {
             />
           </label>
         </div>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={alternatingDraft}
+            onChange={(e) => setAlternatingDraft(e.target.checked)}
+          />
+          Alternate pack direction each round
+        </label>
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={submitting}>
           {submitting ? "Importing cube..." : "Create draft"}
