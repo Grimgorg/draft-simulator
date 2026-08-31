@@ -151,7 +151,6 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
 
   const [deck, setDeck] = useState<DeckState>(initial.deck);
   const [addedBasics, setAddedBasics] = useState<Instance[]>(initial.addedBasics);
-  const [copied, setCopied] = useState(false);
   const [exportMode, setExportMode] = useState<"deck" | "pool">("deck");
 
   const nextPileId = useRef(initial.nextPileId);
@@ -344,17 +343,6 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
       </div>
       <textarea className="export-text" readOnly value={exportText} rows={12} />
       <div className="form-row">
-        <button
-          type="button"
-          onClick={() => {
-            navigator.clipboard.writeText(exportText).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            });
-          }}
-        >
-          {copied ? "Copied!" : "Copy to clipboard"}
-        </button>
         <button type="button" onClick={() => downloadTextFile(`${playerName}-${exportFilenameSuffix}.txt`, exportText)}>
           Download .txt
         </button>
