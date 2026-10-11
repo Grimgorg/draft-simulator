@@ -15,7 +15,7 @@
     "start": "npm run build --workspace shared && npm run build --workspace server && npm run build --workspace client && npm run start --workspace server"
   },
   "allowScripts": {
-    "better-sqlite3@11.10.0": true,
+    "better-sqlite3@12.11.1": true,
     "esbuild@0.28.2": true,
     "fsevents@2.3.3": true
   }
