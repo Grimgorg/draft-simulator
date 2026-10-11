@@ -84,3 +84,39 @@ test("marks a player disconnected without removing them", () => {
   assert.equal(session.players.find((p) => p.id === bob.id)?.connected, false);
   assert.equal(session.players.length, 2);
 });
+
+test("keeps the draft going when the snapshot can't be saved, and saves it once it can", async (t) => {
+  // Reproduces a Windows host where antivirus or the search indexer holds the
+  // snapshot open: the rename onto it fails. A directory at the snapshot path
+  // makes that rename fail deterministically on every platform.
+  const snapshotPath = freshSnapshotPath();
+  lobbyManager.resetForTests(snapshotPath);
+  const errorLog = t.mock.method(console, "error", () => {});
+  fs.mkdirSync(snapshotPath);
+
+  const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+  const bob = lobbyManager.addPlayer("Bob");
+  lobbyManager.beginDraft();
+  const session = lobbyManager.getSession()!;
+
+  // Both picks of round 1 — the second advances the round. Neither may
+  // throw, or the socket handler would skip the broadcast and leave every
+  // client stuck on a round the server has already moved past.
+  lobbyManager.pick(host.id, session.currentPacks[host.id]!.cards[0]!.scryfallId);
+  const afterRound = lobbyManager.pick(bob.id, session.currentPacks[bob.id]!.cards[0]!.scryfallId);
+  assert.equal(afterRound.currentPickNumber, 2, "the round advanced in memory");
+  assert.deepEqual(afterRound.waitingOn.slice().sort(), [host.id, bob.id].sort());
+  assert.ok(errorLog.mock.callCount() > 0, "the failed save is logged");
+  assert.deepEqual(
+    fs.readdirSync(path.dirname(snapshotPath)).filter((f) => f.startsWith(`.${path.basename(snapshotPath)}`)),
+    [],
+    "no temp files left behind"
+  );
+
+  // Once whatever blocked the write goes away, the background retry catches up.
+  fs.rmdirSync(snapshotPath);
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  const onDisk = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as { session: { currentPickNumber: number } };
+  assert.equal(onDisk.session.currentPickNumber, 2);
+  fs.rmSync(snapshotPath);
+});

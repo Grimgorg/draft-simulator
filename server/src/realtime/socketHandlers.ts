@@ -200,16 +200,23 @@ export function registerSocketHandlers(io: IoServer): void {
 
     socket.on("disconnect", () => {
       console.log(`Client disconnected: ${socket.id}`);
-      const playerId = socketPlayers.get(socket.id);
-      if (playerId) {
-        socketPlayers.delete(socket.id);
-        // Only clear the reverse mapping if it still points at this socket —
-        // an eviction may have already rebound the player to a newer socket.
-        if (playerSockets.get(playerId) === socket.id) {
-          playerSockets.delete(playerId);
-          lobbyManager.setPlayerConnected(playerId, false);
+      // Unlike the handlers above there's no callback to report an error
+      // through, and an exception thrown from here is uncaught — it takes
+      // the whole server (and everyone's draft) down with it.
+      try {
+        const playerId = socketPlayers.get(socket.id);
+        if (playerId) {
+          socketPlayers.delete(socket.id);
+          // Only clear the reverse mapping if it still points at this socket —
+          // an eviction may have already rebound the player to a newer socket.
+          if (playerSockets.get(playerId) === socket.id) {
+            playerSockets.delete(playerId);
+            lobbyManager.setPlayerConnected(playerId, false);
+          }
+          broadcastLobbyState(io);
         }
-        broadcastLobbyState(io);
+      } catch (err) {
+        console.error(`Error while handling disconnect of ${socket.id}:`, err);
       }
     });
   });

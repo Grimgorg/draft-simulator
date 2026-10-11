@@ -58,6 +58,37 @@ function getState(): LobbyManagerState {
   return state;
 }
 
+/** Errors Windows raises while another process (antivirus, the search
+ * indexer, a backup/sync tool) briefly holds the snapshot open. */
+const TRANSIENT_RENAME_ERRORS = new Set(["EPERM", "EBUSY", "EACCES"]);
+/** Total time to keep retrying a transiently blocked rename before giving up on this write. */
+const RENAME_RETRY_BUDGET_MS = 250;
+/** How soon to try again in the background after a write gave up. */
+const DEFERRED_PERSIST_DELAY_MS = 1000;
+
+let deferredPersist: NodeJS.Timeout | undefined;
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** renameSync, retried with backoff while the error looks like a transient Windows file lock. */
+function renameWithRetry(from: string, to: string): void {
+  const deadline = Date.now() + RENAME_RETRY_BUDGET_MS;
+  let delay = 2;
+  for (;;) {
+    try {
+      fs.renameSync(from, to);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (!code || !TRANSIENT_RENAME_ERRORS.has(code) || Date.now() >= deadline) throw err;
+      sleepSync(delay);
+      delay = Math.min(delay * 2, 50);
+    }
+  }
+}
+
 /**
  * Writes via a temp file + rename rather than straight to `file`. A plain
  * `writeFileSync` on the live path leaves a truncated, unparseable file if
@@ -66,24 +97,65 @@ function getState(): LobbyManagerState {
  * draft. `rename` is atomic on POSIX filesystems, so `file` always holds
  * either the fully-old or fully-new snapshot, never a partial one.
  */
-function persist(): void {
+function writeSnapshot(): void {
   const file = snapshotPath();
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true });
   const tmpFile = path.join(dir, `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`);
-  const fd = fs.openSync(tmpFile, "w");
   try {
-    fs.writeSync(fd, JSON.stringify(getState(), null, 2));
-    fs.fsyncSync(fd);
-  } finally {
-    fs.closeSync(fd);
+    const fd = fs.openSync(tmpFile, "w");
+    try {
+      fs.writeSync(fd, JSON.stringify(getState(), null, 2));
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    renameWithRetry(tmpFile, file);
+  } catch (err) {
+    fs.rmSync(tmpFile, { force: true });
+    throw err;
   }
-  fs.renameSync(tmpFile, file);
+}
+
+/**
+ * Saves the in-memory state to disk for restart recovery. Never throws: the
+ * in-memory state is the live source of truth, and callers have usually
+ * already mutated it (e.g. a pick that advanced the round) by the time this
+ * runs. Throwing here used to abort the socket handler before it broadcast
+ * that change, leaving every client waiting on a round the server had
+ * already moved past — the draft stayed stuck until a restart. On Windows
+ * this happened whenever antivirus or the search indexer briefly held the
+ * snapshot open. A failed write is retried in the background instead.
+ */
+function persist(): void {
+  // A background retry is already scheduled and will write whatever the
+  // state is by then, so don't block this action on retrying synchronously
+  // against a disk that just refused a write.
+  if (deferredPersist) return;
+  trySaveSnapshot();
+}
+
+function trySaveSnapshot(): void {
+  try {
+    writeSnapshot();
+  } catch (err) {
+    console.error(
+      `Could not save the draft snapshot; the draft continues and saving will be retried in ${DEFERRED_PERSIST_DELAY_MS}ms:`,
+      err
+    );
+    deferredPersist = setTimeout(() => {
+      deferredPersist = undefined;
+      trySaveSnapshot();
+    }, DEFERRED_PERSIST_DELAY_MS);
+    deferredPersist.unref();
+  }
 }
 
 /** Test-only: forces a clean in-memory state pointed at an isolated snapshot file. */
 export function resetForTests(isolatedSnapshotPath: string): void {
   process.env.DRAFT_SNAPSHOT_PATH = isolatedSnapshotPath;
+  clearTimeout(deferredPersist);
+  deferredPersist = undefined;
   state = { cardPool: [] };
 }
 
