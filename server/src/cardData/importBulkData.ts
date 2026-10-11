@@ -8,6 +8,7 @@
  * Run with: npm run import-cards --workspace server
  */
 import readline from "node:readline";
+import { pathToFileURL } from "node:url";
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
 import { DB_PATH, getDb } from "../db/database.js";
@@ -208,8 +209,11 @@ export async function importCardDatabase(): Promise<{ imported: number; skipped:
 
 // Only run automatically when this file is executed directly (`npm run
 // import-cards`) — not when `importCardDatabase` is imported and called
-// elsewhere, e.g. the server's startup staleness check.
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+// elsewhere, e.g. the server's startup staleness check. Compared via
+// pathToFileURL rather than a hand-built `file://${argv[1]}`: on Windows,
+// argv[1] is a backslashed "C:\..." path that never equals import.meta.url's
+// "file:///C:/..." form, so the script silently did nothing there.
+const isMainModule = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMainModule) {
   importCardDatabase().catch((err: unknown) => {
     console.error("Card import failed:", err);

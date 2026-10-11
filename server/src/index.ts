@@ -13,6 +13,14 @@ import { registerSocketHandlers } from "./realtime/socketHandlers.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 
+// Node's default for an unhandled rejection is to kill the process, which
+// for a host running a live draft means everyone is stuck until a restart.
+// Every known async path handles its own errors; this is the backstop so a
+// missed one gets logged instead of taking the draft down.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection (server kept running):", reason);
+});
+
 getDb();
 ensureImageDir();
 
