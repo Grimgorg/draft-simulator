@@ -24,6 +24,25 @@ interface Pile {
 const MIN_POOL_PANE_HEIGHT = 160;
 const MAX_POOL_PANE_RATIO = 0.7;
 const DEFAULT_POOL_PANE_HEIGHT = 280;
+/** How long to wait for the server to acknowledge a pick before letting the player retry. */
+const PICK_ACK_TIMEOUT_MS = 10_000;
+
+/**
+ * Pairs each card with a React key that's unique even when a pack holds two
+ * copies of the same card (e.g. a cube running two of each fetchland), which
+ * share a scryfallId. Keying by scryfallId alone gave React duplicate keys,
+ * and when the pack changed it lost track of one copy and left its DOM node
+ * on screen for the rest of the draft: a "ghost" card that couldn't be
+ * picked. The occurrence index keeps each key stable across renders.
+ */
+function withOccurrenceKeys(cards: Card[]): { key: string; card: Card }[] {
+  const seen = new Map<string, number>();
+  return cards.map((card) => {
+    const occurrence = seen.get(card.scryfallId) ?? 0;
+    seen.set(card.scryfallId, occurrence + 1);
+    return { key: `${card.scryfallId}#${occurrence}`, card };
+  });
+}
 
 export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoardProps) {
   const [picking, setPicking] = useState(false);
@@ -86,8 +105,14 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
     if (picking) return;
     setPicking(true);
     setError(null);
-    socket.emit("draft:pick", { scryfallId: card.scryfallId }, (result) => {
+    // With a timeout, so a lost acknowledgement (e.g. a connection blip mid
+    // pick) can't leave every card disabled until the page is reloaded.
+    socket.timeout(PICK_ACK_TIMEOUT_MS).emit("draft:pick", { scryfallId: card.scryfallId }, (err, result) => {
       setPicking(false);
+      if (err) {
+        setError("The server didn't respond to that pick. Please try again.");
+        return;
+      }
       if (!result.ok) setError(result.error);
       // No optimistic pool update needed: the server pushes the updated
       // pool right back via draft:myState.
@@ -176,8 +201,8 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
           {!isMyTurn ? (
             <p className="subtitle">Waiting for other players to pick...</p>
           ) : myPack ? (
-            myPack.cards.map((card) => (
-              <CardImage key={card.scryfallId} card={card} onClick={() => handlePick(card)} disabled={picking} />
+            withOccurrenceKeys(myPack.cards).map(({ key, card }) => (
+              <CardImage key={key} card={card} onClick={() => handlePick(card)} disabled={picking} />
             ))
           ) : (
             <p className="subtitle">Waiting for the next pack...</p>

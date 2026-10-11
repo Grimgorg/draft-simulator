@@ -150,3 +150,31 @@ test("rejects starting a draft twice", () => {
 
   assert.throws(() => beginDraftWithPacks(session, [[testPack("pA2", 1, ["a2"]), testPack("pB2", 1, ["b2"])]]));
 });
+
+test("a pack holding two copies of the same card lets both copies be drafted, one at a time", () => {
+  // Cubes can run duplicates (e.g. two of each fetchland), and both copies
+  // share one scryfallId — a pick must take exactly one copy, never both or
+  // neither, and the other copy must stay draftable as the pack moves on.
+  const session = createDraftSession(
+    "draft-dupes",
+    { cubeId: "x", packCount: 1, packSize: 3, playerCount: 2, alternatingDraft: true },
+    players.slice(0, 2)
+  );
+  beginDraftWithPacks(session, [[testPack("pA", 1, ["tarn", "tarn", "a1"]), testPack("pB", 1, ["b1", "b2", "b3"])]]);
+
+  submitPick(session, "A", "tarn");
+  submitPick(session, "B", "b1");
+  // A's pack (one tarn left) has passed to B.
+  assert.deepEqual(idsIn(session, "B"), ["tarn", "a1"]);
+
+  submitPick(session, "A", "b2");
+  submitPick(session, "B", "tarn");
+  assert.deepEqual(idsIn(session, "A"), ["a1"]);
+  assert.throws(() => submitPick(session, "A", "tarn"), /not in player/, "no third copy to pick");
+
+  submitPick(session, "A", "a1");
+  submitPick(session, "B", "b3");
+  assert.equal(session.status, "complete");
+  assert.deepEqual(session.pools["A"]!.map((c) => c.scryfallId), ["tarn", "b2", "a1"]);
+  assert.deepEqual(session.pools["B"]!.map((c) => c.scryfallId), ["b1", "tarn", "b3"]);
+});
