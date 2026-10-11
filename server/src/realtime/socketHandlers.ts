@@ -113,8 +113,9 @@ export function registerSocketHandlers(io: IoServer): void {
         bindSocketToPlayer(io, socket, player.id);
         lobbyManager.setPlayerConnected(player.id, true);
         callback({ ok: true });
-        broadcastLobbyState(io);
+        // Pack before lobby state, as in draft:pick.
         sendDraftStateTo(io, socket.id, player.id);
+        broadcastLobbyState(io);
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
       }
@@ -129,8 +130,9 @@ export function registerSocketHandlers(io: IoServer): void {
 
         lobbyManager.beginDraft();
         callback({ ok: true });
-        broadcastLobbyState(io);
+        // Pack before lobby state, as in draft:pick.
         broadcastDraftStateToAll(io);
+        broadcastLobbyState(io);
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
       }
@@ -175,14 +177,17 @@ export function registerSocketHandlers(io: IoServer): void {
 
         const session = lobbyManager.pick(playerId, payload.scryfallId);
         callback({ ok: true });
-        broadcastLobbyState(io);
 
         const roundJustAdvanced = session.status === "complete" || session.waitingOn.length === session.players.length;
         if (roundJustAdvanced) {
           // Either the draft just finished, or a fresh round was just dealt
           // (rotation or a new pack) — that's the moment everyone's pack/pool
-          // actually changes, this picker included.
+          // actually changes, this picker included. New packs go out before
+          // the lobby state that says "your turn": the other order briefly
+          // showed each player the pack they'd already picked from as
+          // pickable, so a quick click sent a card that was no longer theirs.
           broadcastDraftStateToAll(io);
+          broadcastLobbyState(io);
         } else {
           // The picker's own pool already grew inside lobbyManager.pick
           // above, so push it to them right away rather than making them
@@ -190,7 +195,10 @@ export function registerSocketHandlers(io: IoServer): void {
           // round just advanced (branch above) so this exact pick never
           // fires two draft:myState updates at once for the same player —
           // this player may still get a second, later update once someone
-          // else's pick finally completes the round.
+          // else's pick finally completes the round. Sent after the lobby
+          // state (which takes the picker out of waitingOn), so their
+          // now-smaller pack never shows up as still pickable.
+          broadcastLobbyState(io);
           sendDraftStateTo(io, socket.id, playerId);
         }
       } catch (err) {

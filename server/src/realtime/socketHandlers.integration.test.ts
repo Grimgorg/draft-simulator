@@ -14,6 +14,7 @@ import type {
   Pack,
   ServerToClientEvents,
 } from "@draft-simulator/shared";
+import { testCard } from "../draftEngine/testHelpers.js";
 import * as lobbyManager from "../session/lobbyManager.js";
 import { registerSocketHandlers } from "./socketHandlers.js";
 
@@ -365,6 +366,68 @@ test(
       hostSocket.close();
       guestSocket.close();
       secondGuestSocket?.close();
+      await server.close();
+    }
+  }
+);
+
+test(
+  "round advance: each player's new pack arrives before the lobby state that makes it their turn",
+  { timeout: 30_000 },
+  async () => {
+    // Network-free: the lobby is built from local test cards, then both
+    // players attach over real sockets.
+    lobbyManager.resetForTests(freshSnapshotPath());
+    const { host } = lobbyManager.createLobbyFromResolvedCube(
+      "Alice",
+      "Test Cube",
+      ["c1", "c2", "c3", "c4"].map(testCard),
+      [],
+      { cubeId: "test", packCount: 1, packSize: 2, playerCount: 2, alternatingDraft: true }
+    );
+
+    const server = await startTestServer();
+    const hostSocket = await connect(server.url);
+    const guestSocket = await connect(server.url);
+
+    try {
+      const rejoin = await new Promise<any>((resolve) => hostSocket.emit("lobby:reconnect", { playerId: host.id }, resolve));
+      assert.equal(rejoin.ok, true, JSON.stringify(rejoin));
+      const join = await new Promise<any>((resolve) => guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve));
+      assert.equal(join.ok, true, JSON.stringify(join));
+
+      const hostStart = waitForEvent<MyState>(hostSocket, "draft:myState");
+      const guestStart = waitForEvent<MyState>(guestSocket, "draft:myState");
+      await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
+      const hostPack = (await hostStart).pack!;
+      const guestPack = (await guestStart).pack!;
+
+      // From here on, record what each client would render: its latest pack,
+      // checked at the moment a lobby:state says it's this player's turn.
+      const staleTurns: string[] = [];
+      const turnsSeen = { host: 0, guest: 0 };
+      function watch(socket: DraftClientSocket, playerId: string, label: "host" | "guest", ownPackId: string) {
+        let latestPackId: string | undefined = ownPackId;
+        socket.on("draft:myState", (s: MyState) => (latestPackId = s.pack?.id));
+        socket.on("lobby:state", (s: LobbyStateView) => {
+          if (s.currentPickNumber === 2 && s.waitingOn?.includes(playerId)) {
+            turnsSeen[label]++;
+            if (latestPackId === ownPackId) staleTurns.push(`${label} was shown the pack it already picked from`);
+          }
+        });
+      }
+      watch(hostSocket, host.id, "host", hostPack.id);
+      watch(guestSocket, join.playerId, "guest", guestPack.id);
+
+      await new Promise<any>((resolve) => hostSocket.emit("draft:pick", { scryfallId: hostPack.cards[0]!.scryfallId }, resolve));
+      await new Promise<any>((resolve) => guestSocket.emit("draft:pick", { scryfallId: guestPack.cards[0]!.scryfallId }, resolve));
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      assert.deepEqual(turnsSeen, { host: 1, guest: 1 }, "both players got their pick-2 turn");
+      assert.deepEqual(staleTurns, []);
+    } finally {
+      hostSocket.close();
+      guestSocket.close();
       await server.close();
     }
   }
