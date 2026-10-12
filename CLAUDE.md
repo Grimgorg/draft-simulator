@@ -6,7 +6,7 @@ Self-hosted Magic: The Gathering cube draft simulator for a small group of frien
 
 ## Commands
 
-This is an npm workspaces monorepo (`shared`, `server`, `client`) that needs Node 20.11+. The root has a `test` script; there is no root `lint` or `typecheck` script, so run the workspace scripts below.
+This is an npm workspaces monorepo (`shared`, `server`, `client`, `e2e`) that needs Node 20.11+. The root has `test` and `test:e2e` scripts; there is no root `lint` or `typecheck` script, so run the workspace scripts below.
 
 **Setup / run**
 ```bash
@@ -16,9 +16,9 @@ npm run dev:server         # tsx watch on :4000
 npm run dev:client         # Vite on :5173, pointed at :4000 by client/.env.development
 ```
 
-**Test** (server only; the client has no tests and there are no browser E2E tests)
+**Test**
 ```bash
-# all tests, from the repo root: builds shared, then runs unit + socket integration
+# server tests, from the repo root: builds shared, then runs unit + socket integration
 npm test
 npm test --workspace server   # the same, without rebuilding shared
 
@@ -34,6 +34,16 @@ node --import tsx --test --test-name-pattern "enforces capacity" src/session/lob
 ```
 In `socketHandlers.integration.test.ts`, the first three tests need internet access (they import a real CubeCobra cube) and a populated `server/data/cards.sqlite3`; the skip pattern above matches their names, so update it if you rename them. Every later test in that file, and every other test, runs without the network; the last `cubeCobraImporter.test.ts` test is skipped when the card cache is empty. `npm run typecheck --workspace server` is the only check that type-checks the tests.
 
+**Browser end-to-end tests** (Playwright, in `e2e/`)
+```bash
+npx --workspace e2e playwright install chromium   # once per machine (on Linux, add --with-deps for system libraries)
+npm run test:e2e                                  # builds shared, server and client, then runs every browser test
+# from e2e/
+npx playwright test --ui                          # watch the browsers step by step
+npx playwright show-trace test-results/<test>/trace.zip   # replay a failed run
+```
+They drive the production build (the server serving the built client) in real Chromium, with one browser context per player. Each test gets its own server process, snapshot file and port, plus a local stand-in for CubeCobra (`CUBECOBRA_BASE_URL`), so they need no network for the cube. They do need a populated `server/data/cards.sqlite3`; card images still load from Scryfall through the image proxy, and the tests pass without them. The client itself has no unit tests.
+
 **Type-check & lint**
 ```bash
 npm run build:shared                 # emits shared/dist
@@ -41,6 +51,7 @@ npm run build --workspace server     # tsc -b (emits server/dist)
 npm run typecheck --workspace server # tsc --noEmit over all of server/src, tests included
 npm run build --workspace client     # tsc -b && vite build
 npm run lint --workspace client      # oxlint; the server has no linter
+npm run typecheck --workspace e2e    # tsc --noEmit over the browser tests
 ```
 - `@draft-simulator/shared` resolves to `shared/dist`. **Run `npm run build:shared` first** whenever `shared/src` changed or `dist` is missing, or the server and client won't see the change.
 - Test files (`*.test.ts`, `testHelpers.ts`) are excluded from the server build, and tsx doesn't type-check, so **only `npm run typecheck --workspace server` checks them** (via `server/tsconfig.typecheck.json`).
@@ -74,6 +85,7 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 
 ### Module boundaries
 - `shared` has no internal dependencies. `server` and `client` depend on `shared`, and **never on each other**.
+- `e2e` depends on no workspace: it drives the built app only through the browser and HTTP.
 - `draftEngine` imports only `shared` and its own `packGenerator`; it does no I/O, persistence or networking.
 - Only `lobbyManager` holds session state, calls engine mutators, and saves the snapshot (via `snapshotStore`).
 - Only `socketHandlers` emits socket events. `lobby:state` is public and must never carry packs or pools. `draft:myState` and `draft:complete` go only to the owning player's socket.
@@ -111,6 +123,6 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 1. If `shared/` changed, run `npm run build:shared`.
 2. Run `npm test --workspace server`. If the network-dependent integration tests can't reach the network, report them as skipped or failed, not as passed.
 3. Run `npm run build --workspace server` and `npm run typecheck --workspace server`, then `npm run lint --workspace client` and `npm run build --workspace client`.
-4. For UI or realtime changes, run `dev:server` and `dev:client` and try the flow in two browser sessions (host and player).
+4. For UI or realtime changes, run `npm run test:e2e`, and for anything the two browser tests don't cover, run `dev:server` and `dev:client` and try the flow in two browser sessions (host and player).
 5. Review `git diff`. Look for unintended behavior changes, removed guard comments, and stray files under `server/data/` or `dist/`.
 6. Report anything that was skipped or could not be verified.

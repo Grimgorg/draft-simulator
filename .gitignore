@@ -23,3 +23,7 @@ npm-debug.log*
 .vscode/
 .idea/
 .claude/
+
+# Playwright output
+e2e/test-results/
+e2e/playwright-report/
