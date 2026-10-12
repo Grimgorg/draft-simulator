@@ -1,0 +1,171 @@
+name: CI
+
+# Tests run on every push to main and every pull request. Pushing a version
+# tag (v1.2.3) also builds the executables for every platform and publishes
+# them on a GitHub Release, but only once the tests have passed. A manual run
+# (Actions → CI → Run workflow) builds the executables without releasing.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      # The socket integration tests and the browser tests resolve cards
+      # against the Scryfall card cache. Download it at most once a week
+      # instead of on every run.
+      - name: Compute card cache key
+        id: card-cache-key
+        shell: bash
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore card cache
+        id: card-cache
+        uses: actions/cache@v4
+        with:
+          path: server/data/cards.sqlite3
+          key: cards-${{ steps.card-cache-key.outputs.week }}
+      - name: Download card cache
+        if: steps.card-cache.outputs.cache-hit != 'true'
+        run: npm run import-cards --workspace server
+
+      - run: npm run build:shared
+      - run: npm run typecheck --workspace server
+      - run: npm run typecheck --workspace e2e
+      - run: npm run lint --workspace client
+      - run: npm run build --workspace server
+      - run: npm run build --workspace client
+
+      # node --test reports "tests 0" and still exits 0 when it finds no
+      # test files (e.g. on an older Node), so check that tests actually ran.
+      - name: Server tests
+        shell: bash
+        run: |
+          npm test 2>&1 | tee test-output.txt
+          if ! grep -Eq "^ℹ tests [1-9]" test-output.txt; then
+            echo "::error::npm test ran no tests"
+            exit 1
+          fi
+
+      - run: npx --workspace e2e playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Upload browser test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 14
+
+      # The package jobs smoke-test each executable against this card cache
+      # (cache entries saved on Linux don't restore on Windows).
+      - name: Upload card cache for the package jobs
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: card-db
+          path: server/data/cards.sqlite3
+          retention-days: 1
+
+  package:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    # The executable is a copy of the runner's own Node binary, so every
+    # platform is built on that platform.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: windows-latest
+            target: windows-x64
+          - os: macos-latest
+            target: macos-arm64
+          - os: macos-15-intel
+            target: macos-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build:exe
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: card-db
+          path: card-db
+      - name: Smoke-test the executable
+        shell: bash
+        run: |
+          exe="release/draft-simulator-${{ matrix.target }}"
+          if [ "$RUNNER_OS" = "Windows" ]; then exe="$exe.exe"; fi
+          npm run smoke-test-exe --workspace server -- "$exe" card-db/cards.sqlite3
+
+      # Archived so the executable bit survives the download on macOS and Linux.
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path release/draft-simulator-${{ matrix.target }}.exe -DestinationPath release/draft-simulator-${{ matrix.target }}.zip
+      - name: Archive (macOS, Linux)
+        if: runner.os != 'Windows'
+        env:
+          # Keeps macOS tar from adding ._ metadata files to the archive.
+          COPYFILE_DISABLE: "1"
+        run: tar -czf release/draft-simulator-${{ matrix.target }}.tar.gz -C release draft-simulator-${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: executable-${{ matrix.target }}
+          path: release/draft-simulator-${{ matrix.target }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: executable-*
+          path: executables
+          merge-multiple: true
+      # A tag with a suffix (v1.0.0-rc.1) becomes a pre-release.
+      - name: Create the GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=""
+          if [[ "$TAG" == *-* ]]; then prerelease="--prerelease"; fi
+          gh release create "$TAG" executables/* --verify-tag --generate-notes $prerelease

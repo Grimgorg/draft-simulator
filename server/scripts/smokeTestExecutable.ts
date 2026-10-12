@@ -93,5 +93,9 @@ try {
     await once(child, "exit");
   }
   // Windows can hold the files briefly after the process exits; a leftover temp dir isn't worth failing over.
-  fs.rmSync(workDir, { recursive: true, force: true, maxRetries: 5 });
+  try {
+    fs.rmSync(workDir, { recursive: true, force: true, maxRetries: 5 });
+  } catch (err) {
+    console.warn(`Couldn't remove ${workDir}:`, err);
+  }
 }
