@@ -22,10 +22,11 @@ interface ScryfallCardFace {
   image_uris?: { normal?: string };
 }
 
-interface ScryfallCard {
+export interface ScryfallCard {
   id: string;
   oracle_id: string;
   name: string;
+  layout: string;
   lang: string;
   released_at: string;
   digital?: boolean;
@@ -118,15 +119,26 @@ function isSpecialArt(card: ScryfallCard): boolean {
 }
 
 /**
+ * Bulk-data entries that aren't draftable cards but often share a real card's
+ * name: an eternalize token copies its card's name ("Timeless Witness"), and an
+ * Art Series card is named "Front // Front" after a double-faced card. Imported,
+ * they won the name lookup for dozens of real cards, so a cube resolved those
+ * slots to a token or an art card instead of the card itself.
+ */
+const NON_CARD_LAYOUTS = new Set(["token", "double_faced_token", "emblem", "art_series", "front_card"]);
+
+/**
  * Reduces every printing of every card down to a single "first printing" per
  * card: the earliest-released, normal paper-set printing with a standard
  * card frame. Falls back to promo/digital/special-art/imageless printings
  * only when a card has no better option, so no card is ever dropped for
- * lack of an eligible "normal" printing.
+ * lack of an eligible "normal" printing. Tokens and other non-card layouts
+ * are dropped entirely (see NON_CARD_LAYOUTS).
  */
-function selectFirstPrintings(cards: ScryfallCard[]): ScryfallCard[] {
+export function selectFirstPrintings(cards: ScryfallCard[]): ScryfallCard[] {
   const groups = new Map<string, ScryfallCard[]>();
   for (const card of cards) {
+    if (NON_CARD_LAYOUTS.has(card.layout)) continue;
     const key = card.oracle_id ?? card.name.toLowerCase();
     const group = groups.get(key);
     if (group) group.push(card);
