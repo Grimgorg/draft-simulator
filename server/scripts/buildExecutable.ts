@@ -13,6 +13,7 @@ import path from "node:path";
 import { build } from "esbuild";
 import { CLIENT_ASSET_PREFIX } from "../src/packaged/embeddedClient.js";
 import { SQLITE_ADDON_ASSET } from "../src/packaged/seaRuntime.js";
+import { buildThirdPartyNotices, collectDependencyDirs, packageDirOf, readPackageNotice } from "./thirdPartyNotices.js";
 
 const SERVER_DIR = path.join(import.meta.dirname, "..");
 const ROOT = path.join(SERVER_DIR, "..");
@@ -58,7 +59,7 @@ fs.mkdirSync(BUILD_DIR, { recursive: true });
 // server only reads it on paths that never run packaged (see seaRuntime.ts),
 // and the smoke test catches one on the startup path.
 const bundlePath = path.join(BUILD_DIR, "server.cjs");
-await build({
+const { metafile } = await build({
   entryPoints: [path.join(SERVER_DIR, "src/index.ts")],
   bundle: true,
   platform: "node",
@@ -68,6 +69,8 @@ await build({
   external: ["bufferutil", "utf-8-validate"],
   logLevel: "warning",
   logOverride: { "empty-import-meta": "silent" },
+  // Lists the bundled files, so the notices name exactly the packages inside.
+  metafile: true,
 });
 
 const assets: Record<string, string> = {
@@ -107,3 +110,44 @@ run(process.execPath, [require.resolve("postject/dist/cli.js"), ...postjectArgs]
 if (isMac) run("codesign", ["--sign", "-", executablePath]);
 
 console.log(`Built ${executablePath}`);
+
+/**
+ * Node's own LICENSE, which also covers the libraries built into it (V8,
+ * OpenSSL, ICU, ...). Official Node downloads keep it next to the binary
+ * (Windows) or one folder up (macOS, Linux); the Windows installer doesn't
+ * install it, so fall back to the copy for this exact version on GitHub.
+ */
+async function readNodeLicense(): Promise<string> {
+  const nodeDir = path.dirname(process.execPath);
+  for (const candidate of [path.join(nodeDir, "LICENSE"), path.join(nodeDir, "..", "LICENSE")]) {
+    if (fs.existsSync(candidate)) return fs.readFileSync(candidate, "utf8");
+  }
+  const url = `https://raw.githubusercontent.com/nodejs/node/${process.version}/LICENSE`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Couldn't download Node's license from ${url}: ${res.status} ${res.statusText}`);
+  return res.text();
+}
+
+// esbuild reports bundled files relative to the folder it ran in.
+const serverPackageDirs = Object.keys(metafile.inputs)
+  .map((input) => packageDirOf(path.resolve(input)))
+  .filter((dir): dir is string => dir !== undefined);
+const clientPackage = JSON.parse(fs.readFileSync(path.join(ROOT, "client/package.json"), "utf8")) as {
+  dependencies: Record<string, string>;
+};
+const clientPackageDirs = collectDependencyDirs(
+  path.join(ROOT, "client"),
+  Object.keys(clientPackage.dependencies).filter((name) => !name.startsWith("@draft-simulator/")),
+);
+
+const noticesPath = path.join(RELEASE_DIR, "THIRD_PARTY_NOTICES.txt");
+fs.writeFileSync(
+  noticesPath,
+  buildThirdPartyNotices({
+    projectLicense: fs.readFileSync(path.join(ROOT, "LICENSE"), "utf8"),
+    nodeVersion: process.version,
+    nodeLicense: await readNodeLicense(),
+    packages: [...new Set([...serverPackageDirs, ...clientPackageDirs])].map(readPackageNotice),
+  }),
+);
+console.log(`Wrote ${noticesPath}`);
