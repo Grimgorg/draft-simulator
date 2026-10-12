@@ -77,6 +77,7 @@ Environment variables the server reads at startup:
 npm test                                   # server unit and socket integration tests
 npx --workspace e2e playwright install chromium   # once, before the first browser test run
 npm run test:e2e                           # browser tests: a host and a guest draft in real Chromium
+npm run test:e2e:ui                        # the same browser tests in a window where you can watch every step
 ```
 
 Most tests are network-free. Three socket integration tests need internet access (they import a real CubeCobra cube), and both those and the browser tests need the local card cache from the setup step above.

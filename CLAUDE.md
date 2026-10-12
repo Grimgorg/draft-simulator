@@ -6,7 +6,7 @@ Self-hosted Magic: The Gathering cube draft simulator for a small group of frien
 
 ## Commands
 
-This is an npm workspaces monorepo (`shared`, `server`, `client`, `e2e`) that needs Node 20.11+. The root has `test` and `test:e2e` scripts; there is no root `lint` or `typecheck` script, so run the workspace scripts below.
+This is an npm workspaces monorepo (`shared`, `server`, `client`, `e2e`) that needs Node 20.11+. The root has `test`, `test:e2e` and `test:e2e:ui` scripts; there is no root `lint` or `typecheck` script, so run the workspace scripts below.
 
 **Setup / run**
 ```bash
@@ -38,8 +38,8 @@ In `socketHandlers.integration.test.ts`, the first three tests need internet acc
 ```bash
 npx --workspace e2e playwright install chromium   # once per machine (on Linux, add --with-deps for system libraries)
 npm run test:e2e                                  # builds shared, server and client, then runs every browser test
+npm run test:e2e:ui                               # the same in Playwright's UI mode, to watch the browsers step by step
 # from e2e/
-npx playwright test --ui                          # watch the browsers step by step
 npx playwright show-trace test-results/<test>/trace.zip   # replay a failed run
 ```
 They drive the production build (the server serving the built client) in real Chromium, with one browser context per player. Each test gets its own server process, snapshot file and port, plus a local stand-in for CubeCobra (`CUBECOBRA_BASE_URL`), so they need no network for the cube. They do need a populated `server/data/cards.sqlite3`; card images still load from Scryfall through the image proxy, and the tests pass without them. The client itself has no unit tests.
