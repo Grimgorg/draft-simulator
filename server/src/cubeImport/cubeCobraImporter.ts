@@ -1,5 +1,5 @@
 import type { Card } from "@draft-simulator/shared";
-import { findCardsByNames } from "../cardData/cardRepository.js";
+import { findCardByOracleId, findCardsByNames } from "../cardData/cardRepository.js";
 
 const USER_AGENT = "DraftSimulator/0.1 (personal cube draft tool; not for redistribution)";
 
@@ -9,7 +9,7 @@ function cubeCobraBaseUrl(): string {
 }
 
 interface CubeCobraCardEntry {
-  details?: { name?: string };
+  details?: { name?: string; oracle_id?: string };
 }
 
 interface CubeCobraCubeJson {
@@ -47,15 +47,22 @@ export async function importCubeFromCubeCobra(cubeIdOrUrl: string): Promise<Cube
   }
   const cube = (await res.json()) as CubeCobraCubeJson;
 
-  const names = cube.cards.mainboard
-    .map((entry) => entry.details?.name)
-    .filter((name): name is string => Boolean(name));
+  const entries = cube.cards.mainboard
+    .map((entry) => ({ name: entry.details?.name, oracleId: entry.details?.oracle_id }))
+    .filter((entry): entry is { name: string; oracleId: string | undefined } => Boolean(entry.name));
 
-  const resolvedByName = findCardsByNames([...new Set(names)]);
+  const resolvedByName = findCardsByNames([...new Set(entries.map((entry) => entry.name))]);
 
   const cards: Card[] = [];
   const unresolvedNames: string[] = [];
-  for (const name of names) {
+  for (const { name, oracleId } of entries) {
+    // CubeCobra names some printings by a name only that printing carries, e.g. a
+    // Through the Omenpaths card ("Makdee and Itla, Skysnarers") whose Scryfall name is
+    // "Spider-Woman, Stunning Savior". Its oracle id still finds the card.
+    if (!resolvedByName.has(name) && oracleId) {
+      const card = findCardByOracleId(oracleId);
+      if (card) resolvedByName.set(name, card);
+    }
     const card = resolvedByName.get(name);
     if (card) {
       cards.push(card);

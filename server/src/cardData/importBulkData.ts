@@ -179,8 +179,8 @@ export async function importCardDatabase(): Promise<{ imported: number; skipped:
 
   const db = getDb();
   const insert = db.prepare(`
-    INSERT INTO cards (scryfall_id, name, name_lower, front_name_lower, mana_cost, cmc, colors, type_line, source_image_uri, back_image_uri)
-    VALUES (@scryfall_id, @name, @name_lower, @front_name_lower, @mana_cost, @cmc, @colors, @type_line, @source_image_uri, @back_image_uri)
+    INSERT INTO cards (scryfall_id, name, name_lower, front_name_lower, mana_cost, cmc, colors, type_line, source_image_uri, back_image_uri, oracle_id)
+    VALUES (@scryfall_id, @name, @name_lower, @front_name_lower, @mana_cost, @cmc, @colors, @type_line, @source_image_uri, @back_image_uri, @oracle_id)
   `);
 
   const importAll = db.transaction((rows: ScryfallCard[]) => {
@@ -207,6 +207,8 @@ export async function importCardDatabase(): Promise<{ imported: number; skipped:
         type_line: card.type_line ?? "",
         source_image_uri: imageUri,
         back_image_uri: extractBackImageUri(card) ?? null,
+        // Missing on some layouts (reversible cards keep it on each face only).
+        oracle_id: card.oracle_id ?? null,
       });
       imported++;
     }

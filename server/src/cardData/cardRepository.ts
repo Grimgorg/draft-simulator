@@ -42,6 +42,7 @@ interface CardRow {
   type_line: string;
   source_image_uri: string;
   back_image_uri: string | null;
+  oracle_id: string | null;
 }
 
 function rowToCard(row: CardRow): Card {
@@ -76,6 +77,12 @@ export function findCardsByNames(names: string[]): Map<string, Card> {
     if (row) result.set(name, rowToCard(row));
   }
   return result;
+}
+
+/** Looks up a card by its Scryfall oracle id, which every printing of the card shares whatever name it's printed under. */
+export function findCardByOracleId(oracleId: string): Card | undefined {
+  const row = statement("SELECT * FROM cards WHERE oracle_id = ? LIMIT 1").get(oracleId) as CardRow | undefined;
+  return row ? rowToCard(row) : undefined;
 }
 
 export function getSourceImageUri(scryfallId: string): string | undefined {

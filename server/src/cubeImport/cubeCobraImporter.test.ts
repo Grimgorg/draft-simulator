@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { countCards } from "../cardData/cardRepository.js";
+import { getDb } from "../db/database.js";
 import { importCubeFromCubeCobra } from "./cubeCobraImporter.js";
 
 /** Replaces fetch for this test with one answering every request with `respond()`, recording the URLs asked for. */
@@ -13,9 +14,20 @@ function mockFetch(t: TestContext, respond: () => Response): string[] {
   return urls;
 }
 
-function cubeJson(name: string, cardNames: (string | undefined)[]): Response {
-  const mainboard = cardNames.map((cardName) => (cardName === undefined ? {} : { details: { name: cardName } }));
+type CubeCard = string | { name: string; oracleId: string } | undefined;
+
+function cubeJson(name: string, cards: CubeCard[]): Response {
+  const mainboard = cards.map((card) => {
+    if (card === undefined) return {};
+    if (typeof card === "string") return { details: { name: card } };
+    return { details: { name: card.name, oracle_id: card.oracleId } };
+  });
   return Response.json({ name, cards: { mainboard } });
+}
+
+/** False for an empty cache, and for one imported before oracle ids were stored (until its next refresh). */
+function cacheHasOracleIds(): boolean {
+  return getDb().prepare("SELECT 1 FROM cards WHERE oracle_id IS NOT NULL LIMIT 1").get() !== undefined;
 }
 
 test("accepts a bare cube id or a link to any page of the cube", async (t) => {
@@ -85,5 +97,30 @@ test(
     assert.equal(bolt!.imageUrl, `/images/${bolt!.scryfallId}`);
     assert.equal(bolt!.backImageUrl, undefined);
     assert.equal(delver!.backImageUrl, `/images/${delver!.scryfallId}/back`);
+  }
+);
+
+test(
+  "resolves a card by oracle id when CubeCobra names it by a printing-specific name",
+  { skip: !cacheHasOracleIds() && "needs a card cache with oracle ids: npm run import-cards --workspace server" },
+  async (t) => {
+    // CubeCobra names Through the Omenpaths printings by their printed name, which Scryfall
+    // keeps only on that printing; the card itself is "Spider-Woman, Stunning Savior".
+    mockFetch(t, () =>
+      cubeJson("Omenpaths Cube", [
+        { name: "Makdee and Itla, Skysnarers", oracleId: "be2b9c6d-4ecb-49ec-b276-4aa93c5dfc00" },
+        { name: "Makdee and Itla, Skysnarers", oracleId: "be2b9c6d-4ecb-49ec-b276-4aa93c5dfc00" },
+        { name: "Not A Real Card Name", oracleId: "00000000-0000-0000-0000-000000000000" },
+        "Lightning Bolt",
+      ])
+    );
+
+    const result = await importCubeFromCubeCobra("omenpaths");
+
+    assert.deepEqual(
+      result.cards.map((c) => c.name),
+      ["Spider-Woman, Stunning Savior", "Spider-Woman, Stunning Savior", "Lightning Bolt"]
+    );
+    assert.deepEqual(result.unresolvedNames, ["Not A Real Card Name"]);
   }
 );
