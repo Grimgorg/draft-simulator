@@ -9,9 +9,10 @@ import { getDb } from "./db/database.js";
 import { countCards, getLastImportedAt } from "./cardData/cardRepository.js";
 import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
 import { ensureImageDir, serveCardBackImage, serveCardImage } from "./images/imageCache.js";
-import { resolveClientDist } from "./packaged/seaRuntime.js";
+import { resolveClientDist, resolveEnvFilePath } from "./packaged/seaRuntime.js";
 import { requireLobbyPassword } from "./realtime/lobbyPassword.js";
 import { registerSocketHandlers } from "./realtime/socketHandlers.js";
+import { buildPortInUseMessage, buildStartupBanner } from "./startupBanner.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
 
@@ -68,8 +69,21 @@ async function main(): Promise<void> {
   io.use(requireLobbyPassword(process.env.LOBBY_PASSWORD));
   registerSocketHandlers(io);
 
+  // Without a listener, a busy port is an uncaught error and a bare stack
+  // trace — and the host's first guess should be a second copy still running.
+  httpServer.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(buildPortInUseMessage(PORT, resolveEnvFilePath()));
+    } else {
+      console.error("Draft Simulator server error:", err);
+    }
+    process.exit(1);
+  });
+
   httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Draft Simulator server listening on http://0.0.0.0:${PORT}`);
+    console.log(
+      buildStartupBanner({ port: PORT, lobbyPassword: process.env.LOBBY_PASSWORD, envFilePath: resolveEnvFilePath() }),
+    );
   });
 }
 

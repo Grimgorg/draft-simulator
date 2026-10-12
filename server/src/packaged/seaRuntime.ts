@@ -16,3 +16,8 @@ export function resolveDataDir(): string {
 export function resolveClientDist(): string {
   return path.join(import.meta.dirname, "../../../client/dist");
 }
+
+/** The .env the host edits to change settings: next to the executable, or server/.env for `npm start`. */
+export function resolveEnvFilePath(): string {
+  return isPackaged ? path.join(path.dirname(process.execPath), ".env") : path.resolve(".env");
+}
