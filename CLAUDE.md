@@ -6,7 +6,7 @@ Self-hosted Magic: The Gathering cube draft simulator for a small group of frien
 
 ## Commands
 
-This is an npm workspaces monorepo (`shared`, `server`, `client`) that needs Node 20.11+. There is no root `test`, `lint` or `typecheck` script; run the workspace scripts below.
+This is an npm workspaces monorepo (`shared`, `server`, `client`) that needs Node 20.11+. The root has a `test` script; there is no root `lint` or `typecheck` script, so run the workspace scripts below.
 
 **Setup / run**
 ```bash
@@ -18,8 +18,9 @@ npm run dev:client         # Vite on :5173, pointed at :4000 by client/.env.deve
 
 **Test** (server only; the client has no tests and there are no browser E2E tests)
 ```bash
-# all tests, from the repo root: unit + socket integration
-npm test --workspace server
+# all tests, from the repo root: builds shared, then runs unit + socket integration
+npm test
+npm test --workspace server   # the same, without rebuilding shared
 
 # from server/ — by type (quoted globs need Node 21+)
 node --import tsx --test "src/{draftEngine,session,cardData,cubeImport}/*.test.ts"  # unit: engine, lobby, snapshot, card import
