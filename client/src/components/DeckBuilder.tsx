@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Card } from "@draft-simulator/shared";
-import { countCardCopies, formatDecklistText } from "@draft-simulator/shared";
 import {
   resolveInitialDeckState,
   type DeckState,
@@ -10,6 +9,7 @@ import {
 } from "../deckBuilderState.js";
 import { buildDeckStateKey, buildDraftPilesKey, storeDeckState } from "../pileStorage.js";
 import { CardPile } from "./CardPile.js";
+import { DecklistExport } from "./DecklistExport.js";
 
 interface DeckBuilderProps {
   pool: Card[];
@@ -24,16 +24,6 @@ interface DeckBuilderProps {
 
 const DECK_TARGET = 40;
 
-function downloadTextFile(filename: string, text: string): void {
-  const blob = new Blob([text], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
 export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerId }: DeckBuilderProps) {
   const deckKey = sessionId ? buildDeckStateKey(sessionId, myPlayerId) : null;
   const draftKey = sessionId ? buildDraftPilesKey(sessionId, myPlayerId) : null;
@@ -46,7 +36,6 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
 
   const [deck, setDeck] = useState<DeckState>(initial.deck);
   const [addedBasics, setAddedBasics] = useState<Instance[]>(initial.addedBasics);
-  const [exportMode, setExportMode] = useState<"deck" | "pool">("deck");
 
   const nextPileId = useRef(initial.nextPileId);
   const nextBasicId = useRef(initial.nextBasicId);
@@ -174,10 +163,6 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
   }
 
   const mainCards = deck.mainPiles.flatMap((p) => resolveInstances(p.cards).map((inst) => inst.card));
-  const deckExportText = useMemo(() => formatDecklistText(countCardCopies(mainCards)), [mainCards]);
-  const poolExportText = useMemo(() => formatDecklistText(countCardCopies(pool)), [pool]);
-  const exportText = exportMode === "deck" ? deckExportText : poolExportText;
-  const exportFilenameSuffix = exportMode === "deck" ? "deck" : "pool";
 
   return (
     <>
@@ -219,29 +204,7 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
         </div>
       </div>
 
-      <h2>Export</h2>
-      <div className="export-mode-row">
-        <button
-          type="button"
-          className={exportMode === "deck" ? "active" : ""}
-          onClick={() => setExportMode("deck")}
-        >
-          Deck ({mainCards.length})
-        </button>
-        <button
-          type="button"
-          className={exportMode === "pool" ? "active" : ""}
-          onClick={() => setExportMode("pool")}
-        >
-          Whole pool ({pool.length})
-        </button>
-      </div>
-      <textarea className="export-text" readOnly value={exportText} rows={12} />
-      <div className="form-row">
-        <button type="button" onClick={() => downloadTextFile(`${playerName}-${exportFilenameSuffix}.txt`, exportText)}>
-          Download .txt
-        </button>
-      </div>
+      <DecklistExport deckCards={mainCards} pool={pool} playerName={playerName} />
     </>
   );
 }
