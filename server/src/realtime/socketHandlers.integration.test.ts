@@ -434,3 +434,48 @@ test(
     }
   }
 );
+
+test(
+  "host-only actions: a guest can't start, cancel or reset, and status checks run before the host check",
+  { timeout: 30_000 },
+  async () => {
+    // Network-free, like the round-advance test above.
+    lobbyManager.resetForTests(freshSnapshotPath());
+    const { host } = lobbyManager.createLobbyFromResolvedCube(
+      "Alice",
+      "Test Cube",
+      ["c1", "c2", "c3", "c4"].map(testCard),
+      [],
+      { cubeId: "test", packCount: 1, packSize: 2, playerCount: 2, alternatingDraft: true }
+    );
+
+    const server = await startTestServer();
+    const hostSocket = await connect(server.url);
+    const guestSocket = await connect(server.url);
+
+    try {
+      await new Promise<any>((resolve) => hostSocket.emit("lobby:reconnect", { playerId: host.id }, resolve));
+      await new Promise<any>((resolve) => guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve));
+
+      const guestStart = await new Promise<any>((resolve) => guestSocket.emit("draft:start", resolve));
+      assert.deepEqual(guestStart, { ok: false, error: "Only the host can start the draft" });
+
+      const guestCancel = await new Promise<any>((resolve) => guestSocket.emit("draft:cancel", resolve));
+      assert.deepEqual(guestCancel, { ok: false, error: "Only the host can cancel the draft" });
+
+      // Reset is only for a completed draft; that check comes first, even for the host.
+      const guestReset = await new Promise<any>((resolve) => guestSocket.emit("lobby:reset", resolve));
+      assert.deepEqual(guestReset, { ok: false, error: "No completed draft to reset" });
+      const hostReset = await new Promise<any>((resolve) => hostSocket.emit("lobby:reset", resolve));
+      assert.deepEqual(hostReset, { ok: false, error: "No completed draft to reset" });
+
+      const hostStart = await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
+      assert.deepEqual(hostStart, { ok: true });
+      assert.equal(lobbyManager.getSession()!.status, "drafting");
+    } finally {
+      hostSocket.close();
+      guestSocket.close();
+      await server.close();
+    }
+  }
+);

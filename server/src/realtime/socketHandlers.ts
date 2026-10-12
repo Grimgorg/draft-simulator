@@ -24,6 +24,13 @@ function bindSocketToPlayer(io: IoServer, socket: IoSocket, playerId: string): v
   playerSockets.set(playerId, socket.id);
 }
 
+/** Throws unless this socket is bound to the current session's host. `action` completes "Only the host can …". */
+function assertHost(socket: IoSocket, action: string): void {
+  const playerId = socketPlayers.get(socket.id);
+  const isHost = lobbyManager.getSession()?.players.find((p) => p.id === playerId)?.isHost === true;
+  if (!isHost) throw new Error(`Only the host can ${action}`);
+}
+
 function broadcastLobbyState(io: IoServer): void {
   io.emit("lobby:state", buildLobbyStateView());
 }
@@ -123,10 +130,7 @@ export function registerSocketHandlers(io: IoServer): void {
 
     socket.on("draft:start", (callback) => {
       try {
-        const playerId = socketPlayers.get(socket.id);
-        const session = lobbyManager.getSession();
-        const isHost = session?.players.find((p) => p.id === playerId)?.isHost === true;
-        if (!isHost) throw new Error("Only the host can start the draft");
+        assertHost(socket, "start the draft");
 
         lobbyManager.beginDraft();
         callback({ ok: true });
@@ -140,11 +144,9 @@ export function registerSocketHandlers(io: IoServer): void {
 
     socket.on("draft:cancel", (callback) => {
       try {
-        const playerId = socketPlayers.get(socket.id);
         const session = lobbyManager.getSession();
         if (!session || session.status === "complete") throw new Error("No draft in progress to cancel");
-        const isHost = session.players.find((p) => p.id === playerId)?.isHost === true;
-        if (!isHost) throw new Error("Only the host can cancel the draft");
+        assertHost(socket, "cancel the draft");
 
         lobbyManager.cancelDraft();
         callback({ ok: true });
@@ -156,11 +158,9 @@ export function registerSocketHandlers(io: IoServer): void {
 
     socket.on("lobby:reset", (callback) => {
       try {
-        const playerId = socketPlayers.get(socket.id);
         const session = lobbyManager.getSession();
         if (!session || session.status !== "complete") throw new Error("No completed draft to reset");
-        const isHost = session.players.find((p) => p.id === playerId)?.isHost === true;
-        if (!isHost) throw new Error("Only the host can reset the draft");
+        assertHost(socket, "reset the draft");
 
         lobbyManager.cancelDraft();
         callback({ ok: true });
