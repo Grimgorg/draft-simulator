@@ -19,11 +19,3 @@ export function storePassword(password: string): void {
     // ignore
   }
 }
-
-export function clearStoredPassword(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}

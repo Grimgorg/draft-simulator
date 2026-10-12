@@ -12,10 +12,3 @@ export interface Card {
   /** Set only for double-faced cards (transform, modal DFC, etc.) — the back face's image path. */
   backImageUrl?: string;
 }
-
-/** One card entry as it appears in an imported CubeCobra cube list. */
-export interface CubeCard {
-  name: string;
-  /** Set when the name couldn't be resolved against the local card cache or Scryfall. */
-  unresolved?: boolean;
-}

@@ -23,7 +23,7 @@ npm test --workspace server
 node --import tsx --test src/draftEngine/draftEngine.test.ts
 node --import tsx --test --test-name-pattern "enforces capacity" src/session/lobbyManager.test.ts
 ```
-`socketHandlers.integration.test.ts` needs internet access (it imports a real CubeCobra cube) and a populated `server/data/cards.sqlite3`. Every other test runs without the network.
+In `socketHandlers.integration.test.ts`, the first three tests need internet access (they import a real CubeCobra cube) and a populated `server/data/cards.sqlite3`. The "round advance" test in that file and every other test run without the network.
 
 **Type-check & lint**
 ```bash
@@ -98,7 +98,7 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 
 ## Before finishing a change
 1. If `shared/` changed, run `npm run build:shared`.
-2. Run `npm test --workspace server`. If the integration test can't reach the network, report it as skipped or failed, not as passed.
+2. Run `npm test --workspace server`. If the network-dependent integration tests can't reach the network, report them as skipped or failed, not as passed.
 3. Run `npm run build --workspace server`, then `npm run lint --workspace client` and `npm run build --workspace client`.
 4. For UI or realtime changes, run `dev:server` and `dev:client` and try the flow in two browser sessions (host and player).
 5. Review `git diff`. Look for unintended behavior changes, removed guard comments, and stray files under `server/data/` or `dist/`.

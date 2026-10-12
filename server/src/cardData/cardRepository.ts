@@ -68,11 +68,6 @@ function findRow(name: string): CardRow | undefined {
   return (statement(BY_EXACT_NAME).get(lower) ?? statement(BY_FRONT_NAME).get(lower)) as CardRow | undefined;
 }
 
-export function findCardByName(name: string): Card | undefined {
-  const row = findRow(name);
-  return row ? rowToCard(row) : undefined;
-}
-
 /** Resolves a batch of card names against the local cache. Names with no match are simply absent from the result. */
 export function findCardsByNames(names: string[]): Map<string, Card> {
   const result = new Map<string, Card>();
