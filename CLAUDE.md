@@ -11,81 +11,127 @@ Self-hosted Magic: The Gathering cube draft simulator for a small group of frien
 
 ## Commands
 
-- Install: `npm install`, plus `npx --workspace e2e playwright install chromium` once per machine (on Linux add `--with-deps`)
-- Run: `npm start` (builds shared → server → client, serves everything on :4000). Dev: `npm run dev:server` (tsx watch, :4000) and `npm run dev:client` (Vite, :5173, pointed at :4000 by `client/.env.development`)
-- Test all / single: `npm test` (builds shared, then server unit + socket integration; `npm test --workspace server` skips the shared build) and `npm run test:e2e` (builds everything, runs the browser tests) / from `server/`: `node --import tsx --test src/draftEngine/draftEngine.test.ts`, or add `--test-name-pattern "enforces capacity"` for one test
-- Lint / typecheck / format: `npm run lint --workspace client` (the server has no linter) / `npm run typecheck --workspace server`, `npm run typecheck --workspace e2e`, `npm run build --workspace server`, `npm run build --workspace client` / no formatter: double quotes, semicolons, lines up to about 120 characters
-- Shared contract: `npm run build:shared` (emits `shared/dist`)
-- Card cache: `npm run import-cards --workspace server` forces a Scryfall refresh
-
-There is no root `lint` or `typecheck` script. More test commands, from `server/`:
 ```bash
-node --import tsx --test "src/{draftEngine,session,cardData,cubeImport}/*.test.ts"  # unit
-node --import tsx --test "src/realtime/*.test.ts"                                   # socket integration: real Socket.IO server + clients
-# everything except the three tests that need the network
-node --import tsx --test --test-skip-pattern "^(full draft over real sockets|reconnect: |rejoin mid-draft)"
-```
-Browser tests: `npm run test:e2e:ui` (Playwright UI mode, step through each test's trace), `npm run test:e2e:slow` (headed with slowMo to watch a draft live, `playwright.slow.config.ts`), and from `e2e/`: `npx playwright show-trace test-results/<test>/trace.zip` to replay a failed run.
+npm install
+npx --workspace e2e playwright install chromium   # once per machine (Linux: add --with-deps)
 
-Before finishing a change:
-1. If `shared/` changed, run `npm run build:shared`.
-2. `npm test --workspace server`.
-3. `npm run build --workspace server`, `npm run typecheck --workspace server`, `npm run lint --workspace client`, `npm run build --workspace client`.
-4. For UI or realtime changes, `npm run test:e2e`; for flows the two browser tests don't cover, run `dev:server` + `dev:client` and try it in two browser sessions (host and player).
-5. Review `git diff` for unintended behavior changes, removed guard comments, and stray files under `server/data/` or `dist/`.
+npm start                 # build everything, serve on :4000
+npm run dev:server        # server with reload, :4000
+npm run dev:client        # client with reload, :5173 (talks to :4000)
+npm run build:shared      # after changing shared/src
+npm run import-cards --workspace server   # force a Scryfall card-cache refresh
+```
+
+**Tests and checks.** There are no root `lint` or `typecheck` scripts; use these.
+```bash
+npm test                               # server unit + socket integration tests
+npm run test:e2e                       # browser tests (test:e2e:ui / test:e2e:slow to watch them)
+npm run typecheck --workspace server   # also type-checks the server tests
+npm run typecheck --workspace e2e
+npm run lint --workspace client        # the server has no linter
+npm run build --workspace server
+npm run build --workspace client
+```
+
+**Single or offline tests**, from `server/`:
+```bash
+node --import tsx --test src/draftEngine/draftEngine.test.ts                                        # one file
+node --import tsx --test --test-name-pattern "enforces capacity" src/session/lobbyManager.test.ts   # one test
+node --import tsx --test --test-skip-pattern "^(full draft over real sockets|reconnect: |rejoin mid-draft)"   # all but the network tests
+```
+A failed browser test leaves a trace: `npx playwright show-trace test-results/<test>/trace.zip` (from `e2e/`).
+
+**Before finishing a change:**
+1. `npm run build:shared` if `shared/` changed.
+2. `npm test`, both typechecks, the client lint, and both builds.
+3. UI or realtime change: `npm run test:e2e`. For flows it doesn't cover, run both dev servers and try it as host and player in two browsers.
+4. Check `git diff` for removed guard comments and stray files in `server/data/` or `dist/`.
 
 ## Layout
 
-The server is a single process that runs **one draft at a time**: one in-memory `DraftSession`, no rooms or per-draft routing, and every socket receives every `lobby:state` broadcast.
+One server process runs **one draft at a time**: a single in-memory `DraftSession`, no rooms, and every socket receives every `lobby:state` broadcast.
 
-- `shared/src/` is the wire contract. `events.ts` types `ClientToServerEvents` / `ServerToClientEvents` (both ends of Socket.IO use them); client actions ack with `ActionResult` (`{ok:true,...} | {ok:false,error}`). `draft.ts` defines `DraftState`, the full persisted draft; `lobbyView.ts` defines `LobbyStateView`, its public projection.
-- `server/src/`
-  - `draftEngine/`: pure, synchronous state machine (deal, `submitPick`, rotate packs by `passDirection`, advance rounds). Mutates `DraftSession` in place by design; `DraftSession` adds a server-only `packQueue[round][seat]` to `DraftState`.
-  - `session/`: `lobbyManager.ts` owns module-level state, validates actions and saves a snapshot after every mutation via `snapshotStore.ts`. The store is shape-agnostic: temp file, fsync, rename, with retries for Windows file locks; a corrupt snapshot is kept as `.corrupt.<ts>`. `lobbyStateView.ts` and `deckExport.ts` build outgoing views.
-  - `realtime/`: `socketHandlers.ts` maps sockets to player ids (the server decides who is picking), enforces host-only actions and controls broadcast order; rejoining as an already-connected player evicts the old socket with `identity:evicted`. `lobbyPassword.ts` is the optional `LOBBY_PASSWORD` middleware, rejecting with the `"invalid_password"` marker the client checks for.
-  - `cardData/` + `db/`: SQLite cache of Scryfall bulk data. Downloads on startup: blocking when empty, in the background when stale.
-  - `cubeImport/`: fetches CubeCobra cube JSON from `CUBECOBRA_BASE_URL` (default `https://cubecobra.com`) and resolves names against the local DB. Keeps duplicates, reports names it can't find.
-  - `images/`: `/images/:scryfallId` disk-cached proxy, so clients never call Scryfall.
-  - `index.ts`: Express + Socket.IO bootstrap. Installs the password middleware, serves `client/dist` when built, and a global `unhandledRejection` backstop.
-- `client/src/`
-  - `socket.ts`: module-level socket singleton with `autoConnect: false`.
-  - `useDraftConnection.ts`: all server-driven state and the reconnect flow (a stored playerId triggers `lobby:reconnect` on every connect).
-  - `App.tsx`: screen state machine keyed on `lobbyState.status` (`empty → lobby → drafting → complete`) and whether this browser holds a seat.
-  - `components/`: PascalCase `.tsx` React components.
-- `e2e/`: Playwright tests that drive the production build (server serving the built client) in Chromium, one browser context per player. Each test gets its own server process, snapshot file, port and local CubeCobra stand-in.
-- `server/data/` (gitignored): runtime data: card DB, image cache, `draft-session.json` snapshot.
+```
+shared/src/               wire contract: socket event types (events.ts), DraftState, LobbyStateView
+server/src/
+  draftEngine/            draft rules: deal, pick, pass packs, advance rounds
+  session/                lobbyManager (owns the state), snapshotStore (saves it), outgoing views
+  realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware
+  cardData/, db/          SQLite cache of Scryfall card data, downloaded on startup
+  cubeImport/             CubeCobra import (host set by CUBECOBRA_BASE_URL)
+  images/                 /images/:scryfallId proxy, so clients never call Scryfall
+  index.ts                Express + Socket.IO startup
+client/src/
+  socket.ts               the one socket connection
+  useDraftConnection.ts   all server state + reconnect flow
+  App.tsx                 picks the screen: empty → lobby → drafting → complete
+  components/             React components
+e2e/                      Playwright tests against the production build
+server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
+```
 
 ## Conventions
 
-- **Module boundaries**
-  - `shared` has no internal dependencies. `server` and `client` depend on `shared`, **never on each other**. `e2e` depends on no workspace; it uses only the browser and HTTP.
-  - `draftEngine` imports only `shared` and its own `packGenerator`; no I/O, persistence or networking.
-  - Only `lobbyManager` holds session state, calls engine mutators, and saves the snapshot (via `snapshotStore`).
-  - Only `socketHandlers` emits socket events. `lobby:state` is public and must never carry packs or pools; `draft:myState` and `draft:complete` go only to the owning player's socket.
-  - Only `useDraftConnection` subscribes to socket events on the client. Components emit through the `socket` singleton and receive state as props.
-- **Layers**: rules in `draftEngine`, state in `lobbyManager`, file persistence in `snapshotStore`, transport and ordering in `socketHandlers`. `submitPick` returns a `PickOutcome`; branch on it rather than re-deriving round state from `waitingOn`.
-- **Errors**: socket handlers report failures through the `ActionResult` callback. Nothing in a handler, including `disconnect`, may throw: an uncaught error takes down every player's draft. `saveSnapshot()` never throws, because in-memory state is the source of truth; a failed write is retried in the background with the latest state.
-- **Naming**: modules are camelCase `.ts` grouped by concern; components PascalCase `.tsx`. Named exports only (`App.tsx` is the only default export). Props use an `XxxProps` interface. Builders of outgoing views or keys use `build*` (`buildLobbyStateView`, `buildDeckExports`, `buildDraftPilesKey`). Socket events are `namespace:action` (`lobby:*`, `draft:*`, `cube:*`, `identity:*`). Relative imports use a `.js` extension, even from `.ts`/`.tsx`.
-- **Comments** explain *why*, usually a past failure (a stuck draft, a crash, a stale pack). Keep those comments and the guards they describe, and write new ones the same way.
-- **Helpers**: prefer small named functions and existing helpers (e.g. `ConfirmButton`, never `window.confirm`, which blocks socket reconnects).
-- **Tests** sit next to the code as `*.test.ts` and use the existing seams: `testCard`/`testPack` (`draftEngine/testHelpers.ts`), `beginDraftWithPacks` (skips random packs), `createLobbyFromResolvedCube` (skips the network), `resetForTests(tmpPath)` (isolates snapshot state), `reloadFromSnapshotForTests()` (simulates a restart). Mock `fetch` with `t.mock.method(globalThis, "fetch", …)` to test CubeCobra imports offline.
-- **Refactoring**: one concern per change; keep refactors separate from behavior changes. Before restructuring `draftEngine` or `lobbyManager`, add tests that cover current behavior.
+**Who does what.** Each job has exactly one owner:
+- `draftEngine`: the draft rules. Imports only `shared`, does no I/O, and mutates the session in place by design. `submitPick` returns a `PickOutcome`; branch on it instead of re-deriving round state from `waitingOn`.
+- `lobbyManager`: the only holder of session state and the only caller of engine mutators. Saves a snapshot after every change.
+- `socketHandlers`: the only code that emits socket events. The server, not the client, decides who is picking.
+- `useDraftConnection`: the only client code that listens to socket events. Components send through the `socket` singleton and get state as props.
+- Dependencies: `server` and `client` use `shared` but **never each other**. `e2e` uses only the browser and HTTP.
+
+**Privacy.** `lobby:state` goes to everyone, so it must never carry packs or pools. `draft:myState` and `draft:complete` go only to the owning player's socket.
+
+**Errors.**
+- Socket handlers report failures through the ack callback (`ActionResult`: `{ok:true,...}` or `{ok:false,error}`). They must never throw, including `disconnect`: one uncaught error ends every player's draft.
+- `saveSnapshot()` never throws: the in-memory state is the source of truth, and a failed write retries in the background.
+
+**Code style.**
+- Files: camelCase `.ts` modules grouped by folder, PascalCase `.tsx` components.
+- Named exports only (`App.tsx` is the one default export). Component props use an `XxxProps` interface.
+- Functions that build outgoing views or keys start with `build` (`buildLobbyStateView`).
+- Socket events are named `namespace:action` (`lobby:*`, `draft:*`, `cube:*`, `identity:*`).
+- Relative imports end in `.js`, even in `.ts`/`.tsx` files.
+- No formatter: double quotes, semicolons, lines up to about 120 characters.
+- Comments explain *why*, usually a past failure (a stuck draft, a crash). Keep them and the guards they describe.
+
+**Tests.** `node:test` + `node:assert/strict`, next to the code as `*.test.ts`. Use the existing helpers:
+
+| Helper | Use it to |
+|---|---|
+| `testCard`, `testPack` (`draftEngine/testHelpers.ts`) | build cards and packs |
+| `beginDraftWithPacks` | start a draft with fixed instead of random packs |
+| `createLobbyFromResolvedCube` | create a lobby without the network |
+| `resetForTests(tmpPath)` | give a test its own snapshot file |
+| `reloadFromSnapshotForTests()` | simulate a server restart |
+| `t.mock.method(globalThis, "fetch", …)` | fake CubeCobra responses |
+
+Before restructuring `draftEngine` or `lobbyManager`, add tests for the current behavior. Keep refactors and behavior changes in separate commits.
 
 ## Gotchas
 
-- Node 22.18 is the floor because `npm test` passes no files to `node --test` and relies on Node finding `.ts` tests itself, which needs type stripping on by default. On older Node it reports 0 tests and exits 0, so check the test count, not just the exit code.
-- `@draft-simulator/shared` resolves to `shared/dist`. Run `npm run build:shared` whenever `shared/src` changed or `dist` is missing, or the server and client won't see the change.
-- Test files (`*.test.ts`, `testHelpers.ts`) are excluded from the server build and tsx doesn't type-check, so only `npm run typecheck --workspace server` (via `server/tsconfig.typecheck.json`) checks them.
-- The first three tests in `socketHandlers.integration.test.ts` need internet (they import a real CubeCobra cube) and a populated `server/data/cards.sqlite3`. The skip pattern above matches their names; update it if you rename them. If they can't reach the network, report them as skipped or failed, not passed. The last `cubeCobraImporter.test.ts` test is skipped when the card cache is empty.
-- The e2e tests need no network for the cube but do need a populated `server/data/cards.sqlite3`. Card images still load from Scryfall through the proxy; tests pass without them.
-- The client has no unit tests. Split large components (`DeckBuilder.tsx`, `DraftBoard.tsx`) one step at a time, checking each step in the browser.
-- `socket.ts` must stay `autoConnect: false`: `useDraftConnection` connects only after attaching listeners, so the first `connect` and `lobby:state` can't be missed.
-- Read the comments in the `draft:pick` handler before reordering emits in `socketHandlers`: packs must go out before the lobby state that says it's the player's turn.
-- Compatibility boundaries; change them deliberately, never as a side effect:
-  - **Snapshot**: `server/data/draft-session.json` (override with `DRAFT_SNAPSHOT_PATH`) is the JSON of `LobbyManagerState`, including `DraftSession`. Shape changes break reloading a draft in progress across a server restart. Deleting the file resets a stuck draft.
-  - **Card DB**: `server/data/cards.sqlite3`. Schema changes go in `getDb()` (`db/database.ts`) as additive in-place migrations: check `PRAGMA table_info`, then `ALTER TABLE`.
-  - **Socket events**: a change to `shared/src/events.ts` must land in server and client in the same change.
-  - **Browser storage**: renaming a `localStorage` key in `pileStorage.ts`, `playerIdentity.ts` or `lobbyPassword.ts` loses saved player state.
+**Build and tests**
+- The server and client read `shared/dist`, not `shared/src`. After changing `shared/src`, run `npm run build:shared` or they won't see it.
+- Only `npm run typecheck --workspace server` type-checks the server tests: the build skips them and tsx doesn't type-check.
+- Node below 22.18 doesn't find the `.ts` test files: `npm test` reports 0 tests and still exits 0. Check the test count.
+- The first three tests in `socketHandlers.integration.test.ts` import a real cube from CubeCobra, so they need internet. The offline skip pattern above matches their names; update it if you rename them. If they can't run, report them as skipped or failed, never passed.
+- Those three tests and the browser tests need the card cache (`server/data/cards.sqlite3`). The last test in `cubeCobraImporter.test.ts` skips itself without it.
+- The client has no unit tests. Split big components (`DeckBuilder.tsx`, `DraftBoard.tsx`) in small steps and check each one in the browser.
+
+**Realtime**
+- Send a player's pack before the lobby state that says it's their turn. Read the comments in the `draft:pick` handler before reordering emits.
+- `socket.ts` must stay `autoConnect: false`: `useDraftConnection` connects only after attaching its listeners, so the first `lobby:state` isn't missed.
+- Use `ConfirmButton`, never `window.confirm`: the browser dialog blocks socket reconnects.
+
+**Compatibility boundaries.** Change these only on purpose:
+
+| What | Breaks if changed carelessly |
+|---|---|
+| Snapshot shape (`server/data/draft-session.json`, path set by `DRAFT_SNAPSHOT_PATH`) | resuming a running draft after a server restart |
+| Card DB schema (`server/data/cards.sqlite3`) | existing caches. Only additive migrations, in `getDb()` (`db/database.ts`): check `PRAGMA table_info`, then `ALTER TABLE` |
+| Socket events (`shared/src/events.ts`) | server and client talking. Change both in the same commit |
+| `localStorage` keys (`pileStorage.ts`, `playerIdentity.ts`, `lobbyPassword.ts`) | players' saved identity (their seat), piles, deck state and lobby password |
+
+To reset a stuck draft, delete `server/data/draft-session.json`.
 
 ## Principles
 
