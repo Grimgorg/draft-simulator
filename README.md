@@ -140,4 +140,4 @@ That runs the tests first, then builds and smoke-tests the executable on Linux, 
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE.md). Anyone may use, change and share this code for any noncommercial purpose, such as personal use, a hobby project, research or teaching. Commercial use is not allowed without the author's permission.
+[MIT](LICENSE). Anyone may use, change and share this code, including commercially, as long as they keep the copyright notice.
