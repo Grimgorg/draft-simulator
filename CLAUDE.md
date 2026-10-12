@@ -1,6 +1,6 @@
 ## Project
 
-Self-hosted Magic: The Gathering cube draft simulator for a small group of friends: one host runs the server and imports a CubeCobra cube, and players join from a browser. README.md covers user-facing setup, configuration (`PORT`, `LOBBY_PASSWORD`, `CARD_CACHE_MAX_AGE_DAYS`) and draft flow.
+Self-hosted Magic: The Gathering cube draft simulator for a small group of friends: one host runs the server and imports a CubeCobra cube, and players join from a browser. README.md covers user-facing setup, the downloadable executables, configuration (`PORT`, `LOBBY_PASSWORD`, `CARD_CACHE_MAX_AGE_DAYS`), releasing and draft flow.
 
 ## Stack
 
@@ -8,6 +8,7 @@ Self-hosted Magic: The Gathering cube draft simulator for a small group of frien
 - Server: Express 4 + Socket.IO 4, better-sqlite3 (Scryfall card cache), run with tsx in dev.
 - Client: React 19 + Vite, socket.io-client. Lint with oxlint.
 - Tests: `node:test` + `node:assert/strict` via tsx (server); Playwright with Chromium (e2e).
+- Executables: esbuild bundles the server to CommonJS; postject injects it into a copy of the Node binary (Node SEA). CI: GitHub Actions.
 
 ## Commands
 
@@ -20,6 +21,8 @@ npm run dev:server        # server with reload, :4000
 npm run dev:client        # client with reload, :5173 (talks to :4000)
 npm run build:shared      # after changing shared/src
 npm run import-cards --workspace server   # force a Scryfall card-cache refresh
+npm run build:exe         # single executable for this platform → release/
+npm run smoke-test-exe --workspace server -- <executable> server/data/cards.sqlite3
 ```
 
 **Tests and checks.** There are no root `lint` or `typecheck` scripts; use these.
@@ -45,6 +48,7 @@ A failed browser test leaves a trace: `npx playwright show-trace test-results/<t
 1. `npm run build:shared` if `shared/` changed.
 2. `npm test`, both typechecks, the client lint, and both builds.
 3. UI or realtime change: `npm run test:e2e`. For flows it doesn't cover, run both dev servers and try it as host and player in two browsers.
+   Change to startup, paths, settings or dependencies: also `npm run build:exe` and the smoke test.
 4. Check `git diff` for removed guard comments and stray files in `server/data/` or `dist/`.
 
 ## Layout
@@ -54,13 +58,15 @@ One server process runs **one draft at a time**: a single in-memory `DraftSessio
 ```
 shared/src/               wire contract: socket event types (events.ts), DraftState, LobbyStateView
 server/src/
+  index.ts                Express + Socket.IO startup; startupBanner.ts prints the port and password
+  packaged/               executable-only runtime: data dir and .env next to it, embedded client and SQLite addon
   draftEngine/            draft rules: deal, pick, pass packs, advance rounds
   session/                lobbyManager (owns the state), snapshotStore (saves it), outgoing views
   realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware
   cardData/, db/          SQLite cache of Scryfall card data, downloaded on startup
   cubeImport/             CubeCobra import (host set by CUBECOBRA_BASE_URL)
   images/                 /images/:scryfallId proxy, so clients never call Scryfall
-  index.ts                Express + Socket.IO startup
+server/scripts/           buildExecutable.ts, smokeTestExecutable.ts (run with tsx, type-checked by the server typecheck)
 client/src/
   socket.ts               the one socket connection
   useDraftConnection.ts   all server state + reconnect flow
@@ -68,6 +74,8 @@ client/src/
   components/             React components
 e2e/                      Playwright tests against the production build
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
+release/                  built executables, gitignored
+.github/workflows/ci.yml  tests on push to main and PRs; v* tags also build, smoke-test and release the executables
 ```
 
 ## Conventions
@@ -117,6 +125,13 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 - Those three tests and the browser tests need the card cache (`server/data/cards.sqlite3`). The last test in `cubeCobraImporter.test.ts` skips itself without it.
 - The client has no unit tests. Split big components (`DeckBuilder.tsx`, `DraftBoard.tsx`) in small steps and check each one in the browser.
 
+**Executable** (the server runs as a CommonJS bundle inside a Node binary)
+- No top-level await in server code: the bundle is CommonJS. Startup lives in `main()` in `index.ts`.
+- Never use `import.meta.dirname` directly: it's undefined in the bundle. Resolve paths through `packaged/seaRuntime.ts`, which only reads it when not packaged.
+- `import "./packaged/loadEnvFile.js"` must stay the first import in `index.ts`: other modules read settings as they load.
+- The executable's `require()` only loads built-in modules. A new native addon or runtime file must be embedded as an asset in `buildExecutable.ts` and loaded from there.
+- When packaged, the data dir and `.env` are next to the executable, not in `server/`.
+
 **Realtime**
 - Send a player's pack before the lobby state that says it's their turn. Read the comments in the `draft:pick` handler before reordering emits.
 - `socket.ts` must stay `autoConnect: false`: `useDraftConnection` connects only after attaching its listeners, so the first `lobby:state` isn't missed.
@@ -129,6 +144,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 | Snapshot shape (`server/data/draft-session.json`, path set by `DRAFT_SNAPSHOT_PATH`) | resuming a running draft after a server restart |
 | Card DB schema (`server/data/cards.sqlite3`) | existing caches. Only additive migrations, in `getDb()` (`db/database.ts`): check `PRAGMA table_info`, then `ALTER TABLE` |
 | Socket events (`shared/src/events.ts`) | server and client talking. Change both in the same commit |
+| Executable layout (`data/` and `.env` next to the executable, asset names in `buildExecutable.ts`) | hosts' existing data and settings after updating the executable |
 | `localStorage` keys (`pileStorage.ts`, `playerIdentity.ts`, `lobbyPassword.ts`) | players' saved identity (their seat), piles, deck state and lobby password |
 
 To reset a stuck draft, delete `server/data/draft-session.json`.
