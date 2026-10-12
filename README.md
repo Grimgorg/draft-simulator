@@ -2,6 +2,8 @@
 
 A self-hosted Magic: The Gathering cube draft simulator for a small group of friends. One person runs the server on their PC, imports a cube from [CubeCobra](https://cubecobra.com), and everyone else joins over the browser to draft together — packs, pass-direction rotation, live "who's still picking" status, and a decklist export at the end.
 
+Developed with the help of AI coding assistants (Claude Code).
+
 ## Download and run (no Node needed)
 
 Only the host runs the server. Everyone else just opens its address in a browser.
