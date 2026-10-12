@@ -50,7 +50,7 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 
 **`server/src/`**
 - `draftEngine/` is a pure, synchronous state machine: deal, `submitPick`, rotate packs by `passDirection`, advance rounds. It mutates `DraftSession` in place, by design. `DraftSession` adds a server-only `packQueue[round][seat]` to `DraftState`.
-- `session/lobbyManager.ts` owns the module-level state, validates actions, and persists a snapshot after every mutation. The snapshot is written to a temp file, fsynced, then renamed into place, with retries for Windows file locks. `persist()` never throws, because the in-memory state is the source of truth and a failed write is retried in the background. A corrupt snapshot is kept as `.corrupt.<ts>`. `lobbyStateView.ts` and `deckExport.ts` build outgoing views from the session.
+- `session/lobbyManager.ts` owns the module-level state, validates actions, and saves a snapshot after every mutation through `session/snapshotStore.ts`. The store knows nothing about the state's shape. It writes to a temp file, fsyncs, then renames into place, with retries for Windows file locks. `saveSnapshot()` never throws, because the in-memory state is the source of truth; a failed write is retried in the background and writes the latest state. A corrupt snapshot is kept as `.corrupt.<ts>`. `lobbyStateView.ts` and `deckExport.ts` build outgoing views from the session.
 - `realtime/socketHandlers.ts` maps sockets to player ids (the server, not the client, decides who is picking). It enforces host-only actions and controls broadcast order. Rejoining as a player who is already connected evicts the old socket with `identity:evicted`.
 - `cardData/` + `db/` hold the SQLite (better-sqlite3) cache of Scryfall bulk data. It downloads automatically on startup: blocking when empty, in the background when stale.
 - `cubeImport/` fetches CubeCobra cube JSON and resolves names against the local DB. Duplicate cards are kept, and names it can't find are reported.
@@ -65,7 +65,7 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 ### Module boundaries
 - `shared` has no internal dependencies. `server` and `client` depend on `shared`, and **never on each other**.
 - `draftEngine` imports only `shared` and its own `packGenerator`; it does no I/O, persistence or networking.
-- Only `lobbyManager` holds session state, calls engine mutators, and writes the snapshot.
+- Only `lobbyManager` holds session state, calls engine mutators, and saves the snapshot (via `snapshotStore`).
 - Only `socketHandlers` emits socket events. `lobby:state` is public and must never carry packs or pools. `draft:myState` and `draft:complete` go only to the owning player's socket.
 - Only `useDraftConnection` subscribes to socket events on the client. Components emit through the `socket` singleton and receive state as props.
 
@@ -85,7 +85,7 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 - Tests use `node:test` and `node:assert/strict`, sit next to the code as `*.test.ts`, and use the existing seams: `testCard`/`testPack` (`draftEngine/testHelpers.ts`), `beginDraftWithPacks` (skips random packs), `createLobbyFromResolvedCube` (skips the network), and `resetForTests(tmpPath)` (isolates snapshot state).
 
 ## Writing maintainable code here
-- Keep each layer to its job. Rules live in `draftEngine`, state and persistence in `lobbyManager`, and transport and ordering in `socketHandlers`.
+- Keep each layer to its job. Rules live in `draftEngine`, state in `lobbyManager`, file persistence in `snapshotStore`, and transport and ordering in `socketHandlers`. `submitPick` returns a `PickOutcome`; branch on it rather than re-deriving round state from `waitingOn`.
 - Socket handlers report failures through the `ActionResult` callback. Nothing in a handler, including `disconnect`, may throw: an uncaught error there takes down every player's draft.
 - Comments explain *why*, usually a past failure (a stuck draft, a crash, a stale pack). Keep those comments and the guards they describe. Write new ones the same way, and don't add comments that just restate the code.
 - Prefer small named functions and the existing helpers (e.g. `ConfirmButton` rather than `window.confirm`, which blocks socket reconnects) over new abstractions or dependencies.
