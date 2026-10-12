@@ -137,3 +137,7 @@ That runs the tests first, then builds and smoke-tests the executable on Linux, 
 
 - One draft at a time per server instance — the host has to finish (or the host can start a fresh one from the results screen) before a new one can begin.
 - Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, stop the server and delete `server/data/draft-session.json` (or `data/draft-session.json` next to the executable) to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE.md). Anyone may use, change and share this code for any noncommercial purpose, such as personal use, a hobby project, research or teaching. Commercial use is not allowed without the author's permission.
