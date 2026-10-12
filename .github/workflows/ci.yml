@@ -43,11 +43,12 @@ jobs:
 
       # The socket integration tests, the browser tests and the executable
       # smoke tests resolve cards against the Scryfall card cache. Download
-      # it at most once a week instead of on every run.
+      # it at most once a week instead of on every run. Bump the version after
+      # a card DB schema change, so tests don't run against a cache without it.
       - name: Compute card cache key
         id: card-cache-key
         shell: bash
-        run: echo "key=cards-$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+        run: echo "key=cards-v2-$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
       - name: Restore card cache
         id: card-cache
         uses: actions/cache@v6
