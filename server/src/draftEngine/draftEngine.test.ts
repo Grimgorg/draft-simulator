@@ -203,3 +203,74 @@ test("a pack holding two copies of the same card lets both copies be drafted, on
   assert.deepEqual(session.pools["A"]!.map((c) => c.scryfallId), ["tarn", "b2", "a1"]);
   assert.deepEqual(session.pools["B"]!.map((c) => c.scryfallId), ["b1", "tarn", "b3"]);
 });
+
+test("rejects picks before the draft starts, after it ends, and from anyone not seated", () => {
+  const session = createDraftSession(
+    "draft-closed",
+    { cubeId: "x", packCount: 1, packSize: 1, playerCount: 2, alternatingDraft: true },
+    players.slice(0, 2)
+  );
+  assert.throws(() => submitPick(session, "A", "a1"), /status is "lobby"/);
+
+  beginDraftWithPacks(session, [[testPack("pA", 1, ["a1"]), testPack("pB", 1, ["b1"])]]);
+  assert.throws(() => submitPick(session, "C", "a1"), /not part of this draft/);
+
+  submitPick(session, "A", "a1");
+  submitPick(session, "B", "b1");
+  assert.throws(() => submitPick(session, "A", "b1"), /status is "complete"/);
+});
+
+test("a rejected pick leaves packs, pools, the pick log and the turn untouched", () => {
+  const session = createDraftSession(
+    "draft-rejected",
+    { cubeId: "x", packCount: 1, packSize: 2, playerCount: 2, alternatingDraft: true },
+    players.slice(0, 2)
+  );
+  beginDraftWithPacks(session, [[testPack("pA", 1, ["a1", "a2"]), testPack("pB", 1, ["b1", "b2"])]]);
+  const before = structuredClone(session);
+
+  assert.throws(() => submitPick(session, "A", "b1"), /not in player/);
+
+  assert.deepEqual(session, before);
+});
+
+test("refuses to start unless exactly the configured number of players is seated", () => {
+  const session = createDraftSession(
+    "draft-seats",
+    { cubeId: "x", packCount: 1, packSize: 1, playerCount: 3, alternatingDraft: true },
+    players.slice(0, 2)
+  );
+
+  assert.throws(
+    () => beginDraftWithPacks(session, [[testPack("pA", 1, ["a1"]), testPack("pB", 1, ["b1"])]]),
+    /configured for 3 players but 2 are seated/
+  );
+  assert.equal(session.status, "lobby");
+});
+
+test("logs each pick with the pack and pick number it was made at", () => {
+  const session = createDraftSession(
+    "draft-log",
+    { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3, alternatingDraft: true },
+    players
+  );
+  beginDraftWithPacks(session, seededQueue());
+
+  const picks = [["A", "a1"], ["B", "b1"], ["C", "c1"], ["A", "c2"], ["B", "a2"], ["C", "b2"], ["A", "a3"]] as const;
+  for (const [playerId, card] of picks) {
+    submitPick(session, playerId, card);
+  }
+
+  assert.deepEqual(
+    session.picks.map(({ playerId, packNumber, pickNumber, scryfallId }) => [playerId, packNumber, pickNumber, scryfallId]),
+    [
+      ["A", 1, 1, "a1"],
+      ["B", 1, 1, "b1"],
+      ["C", 1, 1, "c1"],
+      ["A", 1, 2, "c2"],
+      ["B", 1, 2, "a2"],
+      ["C", 1, 2, "b2"],
+      ["A", 2, 1, "a3"],
+    ]
+  );
+});

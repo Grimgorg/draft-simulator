@@ -23,7 +23,7 @@ npm test --workspace server
 node --import tsx --test src/draftEngine/draftEngine.test.ts
 node --import tsx --test --test-name-pattern "enforces capacity" src/session/lobbyManager.test.ts
 ```
-In `socketHandlers.integration.test.ts`, the first three tests need internet access (they import a real CubeCobra cube) and a populated `server/data/cards.sqlite3`. The "round advance" test in that file and every other test run without the network.
+In `socketHandlers.integration.test.ts`, the first three tests need internet access (they import a real CubeCobra cube) and a populated `server/data/cards.sqlite3`. Every later test in that file, and every other test, runs without the network; the last `cubeCobraImporter.test.ts` test is skipped when the card cache is empty.
 
 **Type-check & lint**
 ```bash
@@ -83,7 +83,7 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 - Functions that build outgoing views or keys use the `build*` prefix (`buildLobbyStateView`, `buildDeckExports`, `buildDraftPilesKey`).
 - Socket events are named `namespace:action` (`lobby:*`, `draft:*`, `cube:*`, `identity:*`).
 - Everything is ESM with `NodeNext` resolution, so relative imports use a `.js` extension even from `.ts` and `.tsx` files.
-- Tests use `node:test` and `node:assert/strict`, sit next to the code as `*.test.ts`, and use the existing seams: `testCard`/`testPack` (`draftEngine/testHelpers.ts`), `beginDraftWithPacks` (skips random packs), `createLobbyFromResolvedCube` (skips the network), and `resetForTests(tmpPath)` (isolates snapshot state).
+- Tests use `node:test` and `node:assert/strict`, sit next to the code as `*.test.ts`, and use the existing seams: `testCard`/`testPack` (`draftEngine/testHelpers.ts`), `beginDraftWithPacks` (skips random packs), `createLobbyFromResolvedCube` (skips the network), `resetForTests(tmpPath)` (isolates snapshot state), and `reloadFromSnapshotForTests()` (simulates a restart). Mock `fetch` with `t.mock.method(globalThis, "fetch", …)` to test CubeCobra imports offline.
 
 ## Writing maintainable code here
 - Keep each layer to its job. Rules live in `draftEngine`, state in `lobbyManager`, file persistence in `snapshotStore`, and transport and ordering in `socketHandlers`. `submitPick` returns a `PickOutcome`; branch on it rather than re-deriving round state from `waitingOn`.

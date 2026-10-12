@@ -44,6 +44,11 @@ export function resetForTests(isolatedSnapshotPath: string): void {
   state = { cardPool: [] };
 }
 
+/** Test-only: drops the in-memory state so the next access reloads the snapshot, as a server restart would. */
+export function reloadFromSnapshotForTests(): void {
+  state = undefined;
+}
+
 export function getSession(): DraftSession | undefined {
   return getState().session;
 }
