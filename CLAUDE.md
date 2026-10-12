@@ -29,11 +29,12 @@ In `socketHandlers.integration.test.ts`, the first three tests need internet acc
 ```bash
 npm run build:shared                 # emits shared/dist
 npm run build --workspace server     # tsc -b (emits server/dist)
+npm run typecheck --workspace server # tsc --noEmit over all of server/src, tests included
 npm run build --workspace client     # tsc -b && vite build
 npm run lint --workspace client      # oxlint; the server has no linter
 ```
 - `@draft-simulator/shared` resolves to `shared/dist`. **Run `npm run build:shared` first** whenever `shared/src` changed or `dist` is missing, or the server and client won't see the change.
-- Test files (`*.test.ts`, `testHelpers.ts`) are excluded from the server tsconfig, and tsx doesn't type-check, so **no command type-checks tests**.
+- Test files (`*.test.ts`, `testHelpers.ts`) are excluded from the server build, and tsx doesn't type-check, so **only `npm run typecheck --workspace server` checks them** (via `server/tsconfig.typecheck.json`).
 - There is no formatter config. Match the existing style: double quotes, semicolons, lines up to about 120 characters.
 
 **Data**
@@ -99,7 +100,7 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 ## Before finishing a change
 1. If `shared/` changed, run `npm run build:shared`.
 2. Run `npm test --workspace server`. If the network-dependent integration tests can't reach the network, report them as skipped or failed, not as passed.
-3. Run `npm run build --workspace server`, then `npm run lint --workspace client` and `npm run build --workspace client`.
+3. Run `npm run build --workspace server` and `npm run typecheck --workspace server`, then `npm run lint --workspace client` and `npm run build --workspace client`.
 4. For UI or realtime changes, run `dev:server` and `dev:client` and try the flow in two browser sessions (host and player).
 5. Review `git diff`. Look for unintended behavior changes, removed guard comments, and stray files under `server/data/` or `dist/`.
 6. Report anything that was skipped or could not be verified.

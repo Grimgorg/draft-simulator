@@ -1,0 +1,11 @@
+// tsconfig.json leaves test files out of the emitted build, and tsx strips
+// types without checking them. This config checks all of src, tests
+// included, without emitting anything.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src"],
+  "exclude": []
+}

@@ -58,10 +58,12 @@ function connect(url: string): Promise<DraftClientSocket> {
   });
 }
 
-function waitForEvent<T>(socket: DraftClientSocket, event: "draft:myState" | "draft:complete"): Promise<T> {
-  return new Promise((resolve) => {
-    socket.once(event, (payload: T) => resolve(payload));
-  });
+function waitForMyState(socket: DraftClientSocket): Promise<MyState> {
+  return new Promise((resolve) => socket.once("draft:myState", resolve));
+}
+
+function waitForDeckExport(socket: DraftClientSocket): Promise<DeckExport> {
+  return new Promise((resolve) => socket.once("draft:complete", resolve));
 }
 
 /**
@@ -135,8 +137,8 @@ test(
       assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
       const guestId: string = joinResult.playerId;
 
-      const hostStatePromise = waitForEvent<MyState>(hostSocket, "draft:myState");
-      const guestStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const hostStatePromise = waitForMyState(hostSocket);
+      const guestStatePromise = waitForMyState(guestSocket);
 
       const startResult = await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
       assert.equal(startResult.ok, true, JSON.stringify(startResult));
@@ -155,8 +157,8 @@ test(
         "host and guest must never see overlapping pack contents"
       );
 
-      const hostExportPromise = waitForEvent<DeckExport>(hostSocket, "draft:complete");
-      const guestExportPromise = waitForEvent<DeckExport>(guestSocket, "draft:complete");
+      const hostExportPromise = waitForDeckExport(hostSocket);
+      const guestExportPromise = waitForDeckExport(guestSocket);
 
       // 3 synchronized pick rounds empty the single 3-card pack each and complete the draft.
       for (let round = 0; round < 3; round++) {
@@ -236,8 +238,8 @@ test(
       assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
       const guestId: string = joinResult.playerId;
 
-      const hostStatePromise = waitForEvent<MyState>(hostSocket, "draft:myState");
-      const guestStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const hostStatePromise = waitForMyState(hostSocket);
+      const guestStatePromise = waitForMyState(guestSocket);
       const startResult = await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
       assert.equal(startResult.ok, true, JSON.stringify(startResult));
       const hostStateBeforeDrop = await hostStatePromise;
@@ -259,7 +261,7 @@ test(
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       guestSocket = await connect(server.url);
-      const reconnectStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const reconnectStatePromise = waitForMyState(guestSocket);
       const reconnectResult = await new Promise<any>((resolve) =>
         guestSocket.emit("lobby:reconnect", { playerId: guestId }, resolve)
       );
@@ -320,8 +322,8 @@ test(
       assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
       const guestId: string = joinResult.playerId;
 
-      const hostStatePromise = waitForEvent<MyState>(hostSocket, "draft:myState");
-      const guestStatePromise = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const hostStatePromise = waitForMyState(hostSocket);
+      const guestStatePromise = waitForMyState(guestSocket);
       const startResult = await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
       assert.equal(startResult.ok, true, JSON.stringify(startResult));
       await hostStatePromise;
@@ -333,7 +335,7 @@ test(
       const staleDisconnectPromise = waitForDisconnect(guestSocket);
 
       secondGuestSocket = await connect(server.url);
-      const rejoinStatePromise = waitForEvent<MyState>(secondGuestSocket, "draft:myState");
+      const rejoinStatePromise = waitForMyState(secondGuestSocket);
       const rejoinResult = await new Promise<any>((resolve) =>
         secondGuestSocket!.emit("lobby:reconnect", { playerId: guestId }, resolve)
       );
@@ -396,8 +398,8 @@ test(
       const join = await new Promise<any>((resolve) => guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve));
       assert.equal(join.ok, true, JSON.stringify(join));
 
-      const hostStart = waitForEvent<MyState>(hostSocket, "draft:myState");
-      const guestStart = waitForEvent<MyState>(guestSocket, "draft:myState");
+      const hostStart = waitForMyState(hostSocket);
+      const guestStart = waitForMyState(guestSocket);
       await new Promise<any>((resolve) => hostSocket.emit("draft:start", resolve));
       const hostPack = (await hostStart).pack!;
       const guestPack = (await guestStart).pack!;
