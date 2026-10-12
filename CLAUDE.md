@@ -4,7 +4,7 @@ Self-hosted Magic: The Gathering cube draft simulator for a small group of frien
 
 ## Stack
 
-- TypeScript everywhere, ESM with `NodeNext` resolution. Node 20.11+ (built and tested on Node 24). npm workspaces monorepo: `shared`, `server`, `client`, `e2e`.
+- TypeScript everywhere, ESM with `NodeNext` resolution. Node 22.18+ (built and tested on Node 24). npm workspaces monorepo: `shared`, `server`, `client`, `e2e`.
 - Server: Express 4 + Socket.IO 4, better-sqlite3 (Scryfall card cache), run with tsx in dev.
 - Client: React 19 + Vite, socket.io-client. Lint with oxlint.
 - Tests: `node:test` + `node:assert/strict` via tsx (server); Playwright with Chromium (e2e).
@@ -20,9 +20,9 @@ Self-hosted Magic: The Gathering cube draft simulator for a small group of frien
 
 There is no root `lint` or `typecheck` script. More test commands, from `server/`:
 ```bash
-node --import tsx --test "src/{draftEngine,session,cardData,cubeImport}/*.test.ts"  # unit (quoted globs need Node 21+)
+node --import tsx --test "src/{draftEngine,session,cardData,cubeImport}/*.test.ts"  # unit
 node --import tsx --test "src/realtime/*.test.ts"                                   # socket integration: real Socket.IO server + clients
-# everything except the three tests that need the network (Node 22.1+)
+# everything except the three tests that need the network
 node --import tsx --test --test-skip-pattern "^(full draft over real sockets|reconnect: |rejoin mid-draft)"
 ```
 Browser tests: `npm run test:e2e:ui` (Playwright UI mode, step through each test's trace), `npm run test:e2e:slow` (headed with slowMo to watch a draft live, `playwright.slow.config.ts`), and from `e2e/`: `npx playwright show-trace test-results/<test>/trace.zip` to replay a failed run.
@@ -73,6 +73,7 @@ The server is a single process that runs **one draft at a time**: one in-memory 
 
 ## Gotchas
 
+- Node 22.18 is the floor because `npm test` passes no files to `node --test` and relies on Node finding `.ts` tests itself, which needs type stripping on by default. On older Node it reports 0 tests and exits 0, so check the test count, not just the exit code.
 - `@draft-simulator/shared` resolves to `shared/dist`. Run `npm run build:shared` whenever `shared/src` changed or `dist` is missing, or the server and client won't see the change.
 - Test files (`*.test.ts`, `testHelpers.ts`) are excluded from the server build and tsx doesn't type-check, so only `npm run typecheck --workspace server` (via `server/tsconfig.typecheck.json`) checks them.
 - The first three tests in `socketHandlers.integration.test.ts` need internet (they import a real CubeCobra cube) and a populated `server/data/cards.sqlite3`. The skip pattern above matches their names; update it if you rename them. If they can't reach the network, report them as skipped or failed, not passed. The last `cubeCobraImporter.test.ts` test is skipped when the card cache is empty.

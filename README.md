@@ -4,7 +4,7 @@ A self-hosted Magic: The Gathering cube draft simulator for a small group of fri
 
 ## Requirements
 
-- **Node.js 20.11+** (LTS recommended; this project was built and tested on Node 24)
+- **Node.js 22.18+** (LTS recommended; this project was built and tested on Node 24)
 - Internet access, at least for first-time setup (to download Scryfall's card database and to import cubes from CubeCobra)
 
 If you don't have Node installed, the easiest way is via [nvm](https://github.com/nvm-sh/nvm):
