@@ -3,6 +3,11 @@ import { findCardsByNames } from "../cardData/cardRepository.js";
 
 const USER_AGENT = "DraftSimulator/0.1 (personal cube draft tool; not for redistribution)";
 
+/** Overridable so the browser end-to-end tests can serve a fixed cube from a local stand-in. */
+function cubeCobraBaseUrl(): string {
+  return process.env.CUBECOBRA_BASE_URL ?? "https://cubecobra.com";
+}
+
 interface CubeCobraCardEntry {
   details?: { name?: string };
 }
@@ -34,7 +39,7 @@ export async function importCubeFromCubeCobra(cubeIdOrUrl: string): Promise<Cube
     throw new Error("No cube id or URL provided");
   }
 
-  const res = await fetch(`https://cubecobra.com/cube/api/cubeJSON/${encodeURIComponent(cubeId)}`, {
+  const res = await fetch(`${cubeCobraBaseUrl()}/cube/api/cubeJSON/${encodeURIComponent(cubeId)}`, {
     headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
   });
   if (!res.ok) {

@@ -36,6 +36,15 @@ test("accepts a bare cube id or a link to any page of the cube", async (t) => {
   assert.equal(urls.length, inputs.length);
 });
 
+test("fetches from CUBECOBRA_BASE_URL instead of cubecobra.com when it is set", async (t) => {
+  process.env.CUBECOBRA_BASE_URL = "http://127.0.0.1:9999";
+  t.after(() => delete process.env.CUBECOBRA_BASE_URL);
+  const urls = mockFetch(t, () => new Response("", { status: 404, statusText: "Not Found" }));
+
+  await assert.rejects(importCubeFromCubeCobra("https://cubecobra.com/cube/overview/practical"), /404/);
+  assert.deepEqual(urls, ["http://127.0.0.1:9999/cube/api/cubeJSON/practical"]);
+});
+
 test("rejects a blank cube id without contacting CubeCobra", async (t) => {
   const urls = mockFetch(t, () => cubeJson("Unused", []));
 
