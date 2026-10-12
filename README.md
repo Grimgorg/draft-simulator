@@ -77,10 +77,13 @@ Environment variables the server reads at startup:
 npm test                                   # server unit and socket integration tests
 npx --workspace e2e playwright install chromium   # once, before the first browser test run
 npm run test:e2e                           # browser tests: a host and a guest draft in real Chromium
-npm run test:e2e:ui                        # the same browser tests in a window where you can watch every step
+npm run test:e2e:ui                        # the same browser tests in Playwright's UI, to step through each one afterwards
+npm run test:e2e:slow                      # the same browser tests slowed down in visible windows, to watch live
 ```
 
-Playwright is installed by the `e2e` workspace, so if you pulled that workspace into an existing checkout, run `npm install` again before the browser tests. Otherwise `npm run test:e2e` and `npm run test:e2e:ui` fail with `'playwright' is not recognized` (or `playwright: command not found`).
+In the UI, click a test's name once it has run to see its steps; it doesn't play them back live. The slow run opens a host and a guest browser window and waits half a second before each action, so a whole draft takes about 10 seconds. Change `slowMo` in `e2e/playwright.slow.config.ts` to speed it up or slow it down.
+
+Playwright is installed by the `e2e` workspace, so if you pulled that workspace into an existing checkout, run `npm install` again before the browser tests. Otherwise the `test:e2e` scripts fail with `'playwright' is not recognized` (or `playwright: command not found`).
 
 Most tests are network-free. Three socket integration tests need internet access (they import a real CubeCobra cube), and both those and the browser tests need the local card cache from the setup step above.
 

@@ -6,7 +6,7 @@ Self-hosted Magic: The Gathering cube draft simulator for a small group of frien
 
 ## Commands
 
-This is an npm workspaces monorepo (`shared`, `server`, `client`, `e2e`) that needs Node 20.11+. The root has `test`, `test:e2e` and `test:e2e:ui` scripts; there is no root `lint` or `typecheck` script, so run the workspace scripts below.
+This is an npm workspaces monorepo (`shared`, `server`, `client`, `e2e`) that needs Node 20.11+. The root has `test`, `test:e2e`, `test:e2e:ui` and `test:e2e:slow` scripts; there is no root `lint` or `typecheck` script, so run the workspace scripts below.
 
 **Setup / run**
 ```bash
@@ -38,7 +38,8 @@ In `socketHandlers.integration.test.ts`, the first three tests need internet acc
 ```bash
 npx --workspace e2e playwright install chromium   # once per machine (on Linux, add --with-deps for system libraries)
 npm run test:e2e                                  # builds shared, server and client, then runs every browser test
-npm run test:e2e:ui                               # the same in Playwright's UI mode, to watch the browsers step by step
+npm run test:e2e:ui                               # the same in Playwright's UI mode, to step through each test's trace
+npm run test:e2e:slow                             # the same headed, with slowMo, to watch a draft live (playwright.slow.config.ts)
 # from e2e/
 npx playwright show-trace test-results/<test>/trace.zip   # replay a failed run
 ```
