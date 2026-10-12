@@ -8,8 +8,11 @@ import { getStoredPassword } from "./lobbyPassword.js";
 // (see .env.development).
 export const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? window.location.origin;
 
+// Not connected here: useDraftConnection connects it once its listeners are
+// attached, so the "connect" event and the first lobby:state can't be missed.
 export const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(SERVER_URL, {
   auth: { password: getStoredPassword() ?? "" },
+  autoConnect: false,
 });
 
 export function resolveImageUrl(path: string): string {

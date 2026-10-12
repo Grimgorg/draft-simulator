@@ -127,9 +127,17 @@ export function useDraftConnection(): DraftConnection {
     socket.on("draft:complete", onComplete);
     socket.on("identity:evicted", onEvicted);
 
-    // The socket may already be connected by the time this effect runs
-    // (it connects at module load), in which case "connect" won't fire again.
-    if (socket.connected) attemptReconnect();
+    // The socket used to connect at module load, and on a fast connection (or
+    // a slow device) it finished before this effect ran: the "connect" event
+    // and the server's first lobby:state were both missed, and the page sat on
+    // "Connecting to server..." for good. Now it only connects from here, once
+    // every listener above is attached. It can already be open only when the
+    // hook remounts on a live socket, where `connected` starts out true.
+    if (socket.connected) {
+      attemptReconnect();
+    } else {
+      socket.connect();
+    }
 
     return () => {
       socket.off("connect", onConnect);

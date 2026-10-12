@@ -68,7 +68,7 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 - `index.ts` is the Express + Socket.IO bootstrap. It installs the lobby password middleware, serves `client/dist` when it has been built, and installs a global `unhandledRejection` backstop.
 
 **`client/src/`** is React 19 + Vite.
-- `socket.ts` is a module-level socket singleton.
+- `socket.ts` is a module-level socket singleton, created with `autoConnect: false`; `useDraftConnection` connects it only after attaching its listeners, so the first `connect` and `lobby:state` can't be missed.
 - `useDraftConnection.ts` holds all server-driven state and the reconnect flow: a stored playerId triggers `lobby:reconnect` on every connect.
 - `App.tsx` is a screen state machine keyed on `lobbyState.status` (`empty → lobby → drafting → complete`) and on whether this browser holds a seat.
 
