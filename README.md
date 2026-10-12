@@ -22,7 +22,7 @@ nvm use --lts
 npm install
 ```
 
-`npm install` installs dependencies for all three workspaces (`shared`, `server`, `client`). It may ask you to approve a couple of native install scripts (`better-sqlite3`, `esbuild`, `fsevents`) the first time — these are already recorded as approved in `package.json`, so a normal clone shouldn't prompt again.
+`npm install` installs dependencies for all four workspaces (`shared`, `server`, `client`, `e2e`). It may ask you to approve a couple of native install scripts (`better-sqlite3`, `esbuild`, `fsevents`) the first time — these are already recorded as approved in `package.json`, so a normal clone shouldn't prompt again.
 
 The Scryfall card database (~38,000 cards, cached locally at `server/data/cards.sqlite3` so the app can resolve cube card lists and serve card images without hitting Scryfall on every request) no longer needs a manual import step: the server checks it on every startup and downloads it automatically if it's missing or older than 30 days, so `npm start` alone bootstraps everything on a fresh clone. Startup blocks briefly only the very first time (nothing works with zero cached cards); a routine refresh of an already-populated cache happens in the background so the server is usable immediately. Override the staleness threshold with `CARD_CACHE_MAX_AGE_DAYS` (e.g. `CARD_CACHE_MAX_AGE_DAYS=7 npm start`), or force a refresh manually any time with `npm run import-cards --workspace server`.
 
@@ -79,6 +79,8 @@ npx --workspace e2e playwright install chromium   # once, before the first brows
 npm run test:e2e                           # browser tests: a host and a guest draft in real Chromium
 npm run test:e2e:ui                        # the same browser tests in a window where you can watch every step
 ```
+
+Playwright is installed by the `e2e` workspace, so if you pulled that workspace into an existing checkout, run `npm install` again before the browser tests. Otherwise `npm run test:e2e` and `npm run test:e2e:ui` fail with `'playwright' is not recognized` (or `playwright: command not found`).
 
 Most tests are network-free. Three socket integration tests need internet access (they import a real CubeCobra cube), and both those and the browser tests need the local card cache from the setup step above.
 
