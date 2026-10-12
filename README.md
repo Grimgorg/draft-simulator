@@ -2,11 +2,13 @@
 
 A self-hosted Magic: The Gathering cube draft simulator for a small group of friends. One person runs the server on their PC, imports a cube from [CubeCobra](https://cubecobra.com), and everyone else joins over the browser to draft together — packs, pass-direction rotation, live "who's still picking" status, and a decklist export at the end.
 
+Developed with the help of AI coding assistants (Claude Code).
+
 ## Download and run (no Node needed)
 
 Only the host runs the server. Everyone else just opens its address in a browser.
 
-1. Download the file for your computer from the repository's **Releases** page. This repository is private, so you need access to it to see the downloads.
+1. Download the file for your computer from the repository's [Releases](https://github.com/Grimgorg/draft-simulator/releases) page.
    - Windows: `draft-simulator-windows-x64.zip`
    - Mac with Apple Silicon (M1 and newer): `draft-simulator-macos-arm64.tar.gz`
    - Intel Mac: `draft-simulator-macos-x64.tar.gz`
@@ -77,7 +79,7 @@ In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.d
 
 ### Configuration
 
-Settings are environment variables the server reads at startup. They can come from a `.env` file: `server/.env` for `npm start` and `npm run dev:server`, or the `.env` next to the executable. A real environment variable takes precedence over the same setting in `.env`.
+Settings are environment variables the server reads at startup. They can come from a `.env` file: `server/.env` for `npm start` and `npm run dev:server` (create it yourself; it isn't in the repository), or the `.env` next to the executable. A real environment variable takes precedence over the same setting in `.env`.
 
 - `PORT` — defaults to `4000`.
 - `CARD_CACHE_MAX_AGE_DAYS` — defaults to `30`; see the card database note above.
@@ -137,3 +139,7 @@ That runs the tests first, then builds and smoke-tests the executable on Linux, 
 
 - One draft at a time per server instance — the host has to finish (or the host can start a fresh one from the results screen) before a new one can begin.
 - Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, stop the server and delete `server/data/draft-session.json` (or `data/draft-session.json` next to the executable) to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.
+
+## License
+
+[MIT](LICENSE). Anyone may use, change and share this code, including commercially, as long as they keep the copyright notice.
