@@ -6,7 +6,7 @@ A self-hosted Magic: The Gathering cube draft simulator for a small group of fri
 
 Only the host runs the server. Everyone else just opens its address in a browser.
 
-1. Download the file for your computer from the repository's **Releases** page. This repository is private, so you need access to it to see the downloads.
+1. Download the file for your computer from the repository's [Releases](https://github.com/Grimgorg/draft-simulator/releases) page.
    - Windows: `draft-simulator-windows-x64.zip`
    - Mac with Apple Silicon (M1 and newer): `draft-simulator-macos-arm64.tar.gz`
    - Intel Mac: `draft-simulator-macos-x64.tar.gz`
@@ -77,7 +77,7 @@ In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.d
 
 ### Configuration
 
-Settings are environment variables the server reads at startup. They can come from a `.env` file: `server/.env` for `npm start` and `npm run dev:server`, or the `.env` next to the executable. A real environment variable takes precedence over the same setting in `.env`.
+Settings are environment variables the server reads at startup. They can come from a `.env` file: `server/.env` for `npm start` and `npm run dev:server` (create it yourself; it isn't in the repository), or the `.env` next to the executable. A real environment variable takes precedence over the same setting in `.env`.
 
 - `PORT` — defaults to `4000`.
 - `CARD_CACHE_MAX_AGE_DAYS` — defaults to `30`; see the card database note above.
