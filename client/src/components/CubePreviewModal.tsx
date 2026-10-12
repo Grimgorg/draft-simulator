@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { Card } from "@draft-simulator/shared";
 import { CardImage } from "./CardImage.js";
+import { UnresolvedCardsWarning } from "./UnresolvedCardsWarning.js";
 
 interface CubePreviewModalProps {
   cubeName: string;
@@ -34,12 +35,7 @@ export function CubePreviewModal({ cubeName, cards, unresolvedNames, onClose }: 
             &times;
           </button>
         </div>
-        {unresolvedNames.length > 0 && (
-          <p className="warning">
-            {unresolvedNames.length} card(s) from this cube couldn't be found and were skipped:{" "}
-            {unresolvedNames.join(", ")}
-          </p>
-        )}
+        <UnresolvedCardsWarning names={unresolvedNames} />
         <div className="modal-body pack-grid">
           {uniqueCards.map((card) => (
             <CardImage key={card.scryfallId} card={card} />

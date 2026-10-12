@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { LobbyStateView } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
 import { CancelDraftButton } from "./CancelDraftButton.js";
+import { UnresolvedCardsWarning } from "./UnresolvedCardsWarning.js";
 
 interface WaitingRoomProps {
   lobbyState: LobbyStateView;
@@ -32,12 +33,7 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
         {lobbyState.settings?.packSize} &middot; {lobbyState.players.length} / {lobbyState.settings?.playerCount}{" "}
         players
       </p>
-      {lobbyState.unresolvedCardNames && lobbyState.unresolvedCardNames.length > 0 && (
-        <p className="warning">
-          {lobbyState.unresolvedCardNames.length} card(s) from this cube couldn't be found and were skipped:{" "}
-          {lobbyState.unresolvedCardNames.join(", ")}
-        </p>
-      )}
+      <UnresolvedCardsWarning names={lobbyState.unresolvedCardNames ?? []} />
 
       <ul className="player-list">
         {lobbyState.players.map((player) => (
