@@ -51,11 +51,12 @@ The server is a single process that runs **one draft at a time**. It holds a sin
 **`server/src/`**
 - `draftEngine/` is a pure, synchronous state machine: deal, `submitPick`, rotate packs by `passDirection`, advance rounds. It mutates `DraftSession` in place, by design. `DraftSession` adds a server-only `packQueue[round][seat]` to `DraftState`.
 - `session/lobbyManager.ts` owns the module-level state, validates actions, and saves a snapshot after every mutation through `session/snapshotStore.ts`. The store knows nothing about the state's shape. It writes to a temp file, fsyncs, then renames into place, with retries for Windows file locks. `saveSnapshot()` never throws, because the in-memory state is the source of truth; a failed write is retried in the background and writes the latest state. A corrupt snapshot is kept as `.corrupt.<ts>`. `lobbyStateView.ts` and `deckExport.ts` build outgoing views from the session.
+- `realtime/lobbyPassword.ts` is the optional `LOBBY_PASSWORD` connection middleware, rejecting with the `"invalid_password"` marker the client checks for.
 - `realtime/socketHandlers.ts` maps sockets to player ids (the server, not the client, decides who is picking). It enforces host-only actions and controls broadcast order. Rejoining as a player who is already connected evicts the old socket with `identity:evicted`.
 - `cardData/` + `db/` hold the SQLite (better-sqlite3) cache of Scryfall bulk data. It downloads automatically on startup: blocking when empty, in the background when stale.
 - `cubeImport/` fetches CubeCobra cube JSON and resolves names against the local DB. Duplicate cards are kept, and names it can't find are reported.
 - `images/` serves `/images/:scryfallId` as a disk-cached proxy, so clients never call Scryfall.
-- `index.ts` is the Express + Socket.IO bootstrap. It holds the optional `LOBBY_PASSWORD` middleware (rejecting with the `"invalid_password"` marker), serves `client/dist` when it has been built, and installs a global `unhandledRejection` backstop.
+- `index.ts` is the Express + Socket.IO bootstrap. It installs the lobby password middleware, serves `client/dist` when it has been built, and installs a global `unhandledRejection` backstop.
 
 **`client/src/`** is React 19 + Vite.
 - `socket.ts` is a module-level socket singleton.

@@ -9,6 +9,7 @@ import { getDb } from "./db/database.js";
 import { countCards, getLastImportedAt } from "./cardData/cardRepository.js";
 import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
 import { ensureImageDir, serveCardBackImage, serveCardImage } from "./images/imageCache.js";
+import { requireLobbyPassword } from "./realtime/lobbyPassword.js";
 import { registerSocketHandlers } from "./realtime/socketHandlers.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -60,19 +61,7 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: { origin: "*" },
 });
 
-// Optional shared password gating the actual draft (the socket connection),
-// for when the server is exposed beyond a trusted LAN. Unset by default —
-// no password required. "invalid_password" is a machine-checkable marker
-// the client uses to show a password prompt rather than a generic error.
-const LOBBY_PASSWORD = process.env.LOBBY_PASSWORD;
-io.use((socket, next) => {
-  if (!LOBBY_PASSWORD || socket.handshake.auth?.password === LOBBY_PASSWORD) {
-    next();
-  } else {
-    next(new Error("invalid_password"));
-  }
-});
-
+io.use(requireLobbyPassword(process.env.LOBBY_PASSWORD));
 registerSocketHandlers(io);
 
 httpServer.listen(PORT, "0.0.0.0", () => {
