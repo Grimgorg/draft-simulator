@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Card } from "@draft-simulator/shared";
+import { countCardCopies, formatDecklistText } from "@draft-simulator/shared";
 import {
   buildDeckStateKey,
   buildDraftPilesKey,
@@ -124,19 +125,6 @@ function resolveInitialDeckState(
   }
 
   return EMPTY_RESOLVED_STATE;
-}
-
-function buildExportText(cards: Card[]): string {
-  const counts = new Map<string, { name: string; count: number }>();
-  for (const card of cards) {
-    const existing = counts.get(card.scryfallId);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      counts.set(card.scryfallId, { name: card.name, count: 1 });
-    }
-  }
-  return [...counts.values()].map((c) => `${c.count} ${c.name}`).join("\n");
 }
 
 export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerId }: DeckBuilderProps) {
@@ -279,8 +267,8 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
   }
 
   const mainCards = deck.mainPiles.flatMap((p) => resolveInstances(p.cards).map((inst) => inst.card));
-  const deckExportText = useMemo(() => buildExportText(mainCards), [mainCards]);
-  const poolExportText = useMemo(() => buildExportText(pool), [pool]);
+  const deckExportText = useMemo(() => formatDecklistText(countCardCopies(mainCards)), [mainCards]);
+  const poolExportText = useMemo(() => formatDecklistText(countCardCopies(pool)), [pool]);
   const exportText = exportMode === "deck" ? deckExportText : poolExportText;
   const exportFilenameSuffix = exportMode === "deck" ? "deck" : "pool";
 

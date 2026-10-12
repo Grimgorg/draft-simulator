@@ -1,4 +1,5 @@
 import type { Card } from "./card.js";
+import type { DecklistEntry } from "./decklist.js";
 
 export interface Player {
   id: string;
@@ -66,5 +67,5 @@ export interface DeckExport {
   /** Human-readable "count name" lines. */
   plainText: string;
   /** Canonical machine-readable export: the seam for a future gameplay engine. */
-  cards: { scryfallId: string; name: string; count: number }[];
+  cards: DecklistEntry[];
 }
