@@ -3,7 +3,14 @@ name: CI
 # Tests run on every push to main and every pull request. Pushing a version
 # tag (v1.2.3) also builds the executables for every platform and publishes
 # them on a GitHub Release, but only once the tests have passed. A manual run
-# (Actions → CI → Run workflow) builds the executables without releasing.
+# (Actions → CI → Run workflow) builds and smoke-tests the executables without
+# releasing them.
+#
+# Jobs never hand files to each other as workflow artifacts: artifact storage
+# is a quota shared by every private repo on the account, and other repos
+# filling it once failed a release here. The card cache travels through
+# actions/cache (a separate per-repo limit) and each package job uploads its
+# executable straight to the Release, whose files don't count toward the quota.
 on:
   push:
     branches: [main]
@@ -24,27 +31,31 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    outputs:
+      card-cache-key: ${{ steps.card-cache-key.outputs.key }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
 
-      # The socket integration tests and the browser tests resolve cards
-      # against the Scryfall card cache. Download it at most once a week
-      # instead of on every run.
+      # The socket integration tests, the browser tests and the executable
+      # smoke tests resolve cards against the Scryfall card cache. Download
+      # it at most once a week instead of on every run.
       - name: Compute card cache key
         id: card-cache-key
         shell: bash
-        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+        run: echo "key=cards-$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
       - name: Restore card cache
         id: card-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: server/data/cards.sqlite3
-          key: cards-${{ steps.card-cache-key.outputs.week }}
+          key: ${{ steps.card-cache-key.outputs.key }}
+          # Lets the Windows package job restore the cache saved here on Linux.
+          enableCrossOsArchive: true
       - name: Download card cache
         if: steps.card-cache.outputs.cache-hit != 'true'
         run: npm run import-cards --workspace server
@@ -69,29 +80,46 @@ jobs:
 
       - run: npx --workspace e2e playwright install --with-deps chromium
       - run: npm run test:e2e
+      # Only uploaded when the browser tests fail. A full artifact quota
+      # (see the top of this file) mustn't hide the real failure.
       - name: Upload browser test report
         if: failure()
-        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: |
             e2e/playwright-report
             e2e/test-results
-          retention-days: 14
+          retention-days: 7
 
-      # The package jobs smoke-test each executable against this card cache
-      # (cache entries saved on Linux don't restore on Windows).
-      - name: Upload card cache for the package jobs
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: card-db
-          path: server/data/cards.sqlite3
-          retention-days: 1
+  # Created as a draft so nobody sees a half-filled release; publish-release
+  # makes it public once every executable is attached.
+  create-release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # A tag with a suffix (v1.0.0-rc.1) becomes a pre-release.
+      - name: Create the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=""
+          if [[ "$TAG" == *-* ]]; then prerelease="--prerelease"; fi
+          gh release create "$TAG" --draft --verify-tag --generate-notes $prerelease
 
   package:
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: [test, create-release]
+    # create-release is skipped on a manual run; still build then.
+    if: >-
+      !cancelled() && needs.test.result == 'success' &&
+      (needs.create-release.result == 'success' || github.event_name == 'workflow_dispatch')
     # The executable is a copy of the runner's own Node binary, so every
     # platform is built on that platform.
     strategy:
@@ -107,25 +135,35 @@ jobs:
           - os: macos-15-intel
             target: macos-x64
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       - run: npm run build:exe
 
-      - uses: actions/download-artifact@v4
+      - name: Restore card cache
+        id: card-cache
+        uses: actions/cache/restore@v6
         with:
-          name: card-db
-          path: card-db
+          path: server/data/cards.sqlite3
+          key: ${{ needs.test.outputs.card-cache-key }}
+          enableCrossOsArchive: true
+      # Only if the cache was evicted between the jobs.
+      - name: Download card cache
+        if: steps.card-cache.outputs.cache-hit != 'true'
+        run: npm run import-cards --workspace server
+
       - name: Smoke-test the executable
         shell: bash
         run: |
           exe="release/draft-simulator-${{ matrix.target }}"
           if [ "$RUNNER_OS" = "Windows" ]; then exe="$exe.exe"; fi
-          npm run smoke-test-exe --workspace server -- "$exe" card-db/cards.sqlite3
+          npm run smoke-test-exe --workspace server -- "$exe" server/data/cards.sqlite3
 
       # Archived so the executable bit survives the download on macOS and Linux.
       - name: Archive (Windows)
@@ -139,33 +177,27 @@ jobs:
           COPYFILE_DISABLE: "1"
         run: tar -czf release/draft-simulator-${{ matrix.target }}.tar.gz -C release draft-simulator-${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: executable-${{ matrix.target }}
-          path: release/draft-simulator-${{ matrix.target }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
-          if-no-files-found: error
-          retention-days: 14
+      # --clobber, so re-running a failed job replaces a partial upload.
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          ARCHIVE: release/draft-simulator-${{ matrix.target }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+        run: gh release upload "$TAG" "$ARCHIVE" --clobber
 
-  release:
+  publish-release:
     needs: package
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: executable-*
-          path: executables
-          merge-multiple: true
-      # A tag with a suffix (v1.0.0-rc.1) becomes a pre-release.
-      - name: Create the GitHub Release
-        shell: bash
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: |
-          prerelease=""
-          if [[ "$TAG" == *-* ]]; then prerelease="--prerelease"; fi
-          gh release create "$TAG" executables/* --verify-tag --generate-notes $prerelease
+        run: gh release edit "$TAG" --draft=false

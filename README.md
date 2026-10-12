@@ -131,7 +131,7 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-That runs the tests first, then builds and smoke-tests the executable on Linux, Windows, Apple Silicon and Intel Macs, and attaches all four to a new GitHub Release. A tag with a suffix, like `v1.0.0-rc.1`, becomes a pre-release. To build the executables without releasing, run the workflow by hand: **Actions → CI → Run workflow**. They're then attached to that run.
+That runs the tests first, then builds and smoke-tests the executable on Linux, Windows, Apple Silicon and Intel Macs, and attaches all four to a new GitHub Release. A tag with a suffix, like `v1.0.0-rc.1`, becomes a pre-release. To build and smoke-test the executables without releasing them, run the workflow by hand: **Actions → CI → Run workflow**. The workflow never stores files as workflow artifacts, because artifact storage is shared by all your private repos and can fill up. The executables go straight onto the Release, whose files don't count toward that limit.
 
 ## Known limitations
 
