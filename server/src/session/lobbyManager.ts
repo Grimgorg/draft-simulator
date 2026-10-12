@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { Card, DraftSettings, Player } from "@draft-simulator/shared";
 import { importCubeFromCubeCobra } from "../cubeImport/cubeCobraImporter.js";
-import { createDraftSession, startDraft, submitPick, type DraftSession } from "../draftEngine/draftEngine.js";
+import {
+  createDraftSession,
+  startDraft,
+  submitPick,
+  type DraftSession,
+  type PickOutcome,
+} from "../draftEngine/draftEngine.js";
 import { loadSnapshot, resetSnapshotStoreForTests, saveSnapshot } from "./snapshotStore.js";
 
 interface CubeMeta {
@@ -137,10 +143,10 @@ export function cancelDraft(): void {
   persist();
 }
 
-export function pick(playerId: string, scryfallId: string): DraftSession {
+export function pick(playerId: string, scryfallId: string): PickOutcome {
   const session = getState().session;
   if (!session) throw new Error("No lobby has been created yet");
-  const updated = submitPick(session, playerId, scryfallId);
+  const outcome = submitPick(session, playerId, scryfallId);
   persist();
-  return updated;
+  return outcome;
 }

@@ -175,11 +175,10 @@ export function registerSocketHandlers(io: IoServer): void {
         const playerId = socketPlayers.get(socket.id);
         if (!playerId) throw new Error("Not joined to this draft");
 
-        const session = lobbyManager.pick(playerId, payload.scryfallId);
+        const outcome = lobbyManager.pick(playerId, payload.scryfallId);
         callback({ ok: true });
 
-        const roundJustAdvanced = session.status === "complete" || session.waitingOn.length === session.players.length;
-        if (roundJustAdvanced) {
+        if (outcome !== "waitingOnOthers") {
           // Either the draft just finished, or a fresh round was just dealt
           // (rotation or a new pack) — that's the moment everyone's pack/pool
           // actually changes, this picker included. New packs go out before

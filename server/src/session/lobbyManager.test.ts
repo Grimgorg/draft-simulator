@@ -62,9 +62,10 @@ test("runs picks through to completion and persists a snapshot", () => {
   const hostCard = session.currentPacks[host.id]!.cards[0]!.scryfallId;
   const bobCard = session.currentPacks[bob.id]!.cards[0]!.scryfallId;
 
-  lobbyManager.pick(host.id, hostCard);
-  const final = lobbyManager.pick(bob.id, bobCard);
+  assert.equal(lobbyManager.pick(host.id, hostCard), "waitingOnOthers");
+  assert.equal(lobbyManager.pick(bob.id, bobCard), "draftComplete");
 
+  const final = lobbyManager.getSession()!;
   assert.equal(final.status, "complete");
   assert.equal(final.pools[host.id]!.length, 1);
 
@@ -103,7 +104,9 @@ test("keeps the draft going when the snapshot can't be saved, and saves it once 
   // throw, or the socket handler would skip the broadcast and leave every
   // client stuck on a round the server has already moved past.
   lobbyManager.pick(host.id, session.currentPacks[host.id]!.cards[0]!.scryfallId);
-  const afterRound = lobbyManager.pick(bob.id, session.currentPacks[bob.id]!.cards[0]!.scryfallId);
+  const outcome = lobbyManager.pick(bob.id, session.currentPacks[bob.id]!.cards[0]!.scryfallId);
+  assert.equal(outcome, "roundAdvanced");
+  const afterRound = lobbyManager.getSession()!;
   assert.equal(afterRound.currentPickNumber, 2, "the round advanced in memory");
   assert.deepEqual(afterRound.waitingOn.slice().sort(), [host.id, bob.id].sort());
   assert.ok(errorLog.mock.callCount() > 0, "the failed save is logged");

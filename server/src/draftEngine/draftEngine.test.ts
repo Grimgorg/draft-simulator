@@ -117,6 +117,31 @@ test("with alternatingDraft off, every pack passes the same direction", () => {
   assert.deepEqual(idsIn(session, "C"), ["b4"]);
 });
 
+test("each pick reports whether the round is still open, advanced, or finished the draft", () => {
+  const session = createDraftSession("draft-outcomes", { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3, alternatingDraft: true }, players);
+  beginDraftWithPacks(session, seededQueue());
+
+  // Pack 1, pick 1: the last pick of the round passes the packs.
+  assert.equal(submitPick(session, "A", "a1"), "waitingOnOthers");
+  assert.equal(submitPick(session, "B", "b1"), "waitingOnOthers");
+  assert.equal(submitPick(session, "C", "c1"), "roundAdvanced");
+
+  // Pack 1, pick 2: emptying pack 1 opens pack 2, which also counts as the round advancing.
+  assert.equal(submitPick(session, "A", "c2"), "waitingOnOthers");
+  assert.equal(submitPick(session, "B", "a2"), "waitingOnOthers");
+  assert.equal(submitPick(session, "C", "b2"), "roundAdvanced");
+  assert.equal(session.currentPackNumber, 2);
+
+  // Pack 2: the final pick of the final pack completes the draft.
+  submitPick(session, "A", "a3");
+  submitPick(session, "B", "b3");
+  submitPick(session, "C", "c3");
+  assert.equal(submitPick(session, "A", "b4"), "waitingOnOthers");
+  assert.equal(submitPick(session, "B", "c4"), "waitingOnOthers");
+  assert.equal(submitPick(session, "C", "a4"), "draftComplete");
+  assert.equal(session.status, "complete");
+});
+
 test("rejects a pick from a player who already picked this round", () => {
   const session = createDraftSession(
     "draft-2",

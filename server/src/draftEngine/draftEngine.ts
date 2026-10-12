@@ -13,6 +13,16 @@ export interface DraftSession extends DraftState {
   packQueue: Pack[][];
 }
 
+/**
+ * What a pick did to the draft as a whole, so callers know who needs fresh
+ * state without re-deriving it from `waitingOn`:
+ * - "waitingOnOthers": the round is still open; only the picker's pack and pool changed.
+ * - "roundAdvanced": everyone has picked, so every player now holds a different
+ *   pack (passed from a neighbor, or the next pack opened).
+ * - "draftComplete": that was the last pick of the draft.
+ */
+export type PickOutcome = "waitingOnOthers" | "roundAdvanced" | "draftComplete";
+
 export function createDraftSession(id: string, settings: DraftSettings, players: Player[]): DraftSession {
   const pools: Record<string, Card[]> = {};
   for (const player of players) {
@@ -61,7 +71,7 @@ export function beginDraftWithPacks(session: DraftSession, packQueue: Pack[][]):
   return session;
 }
 
-export function submitPick(session: DraftSession, playerId: string, scryfallId: string): DraftSession {
+export function submitPick(session: DraftSession, playerId: string, scryfallId: string): PickOutcome {
   if (session.status !== "drafting") {
     throw new Error(`Cannot pick while draft status is "${session.status}"`);
   }
@@ -89,11 +99,10 @@ export function submitPick(session: DraftSession, playerId: string, scryfallId: 
   });
   session.waitingOn = session.waitingOn.filter((id) => id !== playerId);
 
-  if (session.waitingOn.length === 0) {
-    advanceRound(session);
+  if (session.waitingOn.length > 0) {
+    return "waitingOnOthers";
   }
-
-  return session;
+  return advanceRound(session);
 }
 
 /** Deals the next queued pack round to every player, resetting waitingOn. */
@@ -132,18 +141,19 @@ function rotatePacks(session: DraftSession): void {
   session.waitingOn = seats.map((p) => p.id);
 }
 
-function advanceRound(session: DraftSession): void {
+function advanceRound(session: DraftSession): "roundAdvanced" | "draftComplete" {
   const packsStillHaveCards = Object.values(session.currentPacks).some((pack) => pack.cards.length > 0);
   if (packsStillHaveCards) {
     rotatePacks(session);
-    return;
+    return "roundAdvanced";
   }
 
   if (session.packQueue.length > 0) {
     dealRound(session);
-    return;
+    return "roundAdvanced";
   }
 
   session.status = "complete";
   session.currentPacks = {};
+  return "draftComplete";
 }
