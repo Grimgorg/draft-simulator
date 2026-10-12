@@ -2,7 +2,35 @@
 
 A self-hosted Magic: The Gathering cube draft simulator for a small group of friends. One person runs the server on their PC, imports a cube from [CubeCobra](https://cubecobra.com), and everyone else joins over the browser to draft together — packs, pass-direction rotation, live "who's still picking" status, and a decklist export at the end.
 
-## Requirements
+## Download and run (no Node needed)
+
+Only the host runs the server. Everyone else just opens its address in a browser.
+
+1. Download the file for your computer from the repository's **Releases** page. This repository is private, so you need access to it to see the downloads.
+   - Windows: `draft-simulator-windows-x64.zip`
+   - Mac with Apple Silicon (M1 and newer): `draft-simulator-macos-arm64.tar.gz`
+   - Intel Mac: `draft-simulator-macos-x64.tar.gz`
+   - Linux: `draft-simulator-linux-x64.tar.gz`
+2. Unpack it into a folder of its own, then start it: double-click it, or run `./draft-simulator-…` in a terminal. Keep the window open while you draft. Closing it stops the server.
+3. The first start downloads the card database, which takes a minute. When the server is ready, the window shows the address to open and the port to forward:
+
+   ```
+   Draft Simulator is running on port 4000.
+     Open http://localhost:4000 on this PC.
+     For friends outside your network, forward TCP port 4000 on your router to this PC.
+     Lobby password: none (anyone who can reach this port can join)
+   To change the port or the password, edit /path/to/.env and restart.
+   ```
+
+Everything the server stores goes next to the executable: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file. The first start creates the `.env` with every setting commented out. To change a setting, remove the `#` in front of its line (see [Configuration](#configuration)) and restart. Set a `LOBBY_PASSWORD` before forwarding the port.
+
+**First-start warnings.** The executables aren't code-signed, so the system warns you the first time:
+- **macOS:** "cannot be opened because the developer cannot be verified". Right-click the file, choose **Open**, then **Open** again. Or run `xattr -d com.apple.quarantine draft-simulator-macos-*` in that folder.
+- **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**. When the firewall asks, allow access, otherwise friends can't connect.
+
+**Friends outside your network** need the port forwarded. In your router's settings, forward the TCP port shown in the window (4000 by default) to this computer. Then send them `http://<your public IP>:4000`. Searching "what is my IP" shows your public IP.
+
+## Requirements (running from source)
 
 - **Node.js 22.18+** (LTS recommended; this project was built and tested on Node 24)
 - Internet access, at least for first-time setup (to download Scryfall's card database and to import cubes from CubeCobra)
@@ -49,7 +77,7 @@ In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.d
 
 ### Configuration
 
-Environment variables the server reads at startup:
+Settings are environment variables the server reads at startup. They can come from a `.env` file: `server/.env` for `npm start` and `npm run dev:server`, or the `.env` next to the executable. A real environment variable takes precedence over the same setting in `.env`.
 
 - `PORT` — defaults to `4000`.
 - `CARD_CACHE_MAX_AGE_DAYS` — defaults to `30`; see the card database note above.
@@ -87,7 +115,25 @@ Playwright is installed by the `e2e` workspace, so if you pulled that workspace 
 
 Most tests are network-free. Three socket integration tests need internet access (they import a real CubeCobra cube), and both those and the browser tests need the local card cache from the setup step above.
 
+## Building the executables and releasing
+
+```bash
+npm run build:exe   # builds release/draft-simulator-<os>-<arch> for the computer you run it on
+npm run smoke-test-exe --workspace server -- release/draft-simulator-macos-arm64 server/data/cards.sqlite3
+```
+
+The executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). It can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the typechecks, lint, builds, server tests and browser tests on every push to `main` and every pull request. To publish a release, push a version tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+That runs the tests first, then builds and smoke-tests the executable on Linux, Windows, Apple Silicon and Intel Macs, and attaches all four to a new GitHub Release. A tag with a suffix, like `v1.0.0-rc.1`, becomes a pre-release. To build and smoke-test the executables without releasing them, run the workflow by hand: **Actions → CI → Run workflow**. The workflow never stores files as workflow artifacts, because artifact storage is shared by all your private repos and can fill up. The executables go straight onto the Release, whose files don't count toward that limit.
+
 ## Known limitations
 
 - One draft at a time per server instance — the host has to finish (or the host can start a fresh one from the results screen) before a new one can begin.
-- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, stop the server and delete `server/data/draft-session.json` to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.
+- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, stop the server and delete `server/data/draft-session.json` (or `data/draft-session.json` next to the executable) to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.

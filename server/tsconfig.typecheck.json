@@ -1,11 +1,12 @@
-// tsconfig.json leaves test files out of the emitted build, and tsx strips
-// types without checking them. This config checks all of src, tests
-// included, without emitting anything.
+// tsconfig.json leaves test files and scripts out of the emitted build, and
+// tsx strips types without checking them. This config checks all of src,
+// tests included, and scripts/, without emitting anything.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "rootDir": "."
   },
-  "include": ["src"],
+  "include": ["src", "scripts"],
   "exclude": []
 }
