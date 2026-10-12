@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { resolveDataDir } from "../packaged/seaRuntime.js";
 
-export const DATA_DIR = path.join(import.meta.dirname, "../../data");
+export const DATA_DIR = resolveDataDir();
 export const DB_PATH = path.join(DATA_DIR, "cards.sqlite3");
 
 let db: Database.Database | undefined;

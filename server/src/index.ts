@@ -9,6 +9,7 @@ import { getDb } from "./db/database.js";
 import { countCards, getLastImportedAt } from "./cardData/cardRepository.js";
 import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
 import { ensureImageDir, serveCardBackImage, serveCardImage } from "./images/imageCache.js";
+import { resolveClientDist } from "./packaged/seaRuntime.js";
 import { requireLobbyPassword } from "./realtime/lobbyPassword.js";
 import { registerSocketHandlers } from "./realtime/socketHandlers.js";
 
@@ -22,48 +23,57 @@ process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection (server kept running):", reason);
 });
 
-getDb();
-ensureImageDir();
+// Startup runs in main() rather than at the top level because the packaged
+// executable is a CommonJS bundle, which can't use top-level await.
+async function main(): Promise<void> {
+  getDb();
+  ensureImageDir();
 
-// An empty cache means the app can't resolve any cube at all, so block
-// startup on the first import. Otherwise — just stale — refresh in the
-// background so the host isn't stuck waiting right before a draft.
-if (countCards() === 0) {
-  await refreshCardDatabaseIfStale();
-} else {
-  refreshCardDatabaseIfStale();
-}
+  // An empty cache means the app can't resolve any cube at all, so block
+  // startup on the first import. Otherwise — just stale — refresh in the
+  // background so the host isn't stuck waiting right before a draft.
+  if (countCards() === 0) {
+    await refreshCardDatabaseIfStale();
+  } else {
+    refreshCardDatabaseIfStale();
+  }
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+  const app = express();
+  app.use(cors());
+  app.use(express.json());
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok", cardsCached: countCards(), cardsLastImportedAt: getLastImportedAt() ?? null });
-});
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok", cardsCached: countCards(), cardsLastImportedAt: getLastImportedAt() ?? null });
+  });
 
-app.get("/images/:scryfallId", serveCardImage);
-app.get("/images/:scryfallId/back", serveCardBackImage);
+  app.get("/images/:scryfallId", serveCardImage);
+  app.get("/images/:scryfallId/back", serveCardBackImage);
 
-// Once the client is built (npm run build --workspace client), serve it
-// directly so everyone — host included — just opens this server's address
-// in a browser. In dev, the client runs separately on Vite's own port.
-const clientDist = path.join(import.meta.dirname, "../../client/dist");
-if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
-  app.get("/", (_req, res) => {
-    res.sendFile(path.join(clientDist, "index.html"));
+  // Once the client is built (npm run build --workspace client), serve it
+  // directly so everyone — host included — just opens this server's address
+  // in a browser. In dev, the client runs separately on Vite's own port.
+  const clientDist = resolveClientDist();
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get("/", (_req, res) => {
+      res.sendFile(path.join(clientDist, "index.html"));
+    });
+  }
+
+  const httpServer = createServer(app);
+  const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
+    cors: { origin: "*" },
+  });
+
+  io.use(requireLobbyPassword(process.env.LOBBY_PASSWORD));
+  registerSocketHandlers(io);
+
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`Draft Simulator server listening on http://0.0.0.0:${PORT}`);
   });
 }
 
-const httpServer = createServer(app);
-const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-  cors: { origin: "*" },
-});
-
-io.use(requireLobbyPassword(process.env.LOBBY_PASSWORD));
-registerSocketHandlers(io);
-
-httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`Draft Simulator server listening on http://0.0.0.0:${PORT}`);
+main().catch((err: unknown) => {
+  console.error("Draft Simulator failed to start:", err);
+  process.exitCode = 1;
 });
