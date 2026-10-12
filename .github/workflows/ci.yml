@@ -167,16 +167,17 @@ jobs:
           npm run smoke-test-exe --workspace server -- "$exe" server/data/cards.sqlite3
 
       # Archived so the executable bit survives the download on macOS and Linux.
+      # THIRD_PARTY_NOTICES.txt goes in too: the bundled packages' licenses require it.
       - name: Archive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path release/draft-simulator-${{ matrix.target }}.exe -DestinationPath release/draft-simulator-${{ matrix.target }}.zip
+        run: Compress-Archive -Path release/draft-simulator-${{ matrix.target }}.exe, release/THIRD_PARTY_NOTICES.txt -DestinationPath release/draft-simulator-${{ matrix.target }}.zip
       - name: Archive (macOS, Linux)
         if: runner.os != 'Windows'
         env:
           # Keeps macOS tar from adding ._ metadata files to the archive.
           COPYFILE_DISABLE: "1"
-        run: tar -czf release/draft-simulator-${{ matrix.target }}.tar.gz -C release draft-simulator-${{ matrix.target }}
+        run: tar -czf release/draft-simulator-${{ matrix.target }}.tar.gz -C release draft-simulator-${{ matrix.target }} THIRD_PARTY_NOTICES.txt
 
       # --clobber, so re-running a failed job replaces a partial upload.
       - name: Attach to the release

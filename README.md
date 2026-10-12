@@ -124,7 +124,7 @@ npm run build:exe   # builds release/draft-simulator-<os>-<arch> for the compute
 npm run smoke-test-exe --workspace server -- release/draft-simulator-macos-arm64 server/data/cards.sqlite3
 ```
 
-The executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). It can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner.
+The executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). It can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner. The build also writes `release/THIRD_PARTY_NOTICES.txt` with the licenses of Node.js and every npm package inside the executable, and each download includes it. If Node's license file isn't next to your Node install, the build downloads it for your Node version from GitHub.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the typechecks, lint, builds, server tests and browser tests on every push to `main` and every pull request. To publish a release, push a version tag:
 
