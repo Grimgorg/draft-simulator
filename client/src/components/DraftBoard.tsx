@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Card, LobbyStateView, Pack } from "@draft-simulator/shared";
-import { passDirection } from "@draft-simulator/shared";
+import { neighborSeat, passDirection } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
 import { buildDraftPilesKey, getStoredDraftPiles, storeDraftPiles } from "../pileStorage.js";
 import { CancelDraftButton } from "./CancelDraftButton.js";
@@ -98,8 +98,8 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
   const direction = hasNeighbors
     ? passDirection(lobbyState.currentPackNumber!, lobbyState.settings?.alternatingDraft ?? true)
     : 1;
-  const passingTo = hasNeighbors ? seats[(mySeat + direction + seats.length) % seats.length] : null;
-  const passingFrom = hasNeighbors ? seats[(mySeat - direction + seats.length) % seats.length] : null;
+  const passingTo = hasNeighbors ? seats[neighborSeat(mySeat, direction, seats.length)] : null;
+  const passingFrom = hasNeighbors ? seats[neighborSeat(mySeat, -direction, seats.length)] : null;
 
   function handlePick(card: Card) {
     if (picking) return;

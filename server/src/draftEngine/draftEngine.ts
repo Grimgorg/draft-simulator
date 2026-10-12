@@ -1,5 +1,5 @@
 import type { Card, DraftSettings, DraftState, Pack, Player } from "@draft-simulator/shared";
-import { passDirection } from "@draft-simulator/shared";
+import { neighborSeat, passDirection } from "@draft-simulator/shared";
 import { generatePacks } from "./packGenerator.js";
 
 /**
@@ -132,7 +132,7 @@ function rotatePacks(session: DraftSession): void {
 
   const next: Record<string, Pack> = {};
   for (let i = 0; i < n; i++) {
-    const fromSeat = seats[(i - direction + n) % n]!;
+    const fromSeat = seats[neighborSeat(i, -direction, n)]!;
     next[seats[i]!.id] = previous[fromSeat.id]!;
   }
 

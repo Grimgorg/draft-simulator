@@ -25,6 +25,15 @@ export function passDirection(packNumber: number, alternatingDraft: boolean): 1 
   return packNumber % 2 === 1 ? 1 : -1;
 }
 
+/**
+ * The seat a pack passed in `direction` (see passDirection) goes to from
+ * `seat`, wrapping around the table. A pack arrives at `seat` from
+ * `neighborSeat(seat, -direction, seatCount)`.
+ */
+export function neighborSeat(seat: number, direction: number, seatCount: number): number {
+  return (seat + direction + seatCount) % seatCount;
+}
+
 export interface Pack {
   id: string;
   /** 1-indexed: which pack in the draft (e.g. 1 of 3). Determines pass direction. */
