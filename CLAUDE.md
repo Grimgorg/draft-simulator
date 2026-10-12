@@ -16,14 +16,22 @@ npm run dev:server         # tsx watch on :4000
 npm run dev:client         # Vite on :5173, pointed at :4000 by client/.env.development
 ```
 
-**Test** (server only; the client has no tests)
+**Test** (server only; the client has no tests and there are no browser E2E tests)
 ```bash
+# all tests, from the repo root: unit + socket integration
 npm test --workspace server
-# from server/: one file, or one named test
+
+# from server/ — by type (quoted globs need Node 21+)
+node --import tsx --test "src/{draftEngine,session,cardData,cubeImport}/*.test.ts"  # unit: engine, lobby, snapshot, card import
+node --import tsx --test "src/realtime/*.test.ts"                                   # socket integration: real Socket.IO server + clients
+# everything except the three tests that need the network (Node 22.1+)
+node --import tsx --test --test-skip-pattern "^(full draft over real sockets|reconnect: |rejoin mid-draft)"
+
+# one file, or one named test
 node --import tsx --test src/draftEngine/draftEngine.test.ts
 node --import tsx --test --test-name-pattern "enforces capacity" src/session/lobbyManager.test.ts
 ```
-In `socketHandlers.integration.test.ts`, the first three tests need internet access (they import a real CubeCobra cube) and a populated `server/data/cards.sqlite3`. Every later test in that file, and every other test, runs without the network; the last `cubeCobraImporter.test.ts` test is skipped when the card cache is empty.
+In `socketHandlers.integration.test.ts`, the first three tests need internet access (they import a real CubeCobra cube) and a populated `server/data/cards.sqlite3`; the skip pattern above matches their names, so update it if you rename them. Every later test in that file, and every other test, runs without the network; the last `cubeCobraImporter.test.ts` test is skipped when the card cache is empty. `npm run typecheck --workspace server` is the only check that type-checks the tests.
 
 **Type-check & lint**
 ```bash
