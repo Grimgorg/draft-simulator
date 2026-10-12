@@ -76,27 +76,21 @@ function AppContent() {
     return <HostSetupScreen onCreated={setMyPlayerId} />;
   }
 
+  // Every screen past host setup belongs to a seated player; anyone else
+  // (new device, cleared storage, or evicted) picks a seat first.
   const iAmSeated = myPlayerId !== null && lobbyState.players.some((p) => p.id === myPlayerId);
-
-  if (lobbyState.status === "lobby") {
-    if (!iAmSeated) {
-      return <RejoinScreen lobbyState={lobbyState} onIdentitySelected={setMyPlayerId} />;
-    }
-    return <WaitingRoom lobbyState={lobbyState} myPlayerId={myPlayerId!} />;
-  }
-
-  if (lobbyState.status === "drafting") {
-    if (!iAmSeated) {
-      return <RejoinScreen lobbyState={lobbyState} onIdentitySelected={setMyPlayerId} />;
-    }
-    return <DraftBoard lobbyState={lobbyState} myPlayerId={myPlayerId!} myPack={myPack} myPool={myPool} />;
-  }
-
-  // status === "complete"
   if (!iAmSeated) {
     return <RejoinScreen lobbyState={lobbyState} onIdentitySelected={setMyPlayerId} />;
   }
-  return <ResultsScreen lobbyState={lobbyState} myPlayerId={myPlayerId!} myPool={myPool} />;
+
+  if (lobbyState.status === "lobby") {
+    return <WaitingRoom lobbyState={lobbyState} myPlayerId={myPlayerId} />;
+  }
+  if (lobbyState.status === "drafting") {
+    return <DraftBoard lobbyState={lobbyState} myPlayerId={myPlayerId} myPack={myPack} myPool={myPool} />;
+  }
+  // status === "complete"
+  return <ResultsScreen lobbyState={lobbyState} myPlayerId={myPlayerId} myPool={myPool} />;
 }
 
 function App() {
