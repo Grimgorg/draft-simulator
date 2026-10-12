@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { resolveDataDir } from "../packaged/seaRuntime.js";
+import { isPackaged, loadEmbeddedSqliteAddon, resolveDataDir } from "../packaged/seaRuntime.js";
 
 export const DATA_DIR = resolveDataDir();
 export const DB_PATH = path.join(DATA_DIR, "cards.sqlite3");
@@ -12,7 +12,12 @@ export function getDb(): Database.Database {
   if (db) return db;
 
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  db = new Database(DB_PATH);
+  // better-sqlite3 accepts an already-loaded addon object here, though its
+  // types only declare a path string: https://github.com/WiseLibs/better-sqlite3/issues/972
+  db = new Database(
+    DB_PATH,
+    isPackaged ? { nativeBinding: loadEmbeddedSqliteAddon(DATA_DIR) as unknown as string } : undefined,
+  );
   db.pragma("journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS cards (

@@ -20,6 +20,7 @@
     "test:e2e": "npm test --workspace e2e",
     "test:e2e:ui": "npm run test:ui --workspace e2e",
     "test:e2e:slow": "npm run test:slow --workspace e2e",
+    "build:exe": "npm run build:exe --workspace server",
     "start": "npm run build --workspace shared && npm run build --workspace server && npm run build --workspace client && npm run start --workspace server"
   },
   "allowScripts": {

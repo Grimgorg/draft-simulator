@@ -1,3 +1,6 @@
+// Must stay the first import: it loads the executable's .env before any
+// other module reads its settings.
+import "./packaged/loadEnvFile.js";
 import fs from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -9,7 +12,8 @@ import { getDb } from "./db/database.js";
 import { countCards, getLastImportedAt } from "./cardData/cardRepository.js";
 import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
 import { ensureImageDir, serveCardBackImage, serveCardImage } from "./images/imageCache.js";
-import { resolveClientDist, resolveEnvFilePath } from "./packaged/seaRuntime.js";
+import { serveEmbeddedClient } from "./packaged/embeddedClient.js";
+import { exitAfterFatalError, isPackaged, resolveClientDist, resolveEnvFilePath } from "./packaged/seaRuntime.js";
 import { requireLobbyPassword } from "./realtime/lobbyPassword.js";
 import { registerSocketHandlers } from "./realtime/socketHandlers.js";
 import { buildPortInUseMessage, buildStartupBanner } from "./startupBanner.js";
@@ -53,12 +57,17 @@ async function main(): Promise<void> {
   // Once the client is built (npm run build --workspace client), serve it
   // directly so everyone — host included — just opens this server's address
   // in a browser. In dev, the client runs separately on Vite's own port.
-  const clientDist = resolveClientDist();
-  if (fs.existsSync(clientDist)) {
-    app.use(express.static(clientDist));
-    app.get("/", (_req, res) => {
-      res.sendFile(path.join(clientDist, "index.html"));
-    });
+  // The executable carries its own copy of the built client.
+  if (isPackaged) {
+    app.use(serveEmbeddedClient());
+  } else {
+    const clientDist = resolveClientDist();
+    if (fs.existsSync(clientDist)) {
+      app.use(express.static(clientDist));
+      app.get("/", (_req, res) => {
+        res.sendFile(path.join(clientDist, "index.html"));
+      });
+    }
   }
 
   const httpServer = createServer(app);
@@ -77,7 +86,7 @@ async function main(): Promise<void> {
     } else {
       console.error("Draft Simulator server error:", err);
     }
-    process.exit(1);
+    exitAfterFatalError();
   });
 
   httpServer.listen(PORT, "0.0.0.0", () => {
@@ -89,5 +98,5 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   console.error("Draft Simulator failed to start:", err);
-  process.exitCode = 1;
+  exitAfterFatalError();
 });
