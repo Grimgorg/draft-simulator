@@ -705,6 +705,48 @@ test("after a finished draft, only the host can reset the server", { timeout: 10
   assert.equal(lobbyManager.getSession(), undefined);
 });
 
+test(
+  "reconnecting after the draft finished brings back the full pool, last pick included, and the player's own deck",
+  { timeout: 10_000 },
+  async (t) => {
+    lobbyManager.resetForTests(freshSnapshotPath());
+    const server = await startServerFor(t);
+    const { hostSocket, guestSocket, hostId, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"], {
+      packCount: 2,
+      packSize: 1,
+    });
+    assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
+    // Each player's draft:complete follows the final pick's ack; wait for them so they aren't mistaken for
+    // what the reconnect sends.
+    const completed = Promise.all([waitForDeckExport(hostSocket), waitForDeckExport(guestSocket)]);
+    for (let round = 0; round < 2; round++) {
+      await hostSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(hostId) });
+      await guestSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(guestId) });
+    }
+    await completed;
+    const session = lobbyManager.getSession()!;
+    assert.equal(session.status, "complete");
+    const guestPool = session.pools[guestId]!.map((c) => c.scryfallId);
+    assert.equal(guestPool.length, 2);
+
+    guestSocket.close();
+    const hostReceived: string[] = [];
+    hostSocket.on("draft:myState", () => hostReceived.push("draft:myState"));
+    hostSocket.on("draft:complete", () => hostReceived.push("draft:complete"));
+
+    const newGuestSocket = await server.connect();
+    const myState = waitForMyState(newGuestSocket);
+    const deckExport = waitForDeckExport(newGuestSocket);
+    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { playerId: guestId }), { ok: true });
+
+    assert.deepEqual(await myState, { pack: null, pool: session.pools[guestId] });
+    const deck = await deckExport;
+    assert.equal(deck.playerId, guestId);
+    assert.deepEqual(deck.cards.map((c) => c.scryfallId).sort(), [...guestPool].sort());
+    assert.deepEqual(hostReceived, [], "the host's socket gets nothing of the guest's");
+  }
+);
+
 test("with a lobby password set, only connections presenting it get in", { timeout: 10_000 }, async (t) => {
   lobbyManager.resetForTests(freshSnapshotPath());
   const server = await startServerFor(t, { lobbyPassword: "hunter2" });

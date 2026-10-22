@@ -111,6 +111,7 @@ release/                  built executables, gitignored
 | `createLobbyFromResolvedCube` | create a lobby without the network |
 | `resetForTests(tmpPath)` | give a test its own snapshot file |
 | `reloadFromSnapshotForTests()` | simulate a server restart |
+| `setImageDirForTests(tmpDir)` | give a test its own image cache dir |
 | `t.mock.method(globalThis, "fetch", …)` | fake CubeCobra responses |
 
 Before restructuring `draftEngine` or `lobbyManager`, add tests for the current behavior. Keep refactors and behavior changes in separate commits.
