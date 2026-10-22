@@ -6,11 +6,16 @@ import type { Request, Response } from "express";
 import { DATA_DIR } from "../db/database.js";
 import { getBackImageUri, getSourceImageUri } from "../cardData/cardRepository.js";
 
-const IMAGE_DIR = path.join(DATA_DIR, "images");
+let imageDir = path.join(DATA_DIR, "images");
 const USER_AGENT = "DraftSimulator/0.1 (personal cube draft tool; not for redistribution)";
 
 export function ensureImageDir(): void {
-  fs.mkdirSync(IMAGE_DIR, { recursive: true });
+  fs.mkdirSync(imageDir, { recursive: true });
+}
+
+/** Test-only: caches images in an isolated directory instead of the real data dir. */
+export function setImageDirForTests(isolatedImageDir: string): void {
+  imageDir = isolatedImageDir;
 }
 
 /**
@@ -20,7 +25,7 @@ export function ensureImageDir(): void {
  * if the host's internet drops mid-session.
  */
 async function serveImage(res: Response, lookupSourceUri: () => string | undefined, cacheKey: string): Promise<void> {
-  const cachedPath = path.join(IMAGE_DIR, `${cacheKey}.jpg`);
+  const cachedPath = path.join(imageDir, `${cacheKey}.jpg`);
 
   if (fs.existsSync(cachedPath)) {
     res.sendFile(cachedPath);
