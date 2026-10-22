@@ -1,7 +1,7 @@
 {
   "name": "draft-simulator",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Self-hosted Magic: The Gathering cube draft simulator for a small group of friends.",
   "engines": {
     "node": ">=22.18"
@@ -10,11 +10,13 @@
     "shared",
     "server",
     "client",
-    "e2e"
+    "e2e",
+    "desktop"
   ],
   "scripts": {
     "dev:server": "npm run dev --workspace server",
     "dev:client": "npm run dev --workspace client",
+    "dev:desktop": "npm run build:shared && npm run dev --workspace desktop",
     "build:shared": "npm run build --workspace shared",
     "test": "npm run build:shared && npm test --workspace server",
     "test:e2e": "npm test --workspace e2e",
@@ -22,6 +24,7 @@
     "test:e2e:slow": "npm run test:slow --workspace e2e",
     "test:all": "npm test && npm run test:e2e",
     "build:exe": "npm run build:exe --workspace server",
+    "build:desktop": "npm run build:exe && npm run notices --workspace desktop && npm run build --workspace desktop -- --config src-tauri/tauri.bundle.conf.json",
     "start": "npm run build --workspace shared && npm run build --workspace server && npm run build --workspace client && npm run start --workspace server"
   },
   "allowScripts": {

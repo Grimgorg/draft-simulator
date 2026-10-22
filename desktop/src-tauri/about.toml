@@ -1,0 +1,30 @@
+# cargo-about settings: which licenses the Rust crates inside the desktop app
+# may use, and which crates count. Read by desktop/scripts/buildNotices.ts and
+# by CI. A crate under a license missing here fails the build until someone
+# has checked that license and added it.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "MPL-2.0",
+    "CC0-1.0",
+    "BSL-1.0",
+    "0BSD",
+]
+
+# The platforms the app ships for; crates used only elsewhere aren't inside it.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+]
+
+# Build scripts and tests run while building; they aren't shipped.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
