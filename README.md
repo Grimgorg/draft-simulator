@@ -103,6 +103,8 @@ Settings are environment variables the server reads at startup. They can come fr
 
 ## Tests
 
+Server tests sit next to the code they test, as `*.test.ts` (for example `server/src/draftEngine/draftEngine.test.ts`), so each folder shows its code and its tests together. Tests that run a real server over sockets end in `.integration.test.ts`. The browser tests live in their own workspace, `e2e/tests/`, because they exercise the whole app rather than one module. The client has no unit tests of its own; the browser tests cover it.
+
 ```bash
 npm test                                   # server unit and socket integration tests
 npx --workspace e2e playwright install chromium   # once, before the first browser test run
