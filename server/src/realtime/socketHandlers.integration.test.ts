@@ -72,26 +72,30 @@ function waitForDeckExport(socket: DraftClientSocket): Promise<DeckExport> {
 }
 
 /**
- * Waits for a draft:myState whose pool has grown to `expectedPoolSize`,
- * then settles on the *last* one seen within a short window rather than the
- * first. A pick now produces two possible updates for the same player: an
- * instant one the moment their own pick lands (pool already grown, pack
- * mid-round), and — only once every player has picked and the round
- * actually advances — a second one with the new round's pack. Both carry
- * the same (already-final) pool size, so grabbing the first would race
- * against the second and hand back a pack that's about to be rotated away.
+ * Resolves with the draft:myState of the round that begins at `pickNumber`.
+ * A pick can produce two updates with the same pool size for one player: an
+ * instant one the moment their own pick lands (pack mid-round), and the new
+ * round's once everyone has picked. The server sends the new round's update
+ * before the lobby:state that moves to the next pick, on the same socket, so
+ * the last update before that lobby state is the right one. This used to
+ * take the last update seen within 100ms instead, and on a slow CI runner
+ * the window closed before any update arrived.
  */
-function waitForPoolUpdate(socket: DraftClientSocket, expectedPoolSize: number): Promise<MyState> {
-  return new Promise((resolve) => {
+function waitForRoundState(socket: DraftClientSocket, pickNumber: number): Promise<MyState> {
+  return new Promise((resolve, reject) => {
     let latest: MyState | undefined;
-    function onState(payload: MyState) {
-      if (payload.pool.length === expectedPoolSize) latest = payload;
+    function onMyState(payload: MyState) {
+      latest = payload;
     }
-    socket.on("draft:myState", onState);
-    setTimeout(() => {
-      socket.off("draft:myState", onState);
-      resolve(latest!);
-    }, 100);
+    function onLobbyState(state: LobbyStateView) {
+      if (state.currentPickNumber !== pickNumber) return;
+      socket.off("draft:myState", onMyState);
+      socket.off("lobby:state", onLobbyState);
+      if (latest) resolve(latest);
+      else reject(new Error(`pick ${pickNumber} began without a draft:myState`));
+    }
+    socket.on("draft:myState", onMyState);
+    socket.on("lobby:state", onLobbyState);
   });
 }
 
@@ -245,8 +249,8 @@ test(
       // 3 synchronized pick rounds empty the single 3-card pack each and complete the draft.
       for (let round = 0; round < 3; round++) {
         const isLastRound = round === 2;
-        const nextHostState = isLastRound ? undefined : waitForPoolUpdate(hostSocket, round + 1);
-        const nextGuestState = isLastRound ? undefined : waitForPoolUpdate(guestSocket, round + 1);
+        const nextHostState = isLastRound ? undefined : waitForRoundState(hostSocket, round + 2);
+        const nextGuestState = isLastRound ? undefined : waitForRoundState(guestSocket, round + 2);
 
         const hostPick = hostState.pack!.cards[0]!.scryfallId;
         const guestPick = guestState.pack!.cards[0]!.scryfallId;
