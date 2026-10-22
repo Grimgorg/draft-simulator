@@ -3,7 +3,7 @@
   "bundle": {
     "externalBin": ["binaries/draft-simulator-server"],
     "resources": {
-      "../../release/THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
+      "THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt"
     }
   }
 }

@@ -92,6 +92,8 @@ npm run dev:desktop    # the app window, with the server and client in dev mode 
 npm run build:desktop  # the installers for this computer, in desktop/src-tauri/target/release/bundle/
 ```
 
+`build:desktop` also needs [cargo-about](https://github.com/EmbarkStudios/cargo-about), which lists the Rust crates' licenses: `cargo install --locked --features cli cargo-about@0.9.2`.
+
 `dev:desktop` runs `dev:server` and `dev:client` itself, so don't run them alongside it.
 
 ### Configuration
@@ -146,10 +148,10 @@ Most tests are network-free. Three socket integration tests need internet access
 ```bash
 npm run build:exe       # the server executable, release/draft-simulator-<os>-<arch>, for the computer you run it on
 npm run smoke-test-exe --workspace server -- release/draft-simulator-macos-arm64 server/data/cards.sqlite3
-npm run build:desktop   # build:exe, then the desktop app's installers around it (needs Rust, see above)
+npm run build:desktop   # build:exe, then the desktop app's installers around it (needs Rust and cargo-about, see above)
 ```
 
-The server executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). `build:exe` also copies it into `desktop/src-tauri/binaries/`, where the desktop app picks it up. It runs on its own too, keeping `data/` and `.env` next to itself, which is how the smoke test runs it. Both can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner. The build also writes `release/THIRD_PARTY_NOTICES.txt` with the licenses of Node.js and every npm package inside the executable, and every installer includes it. If Node's license file isn't next to your Node install, the build downloads it for your Node version from GitHub.
+The server executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). `build:exe` also copies it into `desktop/src-tauri/binaries/`, where the desktop app picks it up. It runs on its own too, keeping `data/` and `.env` next to itself, which is how the smoke test runs it. Both can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner. The build also writes `release/THIRD_PARTY_NOTICES.txt` with the licenses of Node.js and every npm package inside the executable. If Node's license file isn't next to your Node install, the build downloads it for your Node version from GitHub. `build:desktop` then adds the licenses of the Rust crates compiled into the app, collected by cargo-about, and every installer includes the combined `THIRD_PARTY_NOTICES.txt`. A crate whose license isn't in the `accepted` list in `desktop/src-tauri/about.toml` fails the build (and CI's `desktop` check) until someone has checked that license and added it.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the typechecks, lint, builds, server tests and browser tests on every push to every branch, and lints the desktop app's Rust code with clippy. Every merge into `main` publishes a release, so every pull request has to raise the version in the root `package.json`:
 

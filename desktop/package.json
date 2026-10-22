@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
+    "notices": "node scripts/buildNotices.ts",
     "tauri": "tauri",
     "typecheck": "tsc -p tsconfig.json"
   },

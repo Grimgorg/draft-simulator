@@ -24,7 +24,7 @@
     "test:e2e:slow": "npm run test:slow --workspace e2e",
     "test:all": "npm test && npm run test:e2e",
     "build:exe": "npm run build:exe --workspace server",
-    "build:desktop": "npm run build:exe && npm run build --workspace desktop -- --config src-tauri/tauri.bundle.conf.json",
+    "build:desktop": "npm run build:exe && npm run notices --workspace desktop && npm run build --workspace desktop -- --config src-tauri/tauri.bundle.conf.json",
     "start": "npm run build --workspace shared && npm run build --workspace server && npm run build --workspace client && npm run start --workspace server"
   },
   "allowScripts": {

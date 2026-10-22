@@ -25,7 +25,8 @@ npm run import-cards --workspace server   # force a Scryfall card-cache refresh
 npm run build:exe         # single executable for this platform → release/, also copied to desktop/src-tauri/binaries/
 npm run smoke-test-exe --workspace server -- <executable> server/data/cards.sqlite3
 npm run dev:desktop       # the desktop window with dev:server + dev:client behind it (needs Rust)
-npm run build:desktop     # build:exe, then the installers → desktop/src-tauri/target/release/bundle/
+npm run build:desktop     # build:exe, the notices, then the installers → desktop/src-tauri/target/release/bundle/
+                          # (needs cargo-about: cargo install --locked --features cli cargo-about@0.9.2)
 ```
 
 **Tests and checks.** There are no root `lint` or `typecheck` scripts; use these.
@@ -151,10 +152,11 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 
 **Desktop app**
 - The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app.
-- `tauri.bundle.conf.json` holds the settings that need `build:exe` to have run (the sidecar and the notices file). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
+- `tauri.bundle.conf.json` holds the settings that need `build:exe` and `notices` to have run (the sidecar and `desktop/src-tauri/THIRD_PARTY_NOTICES.txt`, which `desktop/scripts/buildNotices.ts` builds from the server's notices plus cargo-about's list of Rust crates). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
 - macOS `hardenedRuntime` must stay `false`: Tauri re-signs the bundled server, and with the hardened runtime V8 can't reserve memory for its JIT, so the server crashes at start. CI smoke-tests the server inside the `.app` for this reason.
 - The window loads `http://127.0.0.1:<port>`, not app files, and has no capabilities: the page can't call Rust. Keep it that way.
 - Links in the management UI would replace it in the app's only window; show addresses as text with a copy button.
+- A new Rust dependency under a license missing from `accepted` in `desktop/src-tauri/about.toml` fails `notices` and CI. Check the license before adding it there. cargo-about's version is pinned (`CARGO_ABOUT_VERSION` in CI); 0.9 only installs its binary with `--features cli`, and without it `cargo install` succeeds without installing anything.
 
 **Realtime**
 - Send a player's pack before the lobby state that says it's their turn. Read the comments in the `draft:pick` handler before reordering emits.
