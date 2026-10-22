@@ -1,15 +1,18 @@
-// Must stay the first import: it loads the executable's .env before any
-// other module reads its settings.
+// Must stay the first import: the management UI's log viewer shows what's
+// logged from here on, including what loadEnvFile logs while it loads.
+import "./management/captureConsole.js";
+// Must come before every other module: it loads the executable's .env before
+// any of them reads its settings.
 import "./packaged/loadEnvFile.js";
 import { getDb } from "./db/database.js";
 import { countCards } from "./cardData/cardRepository.js";
 import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
 import { ensureImageDir } from "./images/imageCache.js";
-import { createDraftHttpServer } from "./management/draftServer.js";
+import { startManagementServer } from "./management/managementServer.js";
+import { readStartupSettings } from "./management/settingsFile.js";
 import { exitAfterFatalError, resolveEnvFilePath } from "./packaged/seaRuntime.js";
-import { buildPortInUseMessage, buildStartupBanner } from "./startupBanner.js";
 
-const PORT = Number(process.env.PORT ?? 4000);
+const MANAGEMENT_PORT = Number(process.env.MANAGEMENT_PORT ?? 4001);
 
 // Node's default for an unhandled rejection is to kill the process, which
 // for a host running a live draft means everyone is stuck until a restart.
@@ -25,33 +28,40 @@ async function main(): Promise<void> {
   getDb();
   ensureImageDir();
 
-  // An empty cache means the app can't resolve any cube at all, so block
-  // startup on the first import. Otherwise — just stale — refresh in the
-  // background so the host isn't stuck waiting right before a draft.
-  if (countCards() === 0) {
-    await refreshCardDatabaseIfStale();
-  } else {
-    refreshCardDatabaseIfStale();
+  let cardDatabaseRefreshing = false;
+  // Up before the card database check, so the host can watch a first-start
+  // download in the management UI instead of a window that seems stuck.
+  const management = await startManagementServer({
+    port: MANAGEMENT_PORT,
+    envFilePath: resolveEnvFilePath(),
+    savedSettings: readStartupSettings(),
+    isCardDatabaseRefreshing: () => cardDatabaseRefreshing,
+  });
+  // The desktop app reads this line to find the management UI.
+  console.log(`Management UI: ${management.url}`);
+
+  function refreshCardDatabase(): Promise<void> {
+    cardDatabaseRefreshing = true;
+    management.broadcastState();
+    return refreshCardDatabaseIfStale().finally(() => {
+      cardDatabaseRefreshing = false;
+      management.broadcastState();
+    });
   }
 
-  const { httpServer } = createDraftHttpServer(process.env.LOBBY_PASSWORD);
+  // An empty cache means the app can't resolve any cube at all, so wait for
+  // the first import before letting players in. Otherwise — just stale —
+  // refresh in the background so the host isn't stuck waiting right before
+  // a draft.
+  if (countCards() === 0) {
+    await refreshCardDatabase();
+  } else {
+    refreshCardDatabase();
+  }
 
-  // Without a listener, a busy port is an uncaught error and a bare stack
-  // trace — and the host's first guess should be a second copy still running.
-  httpServer.on("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      console.error(buildPortInUseMessage(PORT, resolveEnvFilePath()));
-    } else {
-      console.error("Draft Simulator server error:", err);
-    }
-    exitAfterFatalError();
-  });
-
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(
-      buildStartupBanner({ port: PORT, lobbyPassword: process.env.LOBBY_PASSWORD, envFilePath: resolveEnvFilePath() }),
-    );
-  });
+  // A failed start (a busy port) is logged and shown in the management UI,
+  // where the host can choose another port, so it doesn't end the process.
+  await management.startDraftServer();
 }
 
 main().catch((err: unknown) => {

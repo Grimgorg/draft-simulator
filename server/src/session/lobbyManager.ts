@@ -33,9 +33,26 @@ function getState(): LobbyManagerState {
   return state;
 }
 
-/** Saves the current state to disk; see saveSnapshot for why this never throws. */
+const stateChangeListeners = new Set<() => void>();
+
+/** Calls `listener` after every change to the lobby or draft; returns a function that stops it. */
+export function onStateChange(listener: () => void): () => void {
+  stateChangeListeners.add(listener);
+  return () => stateChangeListeners.delete(listener);
+}
+
+/** Saves the current state to disk and tells the listeners; see saveSnapshot for why this never throws. */
 function persist(): void {
   saveSnapshot(getState());
+  // Runs inside every change, picks included: a failing listener (the
+  // management UI) must not turn a pick into an error for the player.
+  for (const listener of stateChangeListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.error("A lobby state listener failed:", err);
+    }
+  }
 }
 
 /** Test-only: forces a clean in-memory state pointed at an isolated snapshot file. */

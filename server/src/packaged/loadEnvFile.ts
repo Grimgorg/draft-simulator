@@ -10,7 +10,7 @@ if (isPackaged) {
   const envFile = resolveEnvFilePath();
   try {
     if (createExampleEnvFileIfMissing(envFile)) {
-      console.log(`Created ${envFile}. Edit it to change the port or set a lobby password.`);
+      console.log(`Created the settings file ${envFile}.`);
     }
   } catch (err) {
     console.error(`Couldn't create the settings file ${envFile}; starting with the default settings.`, err);

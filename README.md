@@ -14,23 +14,22 @@ Only the host runs the server. Everyone else just opens its address in a browser
    - Intel Mac: `draft-simulator-macos-x64.tar.gz`
    - Linux: `draft-simulator-linux-x64.tar.gz`
 2. Unpack it into a folder of its own, then start it: double-click it, or run `./draft-simulator-…` in a terminal. Keep the window open while you draft. Closing it stops the server.
-3. The first start downloads the card database, which takes a minute. When the server is ready, the window shows the address to open and the port to forward:
+3. The window shows the address of the **management UI**, `http://127.0.0.1:4001/`. Open it in a browser on the same computer; only that computer can open it. The first start downloads the card database, which takes a minute, and the management UI's log shows how far along it is.
 
-   ```
-   Draft Simulator is running on port 4000.
-     Open http://localhost:4000 on this PC.
-     For friends outside your network, forward TCP port 4000 on your router to this PC.
-     Lobby password: none (anyone who can reach this port can join)
-   To change the port or the password, edit /path/to/.env and restart.
-   ```
+The management UI is where the host runs the server:
+- **Server:** whether it's running, with buttons to start, stop and restart it. Stopping disconnects everyone but keeps the draft; players get their seats back once it runs again.
+- **Invite players:** the addresses to send friends, the port to forward and the lobby password.
+- **Current draft** and **Players:** the cube, the pack and pick, and who is connected and still picking.
+- **Settings:** the port and the lobby password. Saving writes them to `.env`; restart the server to use them. Set a lobby password before forwarding the port.
+- **Log:** everything the server logs, with a filter for warnings and errors.
 
-Everything the server stores goes next to the executable: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file. The first start creates the `.env` with every setting commented out. To change a setting, remove the `#` in front of its line (see [Configuration](#configuration)) and restart. Set a `LOBBY_PASSWORD` before forwarding the port.
+Everything the server stores goes next to the executable: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file. The first start creates the `.env` with every setting commented out. The management UI saves the port and password there; for the other settings, remove the `#` in front of the line (see [Configuration](#configuration)) and restart.
 
 **First-start warnings.** The executables aren't code-signed, so the system warns you the first time:
 - **macOS:** "cannot be opened because the developer cannot be verified". Right-click the file, choose **Open**, then **Open** again. Or run `xattr -d com.apple.quarantine draft-simulator-macos-*` in that folder.
 - **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**. When the firewall asks, allow access, otherwise friends can't connect.
 
-**Friends outside your network** need the port forwarded. In your router's settings, forward the TCP port shown in the window (4000 by default) to this computer. Then send them `http://<your public IP>:4000`. Searching "what is my IP" shows your public IP.
+**Friends outside your network** need the port forwarded. In your router's settings, forward the TCP port shown in the management UI (4000 by default) to this computer. Then send them `http://<your public IP>:4000`. Searching "what is my IP" shows your public IP.
 
 ## Requirements (running from source)
 
@@ -64,7 +63,7 @@ The Scryfall card database (~38,000 cards, cached locally at `server/data/cards.
 npm start
 ```
 
-This builds `shared`, `server`, and `client`, then starts the server at **http://localhost:4000**. Open that URL — that's the host's screen. Anyone else on the same network can join by opening `http://<your-computer's-LAN-IP>:4000` in their own browser.
+This builds `shared`, `server`, and `client`, then starts the server at **http://localhost:4000** and the management UI at **http://127.0.0.1:4001** (see [Download and run](#download-and-run-no-node-needed) for what it shows). Open http://localhost:4000 to play; that's the host's screen too. Anyone else on the same network can join by opening `http://<your-computer's-LAN-IP>:4000` in their own browser.
 
 ### Development mode
 
@@ -75,15 +74,18 @@ npm run dev:server   # server with auto-reload, port 4000
 npm run dev:client   # Vite dev server with hot reload, port 5173
 ```
 
-In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.development` to talk to the server on 4000).
+In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.development` to talk to the server on 4000), and the management UI at http://localhost:5173/manage.html (it talks to the management server on 4001).
 
 ### Configuration
 
 Settings are environment variables the server reads at startup. They can come from a `.env` file: `server/.env` for `npm start` and `npm run dev:server` (create it yourself; it isn't in the repository), or the `.env` next to the executable. A real environment variable takes precedence over the same setting in `.env`.
 
-- `PORT` — defaults to `4000`.
+- `PORT` — defaults to `4000`. Also set in the management UI.
 - `CARD_CACHE_MAX_AGE_DAYS` — defaults to `30`; see the card database note above.
-- `LOBBY_PASSWORD` — unset by default (no password required). If set, everyone must enter this password before they can connect at all — useful if you're exposing the server beyond your LAN (e.g. port-forwarding it to the internet for a remote draft). It's a single shared password for the whole server, not per-draft.
+- `LOBBY_PASSWORD` — unset by default (no password required). If set, everyone must enter this password before they can connect at all — useful if you're exposing the server beyond your LAN (e.g. port-forwarding it to the internet for a remote draft). It's a single shared password for the whole server, not per-draft. Also set in the management UI.
+- `MANAGEMENT_PORT` — defaults to `4001`. The management UI listens on this port on `127.0.0.1` only, so other computers can't open it. `0` picks any free port.
+
+The management UI saves the port and password to the `.env` file. A real environment variable still wins when the app starts, so with `PORT` or `LOBBY_PASSWORD` set in the environment, a saved value only lasts until the next start.
 
 ## How a draft works
 
@@ -97,9 +99,9 @@ Settings are environment variables the server reads at startup. They can come fr
 ## Project structure
 
 - `shared/` — TypeScript types and Socket.IO event contracts shared between client and server
-- `server/` — Express + Socket.IO backend: Scryfall card cache, CubeCobra importer, draft engine, session/reconnect handling
-- `client/` — React frontend
-- `e2e/` — Playwright browser tests that play a draft as host and guest
+- `server/` — Express + Socket.IO backend: Scryfall card cache, CubeCobra importer, draft engine, session/reconnect handling, and the management server that starts and stops it
+- `client/` — React frontend: the player client (`index.html`) and the management UI (`manage.html`)
+- `e2e/` — Playwright browser tests that play a draft as host and guest, and drive the management UI
 
 ## Tests
 
@@ -108,7 +110,7 @@ Server tests sit next to the code they test, as `*.test.ts` (for example `server
 ```bash
 npm test                                   # server unit and socket integration tests
 npx --workspace e2e playwright install chromium   # once, before the first browser test run
-npm run test:e2e                           # browser tests: a host and a guest draft in real Chromium
+npm run test:e2e                           # browser tests: a host and a guest draft in real Chromium, and the management UI
 npm run test:e2e:ui                        # the same browser tests in Playwright's UI, to step through each one afterwards
 npm run test:e2e:slow                      # the same browser tests slowed down in visible windows, to watch live
 npm run test:all                           # server tests, then the browser tests if those pass
@@ -144,7 +146,7 @@ To build and smoke-test the executables without releasing them, run the workflow
 ## Known limitations
 
 - One draft at a time per server instance — the host has to finish (or the host can start a fresh one from the results screen) before a new one can begin.
-- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, stop the server and delete `server/data/draft-session.json` (or `data/draft-session.json` next to the executable) to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.
+- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, quit Draft Simulator and delete `server/data/draft-session.json` (or `data/draft-session.json` next to the executable) to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.
 
 ## License
 

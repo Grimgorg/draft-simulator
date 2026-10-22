@@ -1,7 +1,7 @@
 /**
  * Starts a built executable in an empty folder and checks the parts that only
- * exist when packaged: the embedded SQLite addon, the embedded client, the
- * data dir and the example .env next to the executable.
+ * exist when packaged: the embedded SQLite addon, the embedded client and
+ * management UI, the data dir and the example .env next to the executable.
  *
  * Run with: npm run smoke-test-exe --workspace server -- <executable> <cards.sqlite3>
  * The card DB is copied in so the executable doesn't download its own.
@@ -28,12 +28,23 @@ fs.chmodSync(executable, 0o755);
 fs.mkdirSync(path.join(workDir, "data"));
 fs.copyFileSync(path.resolve(invokedFrom, cardDbArg), path.join(workDir, "data/cards.sqlite3"));
 
-const probe = createServer().listen(0, "127.0.0.1");
-await once(probe, "listening");
-const { port } = probe.address() as AddressInfo;
-await new Promise((resolve) => probe.close(resolve));
+async function freePort(): Promise<number> {
+  const probe = createServer().listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const { port } = probe.address() as AddressInfo;
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
 
-const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port), CARD_CACHE_MAX_AGE_DAYS: "36500" };
+const port = await freePort();
+const managementPort = await freePort();
+
+const env: NodeJS.ProcessEnv = {
+  ...process.env,
+  PORT: String(port),
+  MANAGEMENT_PORT: String(managementPort),
+  CARD_CACHE_MAX_AGE_DAYS: "36500",
+};
 delete env.LOBBY_PASSWORD;
 const child = spawn(executable, [], { cwd: workDir, env, stdio: ["ignore", "pipe", "pipe"] });
 let output = "";
@@ -80,8 +91,22 @@ try {
   const unknownCard = await fetch(`${baseUrl}/images/not-a-card`);
   check(unknownCard.status === 404, `GET /images/not-a-card returned ${unknownCard.status} instead of 404.`);
 
+  const playerManagePage = await fetch(`${baseUrl}/manage.html`);
+  check(playerManagePage.status === 404, `The player port serves the management UI (status ${playerManagePage.status}).`);
+
+  const managePage = await fetch(`http://127.0.0.1:${managementPort}/`);
+  const manageHtml = await managePage.text();
+  check(
+    managePage.ok && managePage.url.endsWith("/manage.html") && manageHtml.includes('<div id="root">'),
+    `The management port didn't serve the embedded manage.html (status ${managePage.status}, ${managePage.url}).`,
+  );
+
   check(fs.existsSync(path.join(workDir, ".env")), "No example .env was created next to the executable.");
-  check(output.includes(`running on port ${port}`), "The startup banner wasn't printed.");
+  check(output.includes(`running on port ${port}`), "The draft server didn't log that it's running.");
+  check(
+    output.includes(`Management UI: http://127.0.0.1:${managementPort}/`),
+    "The management UI's address wasn't printed.",
+  );
 
   console.log(`Smoke test passed for ${path.basename(executableArg)}.`);
 } catch (err) {

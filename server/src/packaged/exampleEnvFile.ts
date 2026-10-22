@@ -4,13 +4,17 @@ import fs from "node:fs";
 export function buildExampleEnvFile(): string {
   return [
     "# Draft Simulator settings.",
-    '# Remove the "#" at the start of a line to change that setting, then restart Draft Simulator.',
+    "# The port and the lobby password are easiest to change in the management UI, which saves them here.",
+    '# To change a setting by hand, remove the "#" at the start of its line, then restart Draft Simulator.',
     "",
     "# Port the server listens on. Forward this TCP port on your router for friends outside your network.",
     "# PORT=4000",
     "",
     "# Password everyone must enter before joining. Strongly recommended once the port is forwarded.",
     "# LOBBY_PASSWORD=choose-a-password",
+    "",
+    "# Port of the management UI. Only this computer can open it.",
+    "# MANAGEMENT_PORT=4001",
     "",
     "# Days before the downloaded card database is refreshed.",
     "# CARD_CACHE_MAX_AGE_DAYS=30",
