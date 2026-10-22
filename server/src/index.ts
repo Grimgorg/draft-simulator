@@ -1,21 +1,12 @@
 // Must stay the first import: it loads the executable's .env before any
 // other module reads its settings.
 import "./packaged/loadEnvFile.js";
-import fs from "node:fs";
-import { createServer } from "node:http";
-import path from "node:path";
-import express from "express";
-import cors from "cors";
-import { Server } from "socket.io";
-import type { ClientToServerEvents, ServerToClientEvents } from "@draft-simulator/shared";
 import { getDb } from "./db/database.js";
-import { countCards, getLastImportedAt } from "./cardData/cardRepository.js";
+import { countCards } from "./cardData/cardRepository.js";
 import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
-import { ensureImageDir, serveCardBackImage, serveCardImage } from "./images/imageCache.js";
-import { serveEmbeddedClient } from "./packaged/embeddedClient.js";
-import { exitAfterFatalError, isPackaged, resolveClientDist, resolveEnvFilePath } from "./packaged/seaRuntime.js";
-import { requireLobbyPassword } from "./realtime/lobbyPassword.js";
-import { registerSocketHandlers } from "./realtime/socketHandlers.js";
+import { ensureImageDir } from "./images/imageCache.js";
+import { createDraftHttpServer } from "./management/draftServer.js";
+import { exitAfterFatalError, resolveEnvFilePath } from "./packaged/seaRuntime.js";
 import { buildPortInUseMessage, buildStartupBanner } from "./startupBanner.js";
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -43,40 +34,7 @@ async function main(): Promise<void> {
     refreshCardDatabaseIfStale();
   }
 
-  const app = express();
-  app.use(cors());
-  app.use(express.json());
-
-  app.get("/health", (_req, res) => {
-    res.json({ status: "ok", cardsCached: countCards(), cardsLastImportedAt: getLastImportedAt() ?? null });
-  });
-
-  app.get("/images/:scryfallId", serveCardImage);
-  app.get("/images/:scryfallId/back", serveCardBackImage);
-
-  // Once the client is built (npm run build --workspace client), serve it
-  // directly so everyone — host included — just opens this server's address
-  // in a browser. In dev, the client runs separately on Vite's own port.
-  // The executable carries its own copy of the built client.
-  if (isPackaged) {
-    app.use(serveEmbeddedClient());
-  } else {
-    const clientDist = resolveClientDist();
-    if (fs.existsSync(clientDist)) {
-      app.use(express.static(clientDist));
-      app.get("/", (_req, res) => {
-        res.sendFile(path.join(clientDist, "index.html"));
-      });
-    }
-  }
-
-  const httpServer = createServer(app);
-  const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
-    cors: { origin: "*" },
-  });
-
-  io.use(requireLobbyPassword(process.env.LOBBY_PASSWORD));
-  registerSocketHandlers(io);
+  const { httpServer } = createDraftHttpServer(process.env.LOBBY_PASSWORD);
 
   // Without a listener, a busy port is an uncaught error and a bare stack
   // trace — and the host's first guess should be a second copy still running.
