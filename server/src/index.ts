@@ -22,6 +22,15 @@ process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection (server kept running):", reason);
 });
 
+// The desktop app runs the server as its child and stops it when it quits.
+// If the app goes away without doing that (a crash, a force quit), its end
+// of this pipe closes; exiting then frees the ports instead of leaving an
+// invisible server running that the next start can't get past.
+if (process.env.DRAFT_SIMULATOR_MANAGED === "1") {
+  process.stdin.on("end", () => process.exit(0));
+  process.stdin.resume();
+}
+
 // Startup runs in main() rather than at the top level because the packaged
 // executable is a CommonJS bundle, which can't use top-level await.
 async function main(): Promise<void> {

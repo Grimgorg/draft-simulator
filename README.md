@@ -6,28 +6,35 @@ Developed with the help of AI coding assistants (Claude Code).
 
 ## Download and run (no Node needed)
 
-Only the host runs the server. Everyone else just opens its address in a browser.
+Only the host installs Draft Simulator. Everyone else just opens its address in a browser.
 
-1. Download the file for your computer from the repository's [Releases](https://github.com/Grimgorg/draft-simulator/releases) page.
-   - Windows: `draft-simulator-windows-x64.zip`
-   - Mac with Apple Silicon (M1 and newer): `draft-simulator-macos-arm64.tar.gz`
-   - Intel Mac: `draft-simulator-macos-x64.tar.gz`
-   - Linux: `draft-simulator-linux-x64.tar.gz`
-2. Unpack it into a folder of its own, then start it: double-click it, or run `./draft-simulator-…` in a terminal. Keep the window open while you draft. Closing it stops the server.
-3. The window shows the address of the **management UI**, `http://127.0.0.1:4001/`. Open it in a browser on the same computer; only that computer can open it. The first start downloads the card database, which takes a minute, and the management UI's log shows how far along it is.
+1. Download the installer for your computer from the repository's [Releases](https://github.com/Grimgorg/draft-simulator/releases) page.
+   - Windows: `draft-simulator-windows-x64-setup.exe`
+   - Mac with Apple Silicon (M1 and newer): `draft-simulator-macos-arm64.dmg`
+   - Intel Mac: `draft-simulator-macos-x64.dmg`
+   - Linux: `draft-simulator-linux-x64.AppImage` (make it executable, then run it), or `draft-simulator-linux-x64.deb`
+2. Install it: run the Windows installer, or drag Draft Simulator from the `.dmg` into Applications.
+3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the log at the bottom shows how far along it is.
 
-The management UI is where the host runs the server:
+The management UI shows:
 - **Server:** whether it's running, with buttons to start, stop and restart it. Stopping disconnects everyone but keeps the draft; players get their seats back once it runs again.
-- **Invite players:** the addresses to send friends, the port to forward and the lobby password.
+- **Invite players:** the addresses to send friends, the port to forward and the lobby password. You open the same address in your browser to play.
 - **Current draft** and **Players:** the cube, the pack and pick, and who is connected and still picking.
-- **Settings:** the port and the lobby password. Saving writes them to `.env`; restart the server to use them. Set a lobby password before forwarding the port.
+- **Settings:** the port and the lobby password. Saving writes them to the settings file; restart the server to use them. Set a lobby password before forwarding the port.
 - **Log:** everything the server logs, with a filter for warnings and errors.
 
-Everything the server stores goes next to the executable: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file. The first start creates the `.env` with every setting commented out. The management UI saves the port and password there; for the other settings, remove the `#` in front of the line (see [Configuration](#configuration)) and restart.
+Everything the server stores goes in your user's app data folder: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file.
+- Windows: `%APPDATA%\io.github.grimgorg.draft-simulator`
+- macOS: `~/Library/Application Support/io.github.grimgorg.draft-simulator`
+- Linux: `~/.local/share/io.github.grimgorg.draft-simulator`
 
-**First-start warnings.** The executables aren't code-signed, so the system warns you the first time:
-- **macOS:** "cannot be opened because the developer cannot be verified". Right-click the file, choose **Open**, then **Open** again. Or run `xattr -d com.apple.quarantine draft-simulator-macos-*` in that folder.
-- **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**. When the firewall asks, allow access, otherwise friends can't connect.
+The management UI saves the port and password in `.env`. For the other settings, remove the `#` in front of the line (see [Configuration](#configuration)) and restart.
+
+**Updating from 0.2 or older.** Those versions were a single executable that kept `data/` and `.env` next to itself. The app doesn't use that folder. On the first start it downloads the card database again, and you set the port and password once in Settings. A draft running at the moment you update isn't carried over. Once the app works, you can delete the old executable's folder.
+
+**First-start warnings.** The app isn't code-signed, so the system warns you the first time:
+- **macOS:** "Draft Simulator can't be opened" or "is damaged". Open **System Settings → Privacy & Security** and click **Open Anyway** next to Draft Simulator. Or run `xattr -cr "/Applications/Draft Simulator.app"` in Terminal once.
+- **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**. When the firewall asks about `draft-simulator-server`, allow access, otherwise friends can't connect.
 
 **Friends outside your network** need the port forwarded. In your router's settings, forward the TCP port shown in the management UI (4000 by default) to this computer. Then send them `http://<your public IP>:4000`. Searching "what is my IP" shows your public IP.
 
@@ -76,14 +83,25 @@ npm run dev:client   # Vite dev server with hot reload, port 5173
 
 In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.development` to talk to the server on 4000), and the management UI at http://localhost:5173/manage.html (it talks to the management server on 4001).
 
+### The desktop app
+
+The installed app is a [Tauri](https://tauri.app) window (`desktop/`) around the same server: it starts the server executable, shows its management UI and stops the server when it closes. Working on it needs [Rust](https://rustup.rs) and Tauri's [system prerequisites](https://tauri.app/start/prerequisites/) (Xcode Command Line Tools on macOS, WebView2 and the MSVC build tools on Windows, WebKitGTK on Linux).
+
+```bash
+npm run dev:desktop    # the app window, with the server and client in dev mode behind it (stop both by closing the window)
+npm run build:desktop  # the installers for this computer, in desktop/src-tauri/target/release/bundle/
+```
+
+`dev:desktop` runs `dev:server` and `dev:client` itself, so don't run them alongside it.
+
 ### Configuration
 
-Settings are environment variables the server reads at startup. They can come from a `.env` file: `server/.env` for `npm start` and `npm run dev:server` (create it yourself; it isn't in the repository), or the `.env` next to the executable. A real environment variable takes precedence over the same setting in `.env`.
+Settings are environment variables the server reads at startup. They can come from a `.env` file: `server/.env` for `npm start` and `npm run dev:server` (create it yourself; it isn't in the repository), or the `.env` in the desktop app's data folder (see [Download and run](#download-and-run-no-node-needed)). A real environment variable takes precedence over the same setting in `.env`.
 
 - `PORT` — defaults to `4000`. Also set in the management UI.
 - `CARD_CACHE_MAX_AGE_DAYS` — defaults to `30`; see the card database note above.
 - `LOBBY_PASSWORD` — unset by default (no password required). If set, everyone must enter this password before they can connect at all — useful if you're exposing the server beyond your LAN (e.g. port-forwarding it to the internet for a remote draft). It's a single shared password for the whole server, not per-draft. Also set in the management UI.
-- `MANAGEMENT_PORT` — defaults to `4001`. The management UI listens on this port on `127.0.0.1` only, so other computers can't open it. `0` picks any free port.
+- `MANAGEMENT_PORT` — defaults to `4001`. The management UI listens on this port on `127.0.0.1` only, so other computers can't open it. `0` picks any free port, which is what the desktop app uses.
 
 The management UI saves the port and password to the `.env` file. A real environment variable still wins when the app starts, so with `PORT` or `LOBBY_PASSWORD` set in the environment, a saved value only lasts until the next start.
 
@@ -102,6 +120,7 @@ The management UI saves the port and password to the `.env` file. A real environ
 - `server/` — Express + Socket.IO backend: Scryfall card cache, CubeCobra importer, draft engine, session/reconnect handling, and the management server that starts and stops it
 - `client/` — React frontend: the player client (`index.html`) and the management UI (`manage.html`)
 - `e2e/` — Playwright browser tests that play a draft as host and guest, and drive the management UI
+- `desktop/` — the Tauri desktop app: a window around the server executable (`src-tauri/`), its loading page and its icon
 
 ## Tests
 
@@ -122,31 +141,32 @@ Playwright is installed by the `e2e` workspace, so if you pulled that workspace 
 
 Most tests are network-free. Three socket integration tests need internet access (they import a real CubeCobra cube), and both those and the browser tests need the local card cache from the setup step above.
 
-## Building the executables and releasing
+## Building the app and releasing
 
 ```bash
-npm run build:exe   # builds release/draft-simulator-<os>-<arch> for the computer you run it on
+npm run build:exe       # the server executable, release/draft-simulator-<os>-<arch>, for the computer you run it on
 npm run smoke-test-exe --workspace server -- release/draft-simulator-macos-arm64 server/data/cards.sqlite3
+npm run build:desktop   # build:exe, then the desktop app's installers around it (needs Rust, see above)
 ```
 
-The executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). It can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner. The build also writes `release/THIRD_PARTY_NOTICES.txt` with the licenses of Node.js and every npm package inside the executable, and each download includes it. If Node's license file isn't next to your Node install, the build downloads it for your Node version from GitHub.
+The server executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). `build:exe` also copies it into `desktop/src-tauri/binaries/`, where the desktop app picks it up. It runs on its own too, keeping `data/` and `.env` next to itself, which is how the smoke test runs it. Both can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner. The build also writes `release/THIRD_PARTY_NOTICES.txt` with the licenses of Node.js and every npm package inside the executable, and every installer includes it. If Node's license file isn't next to your Node install, the build downloads it for your Node version from GitHub.
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the typechecks, lint, builds, server tests and browser tests on every push to every branch. Every merge into `main` publishes a release, so every pull request has to raise the version in the root `package.json`:
+GitHub Actions (`.github/workflows/ci.yml`) runs the typechecks, lint, builds, server tests and browser tests on every push to every branch, and lints the desktop app's Rust code with clippy. Every merge into `main` publishes a release, so every pull request has to raise the version in the root `package.json`:
 
 ```bash
 npm version patch --no-git-tag-version   # or minor / major; updates package.json and package-lock.json
 ```
 
-Each push also checks that this version is higher than the latest GitHub Release, and the check fails if it isn't. Once a pull request with a passing check is merged, the workflow tests `main` again, builds and smoke-tests the executable on Linux, Windows, Apple Silicon and Intel Macs, and publishes all four as Release `v<version>`, tagging the merged commit. Nothing is released if a test, a build or the version check fails. Versions must be plain `1.2.3`; there are no pre-releases.
+Each push also checks that this version is higher than the latest GitHub Release, and the check fails if it isn't. Once a pull request with a passing check is merged, the workflow tests `main` again, builds and smoke-tests the server executable on Linux, Windows, Apple Silicon and Intel Macs, builds the desktop app's installers around it, and publishes them as Release `v<version>`, tagging the merged commit. Nothing is released if a test, a build or the version check fails. Versions must be plain `1.2.3`; there are no pre-releases.
 
-To make GitHub refuse merging a pull request that fails a test or the version check, add a rule for `main` under **Settings → Rules** that requires the `test` and `version` status checks. Without it, such a merge goes through and the run on `main` fails instead, without releasing anything. Releasing needs no secrets.
+To make GitHub refuse merging a pull request that fails a test or the version check, add a rule for `main` under **Settings → Rules** that requires the `test`, `desktop` and `version` status checks. Without it, such a merge goes through and the run on `main` fails instead, without releasing anything. Releasing needs no secrets.
 
-To build and smoke-test the executables without releasing them, run the workflow by hand: **Actions → CI → Run workflow**. The workflow never stores files as workflow artifacts, because artifact storage is shared by all your private repos and can fill up. The executables go straight onto the Release, whose files don't count toward that limit.
+To build and smoke-test the installers without releasing them, run the workflow by hand: **Actions → CI → Run workflow**. The workflow never stores files as workflow artifacts, because artifact storage is shared by all your private repos and can fill up. The installers go straight onto the Release, whose files don't count toward that limit.
 
 ## Known limitations
 
 - One draft at a time per server instance — the host has to finish (or the host can start a fresh one from the results screen) before a new one can begin.
-- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, quit Draft Simulator and delete `server/data/draft-session.json` (or `data/draft-session.json` next to the executable) to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.
+- Identity is trust-based, not authenticated: the "Rejoin as..." list shows every player's name and lets anyone pick any seat, since this is meant for a small group of friends who trust each other, not a public server. Picking a name that's still connected elsewhere signs that other session out. If a draft ever gets stuck beyond that, quit Draft Simulator and delete `data/draft-session.json` in its app data folder (or `server/data/draft-session.json` when running from source) to reset it. If you're exposing the server beyond your LAN, set `LOBBY_PASSWORD` (see Configuration above) so a stranger who finds the URL can't connect at all.
 
 ## License
 

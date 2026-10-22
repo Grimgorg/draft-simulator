@@ -5,6 +5,9 @@
  * binary running this script, so build each platform on that platform.
  *
  * Run with: npm run build:exe   (writes release/draft-simulator-<os>-<arch>[.exe])
+ *
+ * It's also copied into the desktop app as its sidecar, which
+ * `npm run build:desktop` bundles.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -20,6 +23,7 @@ const ROOT = path.join(SERVER_DIR, "..");
 const CLIENT_DIST = path.join(ROOT, "client/dist");
 const BUILD_DIR = path.join(SERVER_DIR, "build/sea");
 const RELEASE_DIR = path.join(ROOT, "release");
+const SIDECAR_DIR = path.join(ROOT, "desktop/src-tauri/binaries");
 
 /** Node's fixed marker that tells the binary a SEA blob has been injected. */
 const SEA_FUSE = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
@@ -36,6 +40,25 @@ function platformName(): string {
   if (isWindows) return "windows";
   if (isMac) return "macos";
   return process.platform;
+}
+
+/**
+ * The Rust target triple of this platform: Tauri looks for a sidecar named
+ * <name>-<triple>. Mapped here rather than asked of rustc, so building the
+ * executable alone doesn't need Rust.
+ */
+function rustTargetTriple(): string {
+  const triples: Record<string, string> = {
+    "darwin-arm64": "aarch64-apple-darwin",
+    "darwin-x64": "x86_64-apple-darwin",
+    "linux-x64": "x86_64-unknown-linux-gnu",
+    "linux-arm64": "aarch64-unknown-linux-gnu",
+    "win32-x64": "x86_64-pc-windows-msvc",
+    "win32-arm64": "aarch64-pc-windows-msvc",
+  };
+  const triple = triples[`${process.platform}-${process.arch}`];
+  if (!triple) throw new Error(`No Rust target triple known for ${process.platform}-${process.arch}.`);
+  return triple;
 }
 
 function listFiles(dir: string): string[] {
@@ -110,6 +133,11 @@ run(process.execPath, [require.resolve("postject/dist/cli.js"), ...postjectArgs]
 if (isMac) run("codesign", ["--sign", "-", executablePath]);
 
 console.log(`Built ${executablePath}`);
+
+fs.mkdirSync(SIDECAR_DIR, { recursive: true });
+const sidecarPath = path.join(SIDECAR_DIR, `draft-simulator-server-${rustTargetTriple()}${isWindows ? ".exe" : ""}`);
+fs.copyFileSync(executablePath, sidecarPath);
+console.log(`Copied it to ${sidecarPath} for the desktop app`);
 
 /**
  * Node's own LICENSE, which also covers the libraries built into it (V8,

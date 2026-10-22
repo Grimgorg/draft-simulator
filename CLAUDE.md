@@ -1,14 +1,15 @@
 ## Project
 
-Self-hosted Magic: The Gathering cube draft simulator for a small group of friends: one host runs the server and imports a CubeCobra cube, and players join from a browser. The host controls the server from a management UI on `127.0.0.1:4001`. README.md covers user-facing setup, the downloadable executables, the management UI, configuration (`PORT`, `LOBBY_PASSWORD`, `MANAGEMENT_PORT`, `CARD_CACHE_MAX_AGE_DAYS`), releasing and draft flow.
+Self-hosted Magic: The Gathering cube draft simulator for a small group of friends: one host runs the server and imports a CubeCobra cube, and players join from a browser. The host installs a Tauri desktop app whose window is the server's management UI (on `127.0.0.1:4001` when run from source). README.md covers user-facing setup, the installers and where they keep data, the management UI, the desktop app's dev setup, configuration (`PORT`, `LOBBY_PASSWORD`, `MANAGEMENT_PORT`, `CARD_CACHE_MAX_AGE_DAYS`), releasing and draft flow.
 
 ## Stack
 
-- TypeScript everywhere, ESM with `NodeNext` resolution. Node 22.18+ (built and tested on Node 24). npm workspaces monorepo: `shared`, `server`, `client`, `e2e`.
+- TypeScript everywhere, ESM with `NodeNext` resolution. Node 22.18+ (built and tested on Node 24). npm workspaces monorepo: `shared`, `server`, `client`, `e2e`, `desktop`.
 - Server: Express 4 + Socket.IO 4, better-sqlite3 (Scryfall card cache), run with tsx in dev.
 - Client: React 19 + Vite, socket.io-client. Lint with oxlint.
 - Tests: `node:test` + `node:assert/strict` via tsx (server); Playwright with Chromium (e2e).
 - Executables: esbuild bundles the server to CommonJS; postject injects it into a copy of the Node binary (Node SEA). CI: GitHub Actions.
+- Desktop app: Tauri 2 (Rust, `desktop/src-tauri/`) runs that executable as its sidecar and shows the management UI in its window. Releases ship its installers (NSIS, dmg, AppImage, deb), not the bare executable.
 
 ## Commands
 
@@ -21,8 +22,10 @@ npm run dev:server        # server with reload, :4000 and management on :4001
 npm run dev:client        # client with reload, :5173 (talks to :4000); management UI at :5173/manage.html
 npm run build:shared      # after changing shared/src
 npm run import-cards --workspace server   # force a Scryfall card-cache refresh
-npm run build:exe         # single executable for this platform → release/
+npm run build:exe         # single executable for this platform → release/, also copied to desktop/src-tauri/binaries/
 npm run smoke-test-exe --workspace server -- <executable> server/data/cards.sqlite3
+npm run dev:desktop       # the desktop window with dev:server + dev:client behind it (needs Rust)
+npm run build:desktop     # build:exe, then the installers → desktop/src-tauri/target/release/bundle/
 ```
 
 **Tests and checks.** There are no root `lint` or `typecheck` scripts; use these.
@@ -50,6 +53,7 @@ A failed browser test leaves a trace: `npx playwright show-trace test-results/<t
 2. `npm test`, both typechecks, the client lint, and both builds.
 3. UI or realtime change: `npm run test:e2e`. For flows it doesn't cover, run both dev servers and try it as host and player in two browsers.
    Change to startup, paths, settings or dependencies: also `npm run build:exe` and the smoke test.
+   Change to `desktop/` or to how the server starts: also `npm run typecheck --workspace desktop`, `cargo clippy` in `desktop/src-tauri`, and `npm run build:desktop`, then start the built app and quit it.
 4. Check `git diff` for removed guard comments and stray files in `server/data/` or `dist/`.
 
 ## Layout
@@ -77,9 +81,11 @@ client/src/
   components/             React components
   management/             the management UI (manage.html): its own socket, useManagementConnection, panels
 e2e/                      Playwright tests against the production build
+desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, shows its UI, stops it), splash/ (page shown while it
+                          starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
-release/                  built executables, gitignored
-.github/workflows/ci.yml  tests and version check on every push; pushes to main also build, smoke-test and release
+release/                  built executables, gitignored (as are desktop/src-tauri/{target,gen,binaries})
+.github/workflows/ci.yml  tests, clippy and version check on every push; pushes to main also build, smoke-test and release the installers
 ```
 
 ## Conventions
@@ -141,7 +147,14 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 - Never use `import.meta.dirname` directly: it's undefined in the bundle. Resolve paths through `packaged/seaRuntime.ts`, which only reads it when not packaged.
 - `import "./management/captureConsole.js"` must stay the first import in `index.ts`, so the log viewer gets everything; `import "./packaged/loadEnvFile.js"` must come right after, before any module that reads settings as it loads.
 - The executable's `require()` only loads built-in modules. A new native addon or runtime file must be embedded as an asset in `buildExecutable.ts` and loaded from there.
-- When packaged, the data dir and `.env` are next to the executable, not in `server/`.
+- When packaged, the data dir and `.env` are in `DRAFT_SIMULATOR_HOME` (the desktop app sets it to the OS app data folder), or next to the executable without it. Never in `server/`.
+
+**Desktop app**
+- The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app.
+- `tauri.bundle.conf.json` holds the settings that need `build:exe` to have run (the sidecar and the notices file). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
+- macOS `hardenedRuntime` must stay `false`: Tauri re-signs the bundled server, and with the hardened runtime V8 can't reserve memory for its JIT, so the server crashes at start. CI smoke-tests the server inside the `.app` for this reason.
+- The window loads `http://127.0.0.1:<port>`, not app files, and has no capabilities: the page can't call Rust. Keep it that way.
+- Links in the management UI would replace it in the app's only window; show addresses as text with a copy button.
 
 **Realtime**
 - Send a player's pack before the lobby state that says it's their turn. Read the comments in the `draft:pick` handler before reordering emits.
@@ -156,9 +169,10 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 | Snapshot shape (`server/data/draft-session.json`, path set by `DRAFT_SNAPSHOT_PATH`) | resuming a running draft after a server restart |
 | Card DB schema (`server/data/cards.sqlite3`) | existing caches. Only additive migrations, in `getDb()` (`db/database.ts`): check `PRAGMA table_info`, then `ALTER TABLE` |
 | Socket events (`shared/src/events.ts`, `managementEvents.ts`) | server and client talking. Change both in the same commit |
-| Executable layout (`data/` and `.env` next to the executable, asset names in `buildExecutable.ts`) | hosts' existing data and settings after updating the executable |
+| Executable layout (`data/` and `.env` in `DRAFT_SIMULATOR_HOME` or next to the executable, asset names in `buildExecutable.ts`) | hosts' existing data and settings after updating |
+| Tauri `identifier` (`desktop/src-tauri/tauri.conf.json`) | the app data folder's name: changing it loses hosts' data and settings |
 | `.env` lines the management UI writes (`PORT`, `LOBBY_PASSWORD` double-quoted) | settings hosts saved in the UI |
-| The `Management UI: <url>` line `index.ts` prints | anything that reads it to find the UI (the desktop app, planned) |
+| The `Management UI: <url>` line `index.ts` prints | the desktop app, which reads it to find the UI (`UI_LINE_PREFIX` in `main.rs`) |
 | `localStorage` keys (`pileStorage.ts`, `playerIdentity.ts`, `lobbyPassword.ts`) | players' saved identity (their seat), piles, deck state and lobby password |
 
 To reset a stuck draft, delete `server/data/draft-session.json`.

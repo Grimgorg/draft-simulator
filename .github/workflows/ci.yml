@@ -1,11 +1,11 @@
 name: CI
 
-# Every push to any branch runs the tests and checks that the version in the
-# root package.json is higher than the latest GitHub Release. A push to main
-# (a merged pull request) then builds the executables for every platform and
-# publishes them as Release v<version>, but only once both have passed. A
-# manual run (Actions → CI → Run workflow) builds and smoke-tests the
-# executables without releasing them.
+# Every push to any branch runs the tests, lints the desktop app's Rust code
+# and checks that the version in the root package.json is higher than the
+# latest GitHub Release. A push to main (a merged pull request) then builds
+# the desktop app for every platform and publishes its installers as Release
+# v<version>, but only once all of that has passed. A manual run (Actions →
+# CI → Run workflow) builds and smoke-tests them without releasing them.
 #
 # The version check on a feature branch is what stops a pull request without
 # a version bump. It only blocks the merge if main has a branch rule that
@@ -17,7 +17,7 @@ name: CI
 # is a quota shared by every private repo on the account, and other repos
 # filling it once failed a release here. The card cache travels through
 # actions/cache (a separate per-repo limit) and each package job uploads its
-# executable straight to the Release, whose files don't count toward the quota.
+# installers straight to the Release, whose files don't count toward the quota.
 # No pull_request trigger: a pull request shows its branch's push checks, and
 # running both would test every pull request twice. No tags either, so the tag
 # a release creates doesn't start another run.
@@ -106,6 +106,27 @@ jobs:
             e2e/test-results
           retention-days: 7
 
+  # The desktop app is only built on main, so a feature branch checks here
+  # that its Rust code compiles cleanly. tauri.conf.json alone needs no
+  # server executable: the bundle-only settings that do are in
+  # tauri.bundle.conf.json, which only the package jobs use.
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck --workspace desktop
+      - name: Install the Linux libraries Tauri builds against
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - run: cargo clippy --manifest-path desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
+
   # Compares against the highest published release, not the previous commit:
   # a merge that forgot the bump must fail even if an older commit had one.
   # Only plain X.Y.Z versions, which sort -V orders correctly.
@@ -150,7 +171,7 @@ jobs:
   # makes it public once every executable is attached. Publishing it creates
   # the tag on the merged commit.
   create-release:
-    needs: [test, version]
+    needs: [test, desktop, version]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -176,25 +197,29 @@ jobs:
           gh release create "$TAG" --draft --target "$GITHUB_SHA" --generate-notes
 
   package:
-    needs: [test, version, create-release]
+    needs: [test, desktop, version, create-release]
     # create-release is skipped on a manual run; still build then.
     if: >-
-      !cancelled() && needs.test.result == 'success' &&
+      !cancelled() && needs.test.result == 'success' && needs.desktop.result == 'success' &&
       (needs.create-release.result == 'success' || github.event_name == 'workflow_dispatch')
-    # The executable is a copy of the runner's own Node binary, so every
-    # platform is built on that platform.
+    # The server executable is a copy of the runner's own Node binary, and the
+    # desktop app wraps it, so every platform is built on that platform.
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: linux-x64
+            bundles: appimage,deb
           - os: windows-latest
             target: windows-x64
+            bundles: nsis
           - os: macos-latest
             target: macos-arm64
+            bundles: dmg
           - os: macos-15-intel
             target: macos-x64
+            bundles: dmg
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -226,18 +251,43 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then exe="$exe.exe"; fi
           npm run smoke-test-exe --workspace server -- "$exe" server/data/cards.sqlite3
 
-      # Archived so the executable bit survives the download on macOS and Linux.
-      # THIRD_PARTY_NOTICES.txt goes in too: the bundled packages' licenses require it.
-      - name: Archive (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: Compress-Archive -Path release/draft-simulator-${{ matrix.target }}.exe, release/THIRD_PARTY_NOTICES.txt -DestinationPath release/draft-simulator-${{ matrix.target }}.zip
-      - name: Archive (macOS, Linux)
-        if: runner.os != 'Windows'
+      - name: Install the Linux libraries Tauri builds against
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      # build:exe already put the executable where the desktop app bundles it.
+      - name: Build the desktop app
+        run: npm run build --workspace desktop -- --config src-tauri/tauri.bundle.conf.json --bundles ${{ matrix.bundles }}
+
+      # Tauri signs the server again when it bundles it. Signed with the
+      # hardened runtime, V8 couldn't reserve memory and the server crashed
+      # at start, while the executable tested above was fine.
+      - name: Smoke-test the server inside the app (macOS)
+        if: runner.os == 'macOS'
+        run: npm run smoke-test-exe --workspace server -- "desktop/src-tauri/target/release/bundle/macos/Draft Simulator.app/Contents/MacOS/draft-simulator-server" server/data/cards.sqlite3
+
+      # Renamed to names without spaces or version, like the old downloads.
+      # THIRD_PARTY_NOTICES.txt is inside every installer; it's also attached
+      # on its own, once.
+      - name: Collect the installers
+        shell: bash
         env:
-          # Keeps macOS tar from adding ._ metadata files to the archive.
-          COPYFILE_DISABLE: "1"
-        run: tar -czf release/draft-simulator-${{ matrix.target }}.tar.gz -C release draft-simulator-${{ matrix.target }} THIRD_PARTY_NOTICES.txt
+          BUNDLE: desktop/src-tauri/target/release/bundle
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p release/upload
+          case "$RUNNER_OS" in
+            Linux)
+              cp "$BUNDLE"/appimage/*.AppImage "release/upload/draft-simulator-$TARGET.AppImage"
+              cp "$BUNDLE"/deb/*.deb "release/upload/draft-simulator-$TARGET.deb"
+              cp release/THIRD_PARTY_NOTICES.txt release/upload/
+              ;;
+            Windows) cp "$BUNDLE"/nsis/*-setup.exe "release/upload/draft-simulator-$TARGET-setup.exe" ;;
+            macOS) cp "$BUNDLE"/dmg/*.dmg "release/upload/draft-simulator-$TARGET.dmg" ;;
+          esac
+          ls -l release/upload
 
       # --clobber, so re-running a failed job replaces a partial upload.
       - name: Attach to the release
@@ -247,8 +297,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.tag }}
-          ARCHIVE: release/draft-simulator-${{ matrix.target }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
-        run: gh release upload "$TAG" "$ARCHIVE" --clobber
+        run: gh release upload "$TAG" release/upload/* --clobber
 
   publish-release:
     needs: [version, create-release, package]
