@@ -66,7 +66,8 @@ shared/src/               wire contract: socket event types (events.ts, manageme
 server/src/
   index.ts                startup: management server, card DB check, then the draft server
   management/             draftServer (player-facing server, start/stop), managementServer (the host's UI and manage:* events),
-                          settingsFile (PORT and LOBBY_PASSWORD in .env), logBuffer (console capture for the log viewer)
+                          settingsFile (PORT and LOBBY_PASSWORD in .env), logBuffer (console capture for the log viewer),
+                          openInBrowser (opens the player page or the repo in the host's default browser)
   packaged/               executable-only runtime: data dir and .env next to it, embedded client and SQLite addon
   draftEngine/            draft rules: deal, pick, pass packs, advance rounds
   session/                lobbyManager (owns the state), snapshotStore (saves it), outgoing views
@@ -86,7 +87,8 @@ desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, s
                           starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
 release/                  built executables, gitignored (as are desktop/src-tauri/{target,gen,binaries})
-.github/workflows/ci.yml  tests, clippy and version check on every push; pushes to main also build, smoke-test and release the installers
+.github/workflows/ci.yml  on pull requests into main: tests, clippy, version check, and building and smoke-testing the installers;
+                          pushes to main also release them. main's "protect" ruleset requires these checks by job name
 ```
 
 ## Conventions
@@ -155,7 +157,8 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 - `tauri.bundle.conf.json` holds the settings that need `build:exe` and `notices` to have run (the sidecar and `desktop/src-tauri/THIRD_PARTY_NOTICES.txt`, which `desktop/scripts/buildNotices.ts` builds from the server's notices plus cargo-about's list of Rust crates). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
 - macOS `hardenedRuntime` must stay `false`: Tauri re-signs the bundled server, and with the hardened runtime V8 can't reserve memory for its JIT, so the server crashes at start. CI smoke-tests the server inside the `.app` for this reason.
 - The window loads `http://127.0.0.1:<port>`, not app files, and has no capabilities: the page can't call Rust. Keep it that way.
-- Links in the management UI would replace it in the app's only window; show addresses as text with a copy button.
+- Links in the management UI would replace it in the app's only window. Show addresses as text with a copy button, and
+  open pages through `manage:openInBrowser`, which takes a fixed target, never a URL: the server hands it to a shell on Windows.
 - A new Rust dependency under a license missing from `accepted` in `desktop/src-tauri/about.toml` fails `notices` and CI. Check the license before adding it there. cargo-about's version is pinned (`CARGO_ABOUT_VERSION` in CI); 0.9 only installs its binary with `--features cli`, and without it `cargo install` succeeds without installing anything.
 
 **Realtime**

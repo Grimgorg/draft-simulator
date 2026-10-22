@@ -8,12 +8,14 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import { parseEnv } from "node:util";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
-import type {
-  ActionResult,
-  LogEntry,
-  ManagementClientToServerEvents,
-  ManagementServerToClientEvents,
-  ManagementStateView,
+import {
+  REPOSITORY_URL,
+  type ActionResult,
+  type BrowserTarget,
+  type LogEntry,
+  type ManagementClientToServerEvents,
+  type ManagementServerToClientEvents,
+  type ManagementStateView,
 } from "@draft-simulator/shared";
 import { testCard } from "../draftEngine/testHelpers.js";
 import * as lobbyManager from "../session/lobbyManager.js";
@@ -43,23 +45,33 @@ interface Setup {
   management: ManagementServer;
   envFilePath: string;
   playerPort: number;
+  /** The URLs the server asked to open in the browser. */
+  opened: string[];
 }
 
-async function setUp(t: TestContext): Promise<Setup> {
+async function setUp(
+  t: TestContext,
+  openInBrowser: (url: string) => Promise<ActionResult> = async () => ({ ok: true }),
+): Promise<Setup> {
   lobbyManager.resetForTests(freshSnapshotPath());
   const envFilePath = tmpEnvPath();
   const playerPort = await freePort();
+  const opened: string[] = [];
   const management = await startManagementServer({
     port: 0,
     envFilePath,
     savedSettings: { port: playerPort, lobbyPassword: "" },
     isCardDatabaseRefreshing: () => false,
+    openInBrowser: (url) => {
+      opened.push(url);
+      return openInBrowser(url);
+    },
   });
   t.after(async () => {
     if (getDraftServerState().status === "running") await stopDraftServer();
     await management.close();
   });
-  return { management, envFilePath, playerPort };
+  return { management, envFilePath, playerPort, opened };
 }
 
 /** Connects and resolves with the socket and the first state it was sent. */
@@ -90,6 +102,10 @@ function emitAction(
   event: "manage:startServer" | "manage:stopServer" | "manage:restartServer",
 ): Promise<ActionResult> {
   return new Promise((resolve) => socket.emit(event, resolve));
+}
+
+function openInBrowser(socket: ManagementClientSocket, target: BrowserTarget): Promise<ActionResult> {
+  return new Promise((resolve) => socket.emit("manage:openInBrowser", target, resolve));
 }
 
 /** A raw GET, since fetch won't send a Host header of our choosing. */
@@ -247,4 +263,39 @@ test("a busy management port says what to do", async (t) => {
     }),
     new RegExp(`Port ${port} for the management UI is already in use`),
   );
+});
+
+test("the player page opens in the browser only while the server runs", async (t) => {
+  const { management, playerPort, opened } = await setUp(t);
+  const { socket } = await connect(management.url);
+  t.after(() => socket.close());
+
+  assert.deepEqual(await openInBrowser(socket, "playerPage"), { ok: false, error: "Start the server first." });
+  assert.deepEqual(opened, []);
+
+  await emitAction(socket, "manage:startServer");
+  assert.deepEqual(await openInBrowser(socket, "playerPage"), { ok: true });
+  assert.deepEqual(opened, [`http://localhost:${playerPort}`]);
+});
+
+test("the repository opens in the browser, and nothing but the known targets does", async (t) => {
+  const { management, opened } = await setUp(t);
+  const { socket } = await connect(management.url);
+  t.after(() => socket.close());
+
+  assert.deepEqual(await openInBrowser(socket, "repository"), { ok: true });
+  const unknown = await openInBrowser(socket, "https://attacker.example" as BrowserTarget);
+  assert.equal(unknown.ok, false);
+  assert.deepEqual(opened, [REPOSITORY_URL]);
+});
+
+test("a browser that can't be opened is reported to the management UI", async (t) => {
+  const { management } = await setUp(t, async () => ({ ok: false, error: "Couldn't open the browser: spawn ENOENT" }));
+  const { socket } = await connect(management.url);
+  t.after(() => socket.close());
+
+  assert.deepEqual(await openInBrowser(socket, "repository"), {
+    ok: false,
+    error: "Couldn't open the browser: spawn ENOENT",
+  });
 });

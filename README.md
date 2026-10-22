@@ -14,14 +14,17 @@ Only the host installs Draft Simulator. Everyone else just opens its address in 
    - Intel Mac: `draft-simulator-macos-x64.dmg`
    - Linux: `draft-simulator-linux-x64.AppImage` (make it executable, then run it), or `draft-simulator-linux-x64.deb`
 2. Install it: run the Windows installer, or drag Draft Simulator from the `.dmg` into Applications.
-3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the log at the bottom shows how far along it is.
+3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the **Logs** tab shows how far along it is.
 
-The management UI shows:
-- **Server:** whether it's running, with buttons to start, stop and restart it. Stopping disconnects everyone but keeps the draft; players get their seats back once it runs again.
-- **Invite players:** the addresses to send friends, the port to forward and the lobby password. You open the same address in your browser to play.
-- **Current draft** and **Players:** the cube, the pack and pick, and who is connected and still picking.
-- **Settings:** the port and the lobby password. Saving writes them to the settings file; restart the server to use them. Set a lobby password before forwarding the port.
-- **Log:** everything the server logs, with a filter for warnings and errors.
+The management UI has three tabs:
+- **Draft**, with these panels:
+  - **Server:** whether it's running, with buttons to start, stop and restart it. Stopping disconnects everyone but keeps the draft; players get their seats back once it runs again.
+  - **Invite players:** the addresses to send friends, the port to forward and the lobby password. **Open in browser** opens the player page in your default browser, where you play too.
+  - **Current draft** and **Players:** the cube, the pack and pick, and who is connected and still picking.
+- **Settings:** the port and the lobby password. Saving writes them to the settings file; restart the server to use them. Set a lobby password before forwarding the port. The tab shows "Restart required" until you do.
+- **Logs:** everything the server logs, with a filter for warnings and errors. The tab shows how many warnings and errors there are.
+
+The footer shows the app's version and the address of this repository.
 
 Everything the server stores goes in your user's app data folder: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file.
 - Windows: `%APPDATA%\io.github.grimgorg.draft-simulator`
@@ -153,15 +156,15 @@ npm run build:desktop   # build:exe, then the desktop app's installers around it
 
 The server executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). `build:exe` also copies it into `desktop/src-tauri/binaries/`, where the desktop app picks it up. It runs on its own too, keeping `data/` and `.env` next to itself, which is how the smoke test runs it. Both can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner. The build also writes `release/THIRD_PARTY_NOTICES.txt` with the licenses of Node.js and every npm package inside the executable. If Node's license file isn't next to your Node install, the build downloads it for your Node version from GitHub. `build:desktop` then adds the licenses of the Rust crates compiled into the app, collected by cargo-about, and every installer includes the combined `THIRD_PARTY_NOTICES.txt`. A crate whose license isn't in the `accepted` list in `desktop/src-tauri/about.toml` fails the build (and CI's `desktop` check) until someone has checked that license and added it.
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the typechecks, lint, builds, server tests and browser tests on every push to every branch, and lints the desktop app's Rust code with clippy. Every merge into `main` publishes a release, so every pull request has to raise the version in the root `package.json`:
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request into `main`, and again on each push to it. It runs the typechecks, lint, builds, server tests and browser tests, and lints the desktop app's Rust code with clippy. It also builds and smoke-tests the installers for Linux, Windows, Apple Silicon and Intel Macs, without releasing them. A branch without a pull request isn't checked; run `npm run test:all` locally. Every merge into `main` publishes a release, so every pull request has to raise the version in the root `package.json`:
 
 ```bash
 npm version patch --no-git-tag-version   # or minor / major; updates package.json and package-lock.json
 ```
 
-Each push also checks that this version is higher than the latest GitHub Release, and the check fails if it isn't. Once a pull request with a passing check is merged, the workflow tests `main` again, builds and smoke-tests the server executable on Linux, Windows, Apple Silicon and Intel Macs, builds the desktop app's installers around it, and publishes them as Release `v<version>`, tagging the merged commit. Nothing is released if a test, a build or the version check fails. Versions must be plain `1.2.3`; there are no pre-releases.
+Each run also checks that this version is higher than the latest GitHub Release, and the check fails if it isn't. Once a pull request with passing checks is merged, the workflow tests `main` again, builds and smoke-tests the server executable on Linux, Windows, Apple Silicon and Intel Macs, builds the desktop app's installers around it, and publishes them as Release `v<version>`, tagging the merged commit. Nothing is released if a test, a build or the version check fails. Versions must be plain `1.2.3`; there are no pre-releases.
 
-To make GitHub refuse merging a pull request that fails a test or the version check, add a rule for `main` under **Settings → Rules** that requires the `test`, `desktop` and `version` status checks. Without it, such a merge goes through and the run on `main` fails instead, without releasing anything. Releasing needs no secrets.
+GitHub refuses to merge a pull request until these checks pass, because the `protect` rule for `main` under **Settings → Rules** requires them: `test`, `desktop`, `version`, `package (linux-x64)`, `package (windows-x64)`, `package (macos-arm64)` and `package (macos-x64)`. A job renamed in `ci.yml` must be renamed in that rule too, or nothing can be merged. Without the rule, a failing pull request could be merged, and the run on `main` would then fail without releasing anything. Releasing needs no secrets.
 
 To build and smoke-test the installers without releasing them, run the workflow by hand: **Actions → CI → Run workflow**. The workflow never stores files as workflow artifacts, because artifact storage is shared by all your private repos and can fill up. The installers go straight onto the Release, whose files don't count toward that limit.
 
