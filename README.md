@@ -129,14 +129,17 @@ npm run smoke-test-exe --workspace server -- release/draft-simulator-macos-arm64
 
 The executable is a copy of the Node binary that runs the build, with the server, the built client and SQLite's native addon embedded (Node's [single executable applications](https://nodejs.org/api/single-executable-applications.html)). It can only be built for the platform you're on, so GitHub Actions builds each platform on its own runner. The build also writes `release/THIRD_PARTY_NOTICES.txt` with the licenses of Node.js and every npm package inside the executable, and each download includes it. If Node's license file isn't next to your Node install, the build downloads it for your Node version from GitHub.
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the typechecks, lint, builds, server tests and browser tests on every push to `main` and every pull request. To publish a release, push a version tag:
+GitHub Actions (`.github/workflows/ci.yml`) runs the typechecks, lint, builds, server tests and browser tests on every push to every branch. Every merge into `main` publishes a release, so every pull request has to raise the version in the root `package.json`:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+npm version patch --no-git-tag-version   # or minor / major; updates package.json and package-lock.json
 ```
 
-That runs the tests first, then builds and smoke-tests the executable on Linux, Windows, Apple Silicon and Intel Macs, and attaches all four to a new GitHub Release. A tag with a suffix, like `v1.0.0-rc.1`, becomes a pre-release. To build and smoke-test the executables without releasing them, run the workflow by hand: **Actions → CI → Run workflow**. The workflow never stores files as workflow artifacts, because artifact storage is shared by all your private repos and can fill up. The executables go straight onto the Release, whose files don't count toward that limit.
+Each push also checks that this version is higher than the latest GitHub Release, and the check fails if it isn't. Once a pull request with a passing check is merged, the workflow tests `main` again, builds and smoke-tests the executable on Linux, Windows, Apple Silicon and Intel Macs, and publishes all four as Release `v<version>`, tagging the merged commit. Nothing is released if a test, a build or the version check fails. Versions must be plain `1.2.3`; there are no pre-releases.
+
+To make GitHub refuse merging a pull request that fails a test or the version check, add a rule for `main` under **Settings → Rules** that requires the `test` and `version` status checks. Without it, such a merge goes through and the run on `main` fails instead, without releasing anything. Releasing needs no secrets.
+
+To build and smoke-test the executables without releasing them, run the workflow by hand: **Actions → CI → Run workflow**. The workflow never stores files as workflow artifacts, because artifact storage is shared by all your private repos and can fill up. The executables go straight onto the Release, whose files don't count toward that limit.
 
 ## Known limitations
 

@@ -76,7 +76,7 @@ client/src/
 e2e/                      Playwright tests against the production build
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
 release/                  built executables, gitignored
-.github/workflows/ci.yml  tests on push to main and PRs; v* tags also build, smoke-test and release the executables
+.github/workflows/ci.yml  tests and version check on every push; pushes to main also build, smoke-test and release
 ```
 
 ## Conventions
@@ -181,4 +181,6 @@ To reset a stuck draft, delete `server/data/draft-session.json`.
 
 - Never commit to main. One branch per task: `feat/<desc>`, `fix/<desc>`, `chore/<desc>`.
 - Commit messages follow Conventional Commits (`feat: ...`, `fix: ...`).
+- Every branch bumps the root `package.json` version (`npm version patch --no-git-tag-version`): each merge into main
+  publishes it as a release, and CI fails a version that isn't higher than the latest release.
 - Never push to, or merge into, main without explicit permission. Never force-push.

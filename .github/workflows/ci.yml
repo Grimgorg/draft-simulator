@@ -1,29 +1,41 @@
 name: CI
 
-# Tests run on every push to main and every pull request. Pushing a version
-# tag (v1.2.3) also builds the executables for every platform and publishes
-# them on a GitHub Release, but only once the tests have passed. A manual run
-# (Actions → CI → Run workflow) builds and smoke-tests the executables without
-# releasing them.
+# Every push to any branch runs the tests and checks that the version in the
+# root package.json is higher than the latest GitHub Release. A push to main
+# (a merged pull request) then builds the executables for every platform and
+# publishes them as Release v<version>, but only once both have passed. A
+# manual run (Actions → CI → Run workflow) builds and smoke-tests the
+# executables without releasing them.
+#
+# The version check on a feature branch is what stops a pull request without
+# a version bump. It only blocks the merge if main has a branch rule that
+# requires the "test" and "version" checks (Settings → Rules). Without it the
+# merge goes through and the run on main fails instead, with no release.
+# Releasing needs no secrets: the jobs that write ask for contents: write.
 #
 # Jobs never hand files to each other as workflow artifacts: artifact storage
 # is a quota shared by every private repo on the account, and other repos
 # filling it once failed a release here. The card cache travels through
 # actions/cache (a separate per-repo limit) and each package job uploads its
 # executable straight to the Release, whose files don't count toward the quota.
+# No pull_request trigger: a pull request shows its branch's push checks, and
+# running both would test every pull request twice. No tags either, so the tag
+# a release creates doesn't start another run.
 on:
   push:
-    branches: [main]
-    tags: ["v*"]
-  pull_request:
+    branches: ["**"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# A new push cancels an older run on the same branch, except on main, where
+# that would leave a release half-published. GitHub still keeps only one
+# waiting run per branch: if three merges land during one run, the middle one
+# gets no release of its own, and the next release includes its changes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   NODE_VERSION: "24"
@@ -94,29 +106,77 @@ jobs:
             e2e/test-results
           retention-days: 7
 
+  # Compares against the highest published release, not the previous commit:
+  # a merge that forgot the bump must fail even if an older commit had one.
+  # Only plain X.Y.Z versions, which sort -V orders correctly.
+  version:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the version was increased
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=$(jq -r .version package.json)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The version in package.json (\"$version\") must look like 1.2.3."
+            exit 1
+          fi
+
+          # Fetched on its own line so a failed API call fails the step
+          # instead of looking like a repo without releases.
+          tags=$(gh release list --exclude-drafts --limit 100 --json tagName --jq '.[].tagName')
+          latest=$(printf '%s\n' "$tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n 1 || true)
+
+          if [ -n "$latest" ]; then
+            highest=$(printf '%s\n%s\n' "$latest" "$version" | sort -V | tail -n 1)
+            if [ "$version" = "$latest" ] || [ "$highest" != "$version" ]; then
+              echo "::error::Version $version in package.json is not higher than the latest release v$latest. Bump it with: npm version patch --no-git-tag-version"
+              exit 1
+            fi
+            echo "Version $version is higher than the latest release v$latest."
+          else
+            echo "No release yet; version $version will be the first."
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
   # Created as a draft so nobody sees a half-filled release; publish-release
-  # makes it public once every executable is attached.
+  # makes it public once every executable is attached. Publishing it creates
+  # the tag on the merged commit.
   create-release:
-    needs: test
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, version]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # A tag with a suffix (v1.0.0-rc.1) becomes a pre-release.
+      # "Re-run all jobs" after a failed package job finds the draft from the
+      # first attempt; reuse it instead of failing on the existing release.
       - name: Create the draft release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: |
-          prerelease=""
-          if [[ "$TAG" == *-* ]]; then prerelease="--prerelease"; fi
-          gh release create "$TAG" --draft --verify-tag --generate-notes $prerelease
+          if is_draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$is_draft" = "true" ]; then
+              echo "Reusing the draft release $TAG."
+              exit 0
+            fi
+            echo "::error::Release $TAG is already published."
+            exit 1
+          fi
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --generate-notes
 
   package:
-    needs: [test, create-release]
+    needs: [test, version, create-release]
     # create-release is skipped on a manual run; still build then.
     if: >-
       !cancelled() && needs.test.result == 'success' &&
@@ -181,18 +241,18 @@ jobs:
 
       # --clobber, so re-running a failed job replaces a partial upload.
       - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: needs.create-release.result == 'success'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.version.outputs.tag }}
           ARCHIVE: release/draft-simulator-${{ matrix.target }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
         run: gh release upload "$TAG" "$ARCHIVE" --clobber
 
   publish-release:
-    needs: package
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [version, create-release, package]
+    if: needs.create-release.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -201,5 +261,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: gh release edit "$TAG" --draft=false
