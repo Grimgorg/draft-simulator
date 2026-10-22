@@ -10,6 +10,7 @@
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const DESKTOP_DIR = path.join(import.meta.dirname, "..");
@@ -22,12 +23,27 @@ if (!fs.existsSync(SERVER_NOTICES)) {
   throw new Error(`${SERVER_NOTICES} is missing. Run npm run build:exe first.`);
 }
 
-let rustNotices: string;
+// Written to a file rather than read from stdout: on Windows, cargo-about
+// refuses to write to a pipe it suspects is PowerShell's, which would mangle
+// the encoding, and CI's Windows runner made it suspect that.
+const rustNoticesFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "draft-simulator-notices-")), "rust.txt");
 try {
-  rustNotices = execFileSync(
+  execFileSync(
     "cargo",
-    ["about", "generate", "--fail", "--locked", "--config", "about.toml", "--manifest-path", "Cargo.toml", "about.hbs"],
-    { cwd: TAURI_DIR, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], maxBuffer: 64 * 1024 * 1024 },
+    [
+      "about",
+      "generate",
+      "--fail",
+      "--locked",
+      "--config",
+      "about.toml",
+      "--manifest-path",
+      "Cargo.toml",
+      "--output-file",
+      rustNoticesFile,
+      "about.hbs",
+    ],
+    { cwd: TAURI_DIR, stdio: "inherit" },
   );
 } catch (err) {
   throw new Error(
@@ -35,6 +51,9 @@ try {
     { cause: err },
   );
 }
+
+const rustNotices = fs.readFileSync(rustNoticesFile, "utf8");
+fs.rmSync(path.dirname(rustNoticesFile), { recursive: true, force: true });
 
 // Written fresh from both parts every time, so running it twice doesn't list anything twice.
 fs.writeFileSync(APP_NOTICES, `${fs.readFileSync(SERVER_NOTICES, "utf8").trimEnd()}\n\n${rustNotices.trimEnd()}\n`);
