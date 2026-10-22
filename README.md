@@ -109,6 +109,7 @@ npx --workspace e2e playwright install chromium   # once, before the first brows
 npm run test:e2e                           # browser tests: a host and a guest draft in real Chromium
 npm run test:e2e:ui                        # the same browser tests in Playwright's UI, to step through each one afterwards
 npm run test:e2e:slow                      # the same browser tests slowed down in visible windows, to watch live
+npm run test:all                           # server tests, then the browser tests if those pass
 ```
 
 In the UI, click a test's name once it has run to see its steps; it doesn't play them back live. The slow run opens a host and a guest browser window and waits half a second before each action, so a whole draft takes about 10 seconds. Change `slowMo` in `e2e/playwright.slow.config.ts` to speed it up or slow it down.

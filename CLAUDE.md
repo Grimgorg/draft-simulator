@@ -29,6 +29,7 @@ npm run smoke-test-exe --workspace server -- <executable> server/data/cards.sqli
 ```bash
 npm test                               # server unit + socket integration tests
 npm run test:e2e                       # browser tests (test:e2e:ui / test:e2e:slow to watch them)
+npm run test:all                       # npm test, then test:e2e if it passes
 npm run typecheck --workspace server   # also type-checks the server tests
 npm run typecheck --workspace e2e
 npm run lint --workspace client        # the server has no linter
