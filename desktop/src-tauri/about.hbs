@@ -1,0 +1,11 @@
+The desktop app around the server also includes the Rust crates below, each under its own license. Crates with
+the same license text are listed together.
+
+{{#each licenses}}
+-------------------------------------------------------------------------------
+{{{name}}}, used by:
+{{#each used_by}}  {{{crate.name}}} {{{crate.version}}}
+{{/each}}-------------------------------------------------------------------------------
+
+{{{text}}}
+{{/each}}

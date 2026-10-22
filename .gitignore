@@ -28,3 +28,9 @@ npm-debug.log*
 # Playwright output
 e2e/test-results/
 e2e/playwright-report/
+
+# Desktop app: Rust build output, generated schemas, and the server executable copied in by build:exe
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/binaries/
+desktop/src-tauri/THIRD_PARTY_NOTICES.txt

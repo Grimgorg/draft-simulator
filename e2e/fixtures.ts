@@ -31,6 +31,8 @@ interface RunningServer {
 }
 
 interface DraftServer extends RunningServer {
+  /** The host's management UI, on its own port. */
+  managementUrl: string;
   output: () => string;
 }
 
@@ -63,16 +65,19 @@ async function freePort(): Promise<number> {
 }
 
 /**
- * Runs the built server as its own process, on its own port and snapshot file,
+ * Runs the built server as its own process, on its own ports and snapshot file,
  * so every test starts from an empty server. It's started directly rather
- * than through `npm start`, which would load server/.env and its lobby password.
+ * than through `npm start`, which would load server/.env and its lobby password,
+ * and in a temp folder, where settings saved in the management UI go.
  */
 async function startDraftServer(cubeCobraUrl: string): Promise<DraftServer> {
   const port = await freePort();
+  const managementPort = await freePort();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-simulator-e2e-"));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     PORT: String(port),
+    MANAGEMENT_PORT: String(managementPort),
     CUBECOBRA_BASE_URL: cubeCobraUrl,
     DRAFT_SNAPSHOT_PATH: path.join(tmpDir, "draft-session.json"),
     // Never start a background card cache refresh (a large download) mid-test.
@@ -80,7 +85,7 @@ async function startDraftServer(cubeCobraUrl: string): Promise<DraftServer> {
   };
   delete env.LOBBY_PASSWORD;
 
-  const child = spawn(process.execPath, [SERVER_ENTRY], { env, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, [SERVER_ENTRY], { cwd: tmpDir, env, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
   child.stdout.on("data", (chunk) => (output += chunk));
   child.stderr.on("data", (chunk) => (output += chunk));
@@ -104,6 +109,7 @@ async function startDraftServer(cubeCobraUrl: string): Promise<DraftServer> {
 
   return {
     url,
+    managementUrl: `http://127.0.0.1:${managementPort}/`,
     output: () => output,
     close: async () => {
       if (child.exitCode === null) child.kill();
@@ -117,6 +123,8 @@ interface Fixtures {
   draftServer: DraftServer;
   /** Opens the app in a fresh browser context: a separate player with their own localStorage. */
   openPlayer: () => Promise<Page>;
+  /** Opens the host's management UI. */
+  openManagement: () => Promise<Page>;
 }
 
 export const test = base.extend<Fixtures>({
@@ -140,6 +148,17 @@ export const test = base.extend<Fixtures>({
       contexts.push(context);
       const page = await context.newPage();
       await page.goto("/");
+      return page;
+    });
+    for (const context of contexts) await context.close();
+  },
+  openManagement: async ({ browser, draftServer }, use) => {
+    const contexts: Awaited<ReturnType<typeof browser.newContext>>[] = [];
+    await use(async () => {
+      const context = await browser.newContext();
+      contexts.push(context);
+      const page = await context.newPage();
+      await page.goto(draftServer.managementUrl);
       return page;
     });
     for (const context of contexts) await context.close();

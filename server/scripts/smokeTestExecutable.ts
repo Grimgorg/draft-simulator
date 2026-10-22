@@ -1,7 +1,9 @@
 /**
- * Starts a built executable in an empty folder and checks the parts that only
- * exist when packaged: the embedded SQLite addon, the embedded client, the
- * data dir and the example .env next to the executable.
+ * Starts a built executable in an empty folder, the way the desktop app runs
+ * it, and checks the parts that only exist when packaged: the embedded SQLite
+ * addon, the embedded client and management UI, the data dir and example
+ * .env in DRAFT_SIMULATOR_HOME, the "Management UI:" line the app reads, and
+ * that the server exits once the app's end of its stdin closes.
  *
  * Run with: npm run smoke-test-exe --workspace server -- <executable> <cards.sqlite3>
  * The card DB is copied in so the executable doesn't download its own.
@@ -25,17 +27,32 @@ const workDir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-simulator-smoke-"))
 const executable = path.join(workDir, path.basename(executableArg));
 fs.copyFileSync(path.resolve(invokedFrom, executableArg), executable);
 fs.chmodSync(executable, 0o755);
-fs.mkdirSync(path.join(workDir, "data"));
-fs.copyFileSync(path.resolve(invokedFrom, cardDbArg), path.join(workDir, "data/cards.sqlite3"));
+// Apart from the executable, as the desktop app's per-user app data folder is.
+const homeDir = path.join(workDir, "home");
+fs.mkdirSync(path.join(homeDir, "data"), { recursive: true });
+fs.copyFileSync(path.resolve(invokedFrom, cardDbArg), path.join(homeDir, "data/cards.sqlite3"));
 
-const probe = createServer().listen(0, "127.0.0.1");
-await once(probe, "listening");
-const { port } = probe.address() as AddressInfo;
-await new Promise((resolve) => probe.close(resolve));
+async function freePort(): Promise<number> {
+  const probe = createServer().listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const { port } = probe.address() as AddressInfo;
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
 
-const env: NodeJS.ProcessEnv = { ...process.env, PORT: String(port), CARD_CACHE_MAX_AGE_DAYS: "36500" };
+const port = await freePort();
+
+const env: NodeJS.ProcessEnv = {
+  ...process.env,
+  PORT: String(port),
+  // What the desktop app passes (desktop/src-tauri/src/main.rs).
+  MANAGEMENT_PORT: "0",
+  DRAFT_SIMULATOR_HOME: homeDir,
+  DRAFT_SIMULATOR_MANAGED: "1",
+  CARD_CACHE_MAX_AGE_DAYS: "36500",
+};
 delete env.LOBBY_PASSWORD;
-const child = spawn(executable, [], { cwd: workDir, env, stdio: ["ignore", "pipe", "pipe"] });
+const child = spawn(executable, [], { cwd: workDir, env, stdio: ["pipe", "pipe", "pipe"] });
 let output = "";
 child.stdout.on("data", (chunk) => (output += chunk));
 child.stderr.on("data", (chunk) => (output += chunk));
@@ -80,8 +97,28 @@ try {
   const unknownCard = await fetch(`${baseUrl}/images/not-a-card`);
   check(unknownCard.status === 404, `GET /images/not-a-card returned ${unknownCard.status} instead of 404.`);
 
-  check(fs.existsSync(path.join(workDir, ".env")), "No example .env was created next to the executable.");
-  check(output.includes(`running on port ${port}`), "The startup banner wasn't printed.");
+  const playerManagePage = await fetch(`${baseUrl}/manage.html`);
+  check(playerManagePage.status === 404, `The player port serves the management UI (status ${playerManagePage.status}).`);
+
+  const managementUrl = output.match(/^Management UI: (http:\/\/127\.0\.0\.1:\d+\/)$/m)?.[1];
+  check(managementUrl, "The management UI's address wasn't printed in the form the desktop app reads.");
+  const managePage = await fetch(managementUrl);
+  const manageHtml = await managePage.text();
+  check(
+    managePage.ok && managePage.url.endsWith("/manage.html") && manageHtml.includes('<div id="root">'),
+    `The management port didn't serve the embedded manage.html (status ${managePage.status}, ${managePage.url}).`,
+  );
+
+  check(fs.existsSync(path.join(homeDir, ".env")), "No example .env was created in DRAFT_SIMULATOR_HOME.");
+  check(!fs.existsSync(path.join(workDir, ".env")), "A .env was created next to the executable, not in DRAFT_SIMULATOR_HOME.");
+  check(!fs.existsSync(path.join(workDir, "data")), "A data dir was created next to the executable, not in DRAFT_SIMULATOR_HOME.");
+  check(output.includes(`running on port ${port}`), "The draft server didn't log that it's running.");
+
+  // What happens when the desktop app crashes: its end of the pipe closes.
+  const exited = once(child, "exit");
+  child.stdin.end();
+  const timeout = new Promise((resolve) => setTimeout(resolve, 10_000, "timeout"));
+  check((await Promise.race([exited, timeout])) !== "timeout", "The executable kept running after its stdin closed.");
 
   console.log(`Smoke test passed for ${path.basename(executableArg)}.`);
 } catch (err) {

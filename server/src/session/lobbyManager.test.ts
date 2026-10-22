@@ -252,3 +252,44 @@ test("cancelling clears the draft, and it stays cleared after a restart", () => 
   assert.equal(lobbyManager.getSession(), undefined);
   fs.rmSync(snapshotPath);
 });
+
+test("state listeners hear about every change: joins, connection changes, the start, picks and a cancel", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  let changes = 0;
+  const stop = lobbyManager.onStateChange(() => changes++);
+  try {
+    const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+    assert.equal(changes, 1);
+    const bob = lobbyManager.addPlayer("Bob");
+    lobbyManager.setPlayerConnected(bob.id, false);
+    lobbyManager.beginDraft();
+    assert.equal(changes, 4);
+
+    const pack = lobbyManager.getSession()!.currentPacks[host.id];
+    lobbyManager.pick(host.id, pack.cards[0].scryfallId);
+    assert.equal(changes, 5);
+
+    lobbyManager.cancelDraft();
+    assert.equal(changes, 6);
+  } finally {
+    stop();
+  }
+});
+
+test("a failing state listener doesn't fail the pick that triggered it", (t) => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+  lobbyManager.addPlayer("Bob");
+  lobbyManager.beginDraft();
+  const loggedErrors = t.mock.method(console, "error", () => {});
+  const stop = lobbyManager.onStateChange(() => {
+    throw new Error("listener broke");
+  });
+  try {
+    const pack = lobbyManager.getSession()!.currentPacks[host.id];
+    assert.equal(lobbyManager.pick(host.id, pack.cards[0].scryfallId), "waitingOnOthers");
+  } finally {
+    stop();
+  }
+  assert.equal(loggedErrors.mock.callCount(), 1);
+});

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Placeholder app icon (three fanned cards); issue #6 replaces it. After changing it,
+       regenerate src-tauri/icons by running "npx tauri icon app-icon.svg" in desktop/. -->
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="#16171d"/>
+  <g transform="translate(512 560)">
+    <rect x="-150" y="-230" width="300" height="420" rx="34" fill="#2e303a" stroke="#9ca3af" stroke-width="16" transform="rotate(-18) translate(-40 0)"/>
+    <rect x="-150" y="-230" width="300" height="420" rx="34" fill="#2e303a" stroke="#9ca3af" stroke-width="16" transform="rotate(18) translate(40 0)"/>
+    <rect x="-150" y="-250" width="300" height="420" rx="34" fill="#6a4cff" stroke="#f3f4f6" stroke-width="16"/>
+    <circle cx="0" cy="-40" r="70" fill="none" stroke="#f3f4f6" stroke-width="16"/>
+  </g>
+</svg>
