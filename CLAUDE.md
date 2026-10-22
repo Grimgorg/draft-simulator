@@ -87,7 +87,8 @@ desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, s
                           starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
 release/                  built executables, gitignored (as are desktop/src-tauri/{target,gen,binaries})
-.github/workflows/ci.yml  tests, clippy and version check on every push; pushes to main also build, smoke-test and release the installers
+.github/workflows/ci.yml  on pull requests into main: tests, clippy, version check, and building and smoke-testing the installers;
+                          pushes to main also release them. main's "protect" ruleset requires these checks by job name
 ```
 
 ## Conventions

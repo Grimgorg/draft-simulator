@@ -1,35 +1,41 @@
 name: CI
 
-# Every push to any branch runs the tests, lints the desktop app's Rust code
-# and checks that the version in the root package.json is higher than the
-# latest GitHub Release. A push to main (a merged pull request) then builds
-# the desktop app for every platform and publishes its installers as Release
-# v<version>, but only once all of that has passed. A manual run (Actions →
-# CI → Run workflow) builds and smoke-tests them without releasing them.
+# A pull request into main, and every new push to it, runs the tests, lints
+# the desktop app's Rust code, checks that the version in the root
+# package.json is higher than the latest GitHub Release, and builds and
+# smoke-tests the desktop app for every platform without releasing it. A push
+# to main (a merged pull request) runs the same, then publishes the
+# installers as Release v<version>, but only once all of that has passed. A
+# manual run (Actions → CI → Run workflow) builds and smoke-tests them without
+# releasing them.
 #
-# The version check on a feature branch is what stops a pull request without
-# a version bump. It only blocks the merge if main has a branch rule that
-# requires the "test" and "version" checks (Settings → Rules). Without it the
-# merge goes through and the run on main fails instead, with no release.
-# Releasing needs no secrets: the jobs that write ask for contents: write.
+# These checks only block a merge because main's ruleset ("protect", under
+# Settings → Rules) requires test, desktop, version and the four package
+# checks. A job renamed here must be renamed there too, or no pull request can
+# be merged. Releasing needs no secrets: the jobs that write ask for
+# contents: write.
 #
 # Jobs never hand files to each other as workflow artifacts: artifact storage
 # is a quota shared by every private repo on the account, and other repos
 # filling it once failed a release here. The card cache travels through
 # actions/cache (a separate per-repo limit) and each package job uploads its
 # installers straight to the Release, whose files don't count toward the quota.
-# No pull_request trigger: a pull request shows its branch's push checks, and
-# running both would test every pull request twice. No tags either, so the tag
-# a release creates doesn't start another run.
+# Pushes to other branches run nothing: building four installers on every
+# commit cost too much. Pull requests get no push run either, which would test
+# every commit twice and give the pull request two checks of each name. No
+# tags, so the tag a release creates doesn't start another run.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# A new push cancels an older run on the same branch, except on main, where
+# A new push cancels an older run on the same branch or pull request (its ref
+# is refs/pull/<n>/merge), except on main, where
 # that would leave a release half-published. GitHub still keeps only one
 # waiting run per branch: if three merges land during one run, the middle one
 # gets no release of its own, and the next release includes its changes.
@@ -109,8 +115,8 @@ jobs:
             e2e/test-results
           retention-days: 7
 
-  # The desktop app is only built on main, so a feature branch checks here
-  # that its Rust code compiles cleanly. tauri.conf.json alone needs no
+  # Lints the Rust code and checks its licenses before the package jobs spend
+  # time building on four platforms. tauri.conf.json alone needs no
   # server executable: the bundle-only settings that do are in
   # tauri.bundle.conf.json, which only the package jobs use.
   desktop:
@@ -143,7 +149,7 @@ jobs:
   # a merge that forgot the bump must fail even if an older commit had one.
   # Only plain X.Y.Z versions, which sort -V orders correctly.
   version:
-    if: github.event_name == 'push'
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.check.outputs.tag }}
@@ -210,10 +216,13 @@ jobs:
 
   package:
     needs: [test, desktop, version, create-release]
-    # create-release is skipped on a manual run; still build then.
+    # create-release only runs on main; a pull request or manual run builds
+    # without it, and the "Attach to the release" step below is skipped.
     if: >-
       !cancelled() && needs.test.result == 'success' && needs.desktop.result == 'success' &&
-      (needs.create-release.result == 'success' || github.event_name == 'workflow_dispatch')
+      (needs.create-release.result == 'success' || github.event_name != 'push')
+    # Fixed names, because main's ruleset requires these checks by name.
+    name: package (${{ matrix.target }})
     # The server executable is a copy of the runner's own Node binary, and the
     # desktop app wraps it, so every platform is built on that platform.
     strategy:
