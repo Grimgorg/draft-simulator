@@ -132,7 +132,9 @@ jobs:
       # Fails when a crate's license isn't in about.toml's accepted list, so a
       # new dependency's license is checked here rather than at release time.
       # rust-cache keeps ~/.cargo/bin, so this only compiles on a cache miss.
-      - run: cargo install --locked --features cli "cargo-about@$CARGO_ABOUT_VERSION"
+      # The version goes in as an expression, not $CARGO_ABOUT_VERSION: on
+      # Windows run steps use PowerShell, where that came out empty.
+      - run: cargo install --locked --features cli "cargo-about@${{ env.CARGO_ABOUT_VERSION }}"
       - name: Check the Rust crates' licenses
         working-directory: desktop/src-tauri
         run: cargo about generate --fail --locked --config about.toml --manifest-path Cargo.toml about.hbs > /dev/null
@@ -224,12 +226,14 @@ jobs:
           - os: windows-latest
             target: windows-x64
             bundles: nsis
+          # "app" too: built only as a step towards the dmg, the .app is
+          # deleted afterwards, and the smoke test below needs it.
           - os: macos-latest
             target: macos-arm64
-            bundles: dmg
+            bundles: app,dmg
           - os: macos-15-intel
             target: macos-x64
-            bundles: dmg
+            bundles: app,dmg
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -267,7 +271,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
-      - run: cargo install --locked --features cli "cargo-about@$CARGO_ABOUT_VERSION"
+      - run: cargo install --locked --features cli "cargo-about@${{ env.CARGO_ABOUT_VERSION }}"
       # The server's notices from build:exe plus the Rust crates' licenses.
       - run: npm run notices --workspace desktop
       # build:exe already put the executable where the desktop app bundles it.
