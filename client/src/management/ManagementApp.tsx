@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { AppFooter } from "./components/AppFooter.js";
 import { DraftPanel } from "./components/DraftPanel.js";
 import { InvitePanel } from "./components/InvitePanel.js";
 import { LogViewer } from "./components/LogViewer.js";
@@ -7,9 +9,22 @@ import { SettingsPanel } from "./components/SettingsPanel.js";
 import { StatusBadge } from "./components/StatusBadge.js";
 import { useManagementConnection } from "./useManagementConnection.js";
 
+type Tab = "draft" | "settings" | "logs";
+
+const TAB_LABELS: Record<Tab, string> = { draft: "Draft", settings: "Settings", logs: "Logs" };
+
 /** The host's window onto the server: start and stop it, see who's in the draft, change settings, read the logs. */
 export function ManagementApp() {
   const { connected, state, logs } = useManagementConnection();
+  const [tab, setTab] = useState<Tab>("draft");
+
+  // Hidden tabs still say when they need a look, so a pending restart or a new error isn't missed.
+  const problemCount = logs.filter((entry) => entry.level !== "info").length;
+  const hints: Record<Tab, string | null> = {
+    draft: null,
+    settings: state?.restartRequired ? "Restart required" : null,
+    logs: problemCount > 0 ? String(problemCount) : null,
+  };
 
   return (
     <div className="manage">
@@ -24,21 +39,52 @@ export function ManagementApp() {
         </p>
       )}
 
-      {state && (
-        <div className="manage-grid">
-          <div className="manage-column">
-            <ServerPanel state={state} />
-            <InvitePanel state={state} />
-            <SettingsPanel state={state} />
-          </div>
-          <div className="manage-column">
-            <DraftPanel lobby={state.lobby} />
-            <PlayersPanel lobby={state.lobby} playerConnections={state.playerConnections} />
-          </div>
-        </div>
-      )}
+      <div className="manage-tabs" role="tablist" aria-label="Sections">
+        {(Object.keys(TAB_LABELS) as Tab[]).map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`tab-${id}`}
+            aria-selected={tab === id}
+            aria-controls={`tabpanel-${id}`}
+            onClick={() => setTab(id)}
+          >
+            {TAB_LABELS[id]}
+            {hints[id] && <span className="tab-hint">{hints[id]}</span>}
+          </button>
+        ))}
+      </div>
 
-      <LogViewer entries={logs} />
+      {/* Kept mounted while hidden, so unsaved settings and the log's scroll position survive a tab switch. */}
+      <div role="tabpanel" id="tabpanel-draft" aria-labelledby="tab-draft" hidden={tab !== "draft"}>
+        {state && (
+          <div className="manage-grid">
+            <div className="manage-column">
+              <ServerPanel state={state} />
+              <InvitePanel state={state} />
+            </div>
+            <div className="manage-column">
+              <DraftPanel lobby={state.lobby} />
+              <PlayersPanel lobby={state.lobby} playerConnections={state.playerConnections} />
+            </div>
+          </div>
+        )}
+      </div>
+      <div role="tabpanel" id="tabpanel-settings" aria-labelledby="tab-settings" hidden={tab !== "settings"}>
+        {state && <SettingsPanel state={state} />}
+      </div>
+      <div
+        role="tabpanel"
+        id="tabpanel-logs"
+        className="manage-logs-tab"
+        aria-labelledby="tab-logs"
+        hidden={tab !== "logs"}
+      >
+        <LogViewer entries={logs} visible={tab === "logs"} />
+      </div>
+
+      <AppFooter />
     </div>
   );
 }

@@ -3,6 +3,8 @@ import type { LogEntry } from "@draft-simulator/shared";
 
 interface LogViewerProps {
   entries: LogEntry[];
+  /** False while its tab is hidden, where scrolling to the latest line does nothing. */
+  visible: boolean;
 }
 
 /** How close to the bottom still counts as reading the latest lines, so a pixel of rounding doesn't stop following. */
@@ -12,7 +14,7 @@ function formatTime(time: number): string {
   return new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-export function LogViewer({ entries }: LogViewerProps) {
+export function LogViewer({ entries, visible }: LogViewerProps) {
   const [problemsOnly, setProblemsOnly] = useState(false);
   // Follows new lines until the host scrolls up to read older ones.
   const [following, setFollowing] = useState(true);
@@ -23,8 +25,8 @@ export function LogViewer({ entries }: LogViewerProps) {
 
   useLayoutEffect(() => {
     const list = listRef.current;
-    if (following && list) list.scrollTop = list.scrollHeight;
-  }, [shown, following]);
+    if (following && visible && list) list.scrollTop = list.scrollHeight;
+  }, [shown, following, visible]);
 
   function onScroll() {
     const list = listRef.current;

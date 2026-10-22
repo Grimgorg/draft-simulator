@@ -4,11 +4,13 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import express from "express";
 import { Server } from "socket.io";
-import type {
-  ActionResult,
-  ManagementClientToServerEvents,
-  ManagementServerToClientEvents,
-  ServerSettings,
+import {
+  REPOSITORY_URL,
+  type ActionResult,
+  type BrowserTarget,
+  type ManagementClientToServerEvents,
+  type ManagementServerToClientEvents,
+  type ServerSettings,
 } from "@draft-simulator/shared";
 import { countCards, getLastImportedAt } from "../cardData/cardRepository.js";
 import { serveEmbeddedClient } from "../packaged/embeddedClient.js";
@@ -24,6 +26,7 @@ import {
 } from "./draftServer.js";
 import { getLogHistory, onLog } from "./logBuffer.js";
 import { buildManagementStateView, listLanAddresses } from "./managementStateView.js";
+import { openInBrowser } from "./openInBrowser.js";
 import { validateSettings, writeSettings } from "./settingsFile.js";
 
 type ManagementIoServer = Server<ManagementClientToServerEvents, ManagementServerToClientEvents>;
@@ -35,6 +38,8 @@ export interface ManagementServerOptions {
   /** The settings saved in the .env file when the app started. */
   savedSettings: ServerSettings;
   isCardDatabaseRefreshing: () => boolean;
+  /** Opens a URL in the default browser. Tests pass a fake, so they don't open real browser windows. */
+  openInBrowser?: (url: string) => Promise<ActionResult>;
 }
 
 export interface ManagementServer {
@@ -145,6 +150,18 @@ export async function startManagementServer(options: ManagementServerOptions): P
     io.emit("manage:state", buildState());
   }
 
+  /** Only URLs built here reach the opener, which hands them to a shell on Windows. */
+  function openTarget(target: BrowserTarget): Promise<ActionResult> {
+    const open = options.openInBrowser ?? openInBrowser;
+    if (target === "repository") return open(REPOSITORY_URL);
+    if (target === "playerPage") {
+      const { status, running } = getDraftServerState();
+      if (status !== "running" || !running) return Promise.resolve({ ok: false, error: "Start the server first." });
+      return open(`http://localhost:${running.port}`);
+    }
+    return Promise.resolve({ ok: false, error: `Unknown target: ${String(target)}` });
+  }
+
   async function restart(): Promise<ActionResult> {
     if (getDraftServerState().status === "running") {
       const stopped = await stopDraftServer();
@@ -182,6 +199,14 @@ export async function startManagementServer(options: ManagementServerOptions): P
     socket.on("manage:restartServer", async (callback) => {
       try {
         callback(await restart());
+      } catch (err) {
+        callback({ ok: false, error: errorMessage(err) });
+      }
+    });
+
+    socket.on("manage:openInBrowser", async (target, callback) => {
+      try {
+        callback(await openTarget(target));
       } catch (err) {
         callback({ ok: false, error: errorMessage(err) });
       }

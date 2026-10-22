@@ -13,6 +13,15 @@ export interface LogEntry {
   message: string;
 }
 
+/** Where Draft Simulator's source code and releases are. */
+export const REPOSITORY_URL = "https://github.com/Grimgorg/draft-simulator";
+
+/**
+ * What the management UI can ask the server to open in the system browser. A
+ * name rather than a URL, so the page can't make the server open anything else.
+ */
+export type BrowserTarget = "playerPage" | "repository";
+
 export type DraftServerStatus = "stopped" | "starting" | "running" | "stopping" | "failed";
 
 /** The settings the host can change in the management UI. Saved in the .env file. */
@@ -57,6 +66,11 @@ export interface ManagementClientToServerEvents {
   "manage:restartServer": (callback: (result: ActionResult) => void) => void;
   /** Validates and saves the settings. They take effect at the next start. */
   "manage:saveSettings": (payload: ServerSettings, callback: (result: ActionResult) => void) => void;
+  /**
+   * Opens the target in the host's default browser. The server does it: in the
+   * desktop app a link would replace the management UI in its only window.
+   */
+  "manage:openInBrowser": (target: BrowserTarget, callback: (result: ActionResult) => void) => void;
 }
 
 /** Events the server emits to the management UI. */

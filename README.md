@@ -14,14 +14,17 @@ Only the host installs Draft Simulator. Everyone else just opens its address in 
    - Intel Mac: `draft-simulator-macos-x64.dmg`
    - Linux: `draft-simulator-linux-x64.AppImage` (make it executable, then run it), or `draft-simulator-linux-x64.deb`
 2. Install it: run the Windows installer, or drag Draft Simulator from the `.dmg` into Applications.
-3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the log at the bottom shows how far along it is.
+3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the **Logs** tab shows how far along it is.
 
-The management UI shows:
-- **Server:** whether it's running, with buttons to start, stop and restart it. Stopping disconnects everyone but keeps the draft; players get their seats back once it runs again.
-- **Invite players:** the addresses to send friends, the port to forward and the lobby password. You open the same address in your browser to play.
-- **Current draft** and **Players:** the cube, the pack and pick, and who is connected and still picking.
-- **Settings:** the port and the lobby password. Saving writes them to the settings file; restart the server to use them. Set a lobby password before forwarding the port.
-- **Log:** everything the server logs, with a filter for warnings and errors.
+The management UI has three tabs:
+- **Draft**, with these panels:
+  - **Server:** whether it's running, with buttons to start, stop and restart it. Stopping disconnects everyone but keeps the draft; players get their seats back once it runs again.
+  - **Invite players:** the addresses to send friends, the port to forward and the lobby password. **Open in browser** opens the player page in your default browser, where you play too.
+  - **Current draft** and **Players:** the cube, the pack and pick, and who is connected and still picking.
+- **Settings:** the port and the lobby password. Saving writes them to the settings file; restart the server to use them. Set a lobby password before forwarding the port. The tab shows "Restart required" until you do.
+- **Logs:** everything the server logs, with a filter for warnings and errors. The tab shows how many warnings and errors there are.
+
+The footer shows the app's version and the address of this repository.
 
 Everything the server stores goes in your user's app data folder: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file.
 - Windows: `%APPDATA%\io.github.grimgorg.draft-simulator`
