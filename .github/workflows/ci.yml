@@ -56,6 +56,8 @@ jobs:
       card-cache-key: ${{ steps.card-cache-key.outputs.key }}
     steps:
       - uses: actions/checkout@v7
+      - name: Test the Claude Code hook that guards main
+        run: .claude/hooks/guard-main.test.sh
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}

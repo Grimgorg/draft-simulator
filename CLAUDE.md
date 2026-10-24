@@ -198,20 +198,28 @@ To reset a stuck draft, delete `server/data/draft-session.json`.
 - Test behavior, not implementation. Minimize mocks.
 - Bug fix: write a failing test first.
 - Changed behavior requires added or updated tests.
+- Before restructuring a core module, add tests for its current behavior.
+- A test that couldn't run is reported as skipped or failed, never as passed.
 
 ## Workflow
 
 - Read relevant code, tests, and conventions before changing anything.
 - Non-trivial change: outline approach and trade-offs, then wait for approval.
 - After changes, run tests, lint, and typecheck. Fix failures; never skip, weaken, or delete tests or suppress errors to pass.
+- Before opening a PR: run every check in *Commands › Before finishing a change*, plus the extra checks the change calls for.
 - Report only checks that actually ran and passed. List anything unverified.
 - Update docs when behavior, config, interfaces, or architecture change.
-- Never commit secrets. Don't read or modify `.env` files.
+- Never commit secrets or generated/local files (extend `.gitignore`). Don't read or modify `.env` files.
 
 ## Git
 
 - Never commit to main. One branch per task: `feat/<desc>`, `fix/<desc>`, `chore/<desc>`.
-- Commit messages follow Conventional Commits (`feat: ...`, `fix: ...`).
+- Commit messages and PR titles follow Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `test:`, `refactor:`).
+- Refactors and behavior changes go in separate commits.
 - Every branch bumps the root `package.json` version (`npm version patch --no-git-tag-version`): each merge into main
   publishes it as a release, and CI fails a version that isn't higher than the latest release.
+- PR descriptions follow `.github/pull_request_template.md`.
+- Merge pull requests with a merge commit, not squash or rebase.
 - Never push to, or merge into, main without explicit permission. Never force-push.
+- `.claude/hooks/guard-main.sh` blocks commit, push and merge while `main` is checked out; `.claude/settings.json`
+  denies force-pushes and `.env` access.
