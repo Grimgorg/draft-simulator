@@ -83,8 +83,8 @@ client/src/
   components/             React components
   management/             the management UI (manage.html): its own socket, useManagementConnection, panels
 e2e/                      Playwright tests against the production build
-desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, shows its UI, stops it), splash/ (page shown while it
-                          starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
+desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, shows its UI, stops it, offers updates),
+                          splash/ (page shown while it starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
 release/                  built executables, gitignored (as are desktop/src-tauri/{target,gen,binaries})
 .github/workflows/ci.yml  on pull requests into main: tests, clippy, version check, and building and smoke-testing the installers;
@@ -157,6 +157,11 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 - `tauri.bundle.conf.json` holds the settings that need `build:exe` and `notices` to have run (the sidecar and `desktop/src-tauri/THIRD_PARTY_NOTICES.txt`, which `desktop/scripts/buildNotices.ts` builds from the server's notices plus cargo-about's list of Rust crates). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
 - macOS `hardenedRuntime` must stay `false`: Tauri re-signs the bundled server, and with the hardened runtime V8 can't reserve memory for its JIT, so the server crashes at start. CI smoke-tests the server inside the `.app` for this reason.
 - The window loads `http://127.0.0.1:<port>`, not app files, and has no capabilities: the page can't call Rust. Keep it that way.
+  The updater and its dialogs run from Rust only.
+- Updates: release builds check `releases/latest/download/latest.json` at start and ask before installing (`offer_update` in
+  `main.rs`). The update files are signed with a key held only in the repo secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`;
+  the app accepts only that key (`plugins.updater.pubkey`). Only CI passes `tauri.updater.conf.json`, which builds the signed
+  bundles, so a local `build:desktop` needs no key. `publish-release` writes `latest.json` while the release is still a draft.
 - Links in the management UI would replace it in the app's only window. Show addresses as text with a copy button, and
   open pages through `manage:openInBrowser`, which takes a fixed target, never a URL: the server hands it to a shell on Windows.
 - A new Rust dependency under a license missing from `accepted` in `desktop/src-tauri/about.toml` fails `notices` and CI. Check the license before adding it there. cargo-about's version is pinned (`CARGO_ABOUT_VERSION` in CI); 0.9 only installs its binary with `--features cli`, and without it `cargo install` succeeds without installing anything.
@@ -178,6 +183,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 | Tauri `identifier` (`desktop/src-tauri/tauri.conf.json`) | the app data folder's name: changing it loses hosts' data and settings |
 | `.env` lines the management UI writes (`PORT`, `LOBBY_PASSWORD` double-quoted) | settings hosts saved in the UI |
 | The `Management UI: <url>` line `index.ts` prints | the desktop app, which reads it to find the UI (`UI_LINE_PREFIX` in `main.rs`) |
+| Release asset names, `latest.json` and its URL, the updater `pubkey` | updating installed apps: they'd find no update, or refuse it |
 | `localStorage` keys (`pileStorage.ts`, `playerIdentity.ts`, `lobbyPassword.ts`) | players' saved identity (their seat), piles, deck state and lobby password |
 
 To reset a stuck draft, delete `server/data/draft-session.json`.
