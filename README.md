@@ -33,6 +33,8 @@ Everything the server stores goes in your user's app data folder: a `data/` fold
 
 The management UI saves the port and password in `.env`. For the other settings, remove the `#` in front of the line (see [Configuration](#configuration)) and restart.
 
+**Updates.** At each start the app checks this repository's latest release. If it's newer, the app asks whether to update. **Update now** downloads it, installs it and restarts the app. Connected players lose their connection until the server is back, then pick up where they left off. **Later** asks again at the next start. This works for the Windows installer, the macOS app and the AppImage. With the `.deb`, or with version 0.3.3 or older, install the new version from the Releases page by hand.
+
 **Updating from 0.2 or older.** Those versions were a single executable that kept `data/` and `.env` next to itself. The app doesn't use that folder. On the first start it downloads the card database again, and you set the port and password once in Settings. A draft running at the moment you update isn't carried over. Once the app works, you can delete the old executable's folder.
 
 **First-start warnings.** The app isn't code-signed, so the system warns you the first time:
@@ -88,7 +90,7 @@ In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.d
 
 ### The desktop app
 
-The installed app is a [Tauri](https://tauri.app) window (`desktop/`) around the same server: it starts the server executable, shows its management UI and stops the server when it closes. Working on it needs [Rust](https://rustup.rs) and Tauri's [system prerequisites](https://tauri.app/start/prerequisites/) (Xcode Command Line Tools on macOS, WebView2 and the MSVC build tools on Windows, WebKitGTK on Linux).
+The installed app is a [Tauri](https://tauri.app) window (`desktop/`) around the same server: it starts the server executable, shows its management UI, stops the server when it closes and offers to install newer releases. Working on it needs [Rust](https://rustup.rs) and Tauri's [system prerequisites](https://tauri.app/start/prerequisites/) (Xcode Command Line Tools on macOS, WebView2 and the MSVC build tools on Windows, WebKitGTK on Linux).
 
 ```bash
 npm run dev:desktop    # the app window, with the server and client in dev mode behind it (stop both by closing the window)
@@ -164,7 +166,17 @@ npm version patch --no-git-tag-version   # or minor / major; updates package.jso
 
 Each run also checks that this version is higher than the latest GitHub Release, and the check fails if it isn't. Once a pull request with passing checks is merged, the workflow tests `main` again, builds and smoke-tests the server executable on Linux, Windows, Apple Silicon and Intel Macs, builds the desktop app's installers around it, and publishes them as Release `v<version>`, tagging the merged commit. Nothing is released if a test, a build or the version check fails. Versions must be plain `1.2.3`; there are no pre-releases.
 
-GitHub refuses to merge a pull request until these checks pass, because the `protect` rule for `main` under **Settings → Rules** requires them: `test`, `desktop`, `version`, `package (linux-x64)`, `package (windows-x64)`, `package (macos-arm64)` and `package (macos-x64)`. A job renamed in `ci.yml` must be renamed in that rule too, or nothing can be merged. The rule also makes every change to `main` go through a pull request, and stops `main` from being deleted or force-pushed. It allows only squash merges, so each pull request lands on `main` as one commit named after the pull request's title. Under **Settings → General → Pull Requests**, merge commits and rebase merging are turned off, and squash commits use the pull request's title and description as their message. Without the rule, a failing pull request could be merged, and the run on `main` would then fail without releasing anything. Releasing needs no secrets.
+GitHub refuses to merge a pull request until these checks pass, because the `protect` rule for `main` under **Settings → Rules** requires them: `test`, `desktop`, `version`, `package (linux-x64)`, `package (windows-x64)`, `package (macos-arm64)` and `package (macos-x64)`. A job renamed in `ci.yml` must be renamed in that rule too, or nothing can be merged. The rule also makes every change to `main` go through a pull request, and stops `main` from being deleted or force-pushed. It allows only squash merges, so each pull request lands on `main` as one commit named after the pull request's title. Under **Settings → General → Pull Requests**, merge commits and rebase merging are turned off, and squash commits use the pull request's title and description as their message. Without the rule, a failing pull request could be merged, and the run on `main` would then fail without releasing anything.
+
+Installed apps update themselves from the releases (see [Download and run](#download-and-run-no-node-needed)). The package jobs build signed update bundles next to the installers (`.app.tar.gz`, plus a `.sig` for each update file), using the extra config `desktop/src-tauri/tauri.updater.conf.json`. Before publishing, the workflow attaches `latest.json`, which lists them. The app reads it from `releases/latest/download/latest.json`. It installs an update only if its signature matches the public key in `tauri.conf.json`. The private key lives only in two repository secrets, which the package jobs need: `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. To create the key pair:
+
+```bash
+npx --workspace desktop tauri signer generate -w ~/.tauri/draft-simulator.key   # asks for a password
+gh secret set TAURI_SIGNING_PRIVATE_KEY < ~/.tauri/draft-simulator.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD                             # asks for the password
+```
+
+Then put the contents of `~/.tauri/draft-simulator.key.pub` into `plugins.updater.pubkey` in `tauri.conf.json`. Keep the private key and its password safe. Installed apps accept only updates signed with it, so losing it, or switching to a new key pair, means everyone has to install the next version by hand. A local `npm run build:desktop` doesn't build update bundles and doesn't need the key.
 
 To build and smoke-test the installers without releasing them, run the workflow by hand: **Actions → CI → Run workflow**. The workflow never stores files as workflow artifacts, because artifact storage is shared by all your private repos and can fill up. The installers go straight onto the Release, whose files don't count toward that limit.
 

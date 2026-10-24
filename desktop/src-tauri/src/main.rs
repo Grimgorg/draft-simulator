@@ -3,14 +3,17 @@
 
 //! The desktop app: one window showing the server's management UI. The server
 //! itself is the Node executable bundled as a sidecar; this only starts it,
-//! points the window at it, and stops it again when the app quits.
+//! points the window at it, and stops it again when the app quits. At start it
+//! also offers to install a newer release from GitHub.
 
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 /// The server prints this, followed by the URL, once the management UI is listening (server/src/index.ts).
 const UI_LINE_PREFIX: &str = "Management UI: ";
@@ -40,6 +43,8 @@ struct ServerProcess(Mutex<Option<CommandChild>>);
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(ServerProcess(Mutex::new(None)))
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -48,6 +53,9 @@ fn main() {
             } else {
                 let window = create_window(app.handle(), WebviewUrl::App("index.html".into()))?;
                 start_server(app.handle(), window)?;
+                // Only in release builds: a dev build has no release to compare
+                // against, and installing one would replace the dev setup.
+                tauri::async_runtime::spawn(offer_update(app.handle().clone()));
             }
             Ok(())
         })
@@ -138,6 +146,86 @@ fn show_server_stopped(window: &WebviewWindow, code: Option<i32>, recent: &VecDe
     // Fails only when the window is already closing because the app is
     // quitting, and then there's nobody left to tell.
     let _ = window.eval(&script);
+}
+
+/// Asks the host whether to install a newer release, if GitHub has one, and
+/// installs it on yes. Never asks again until the next start, so the dialog
+/// can't interrupt a draft that's under way.
+async fn offer_update(app: AppHandle) {
+    let update = match app.updater() {
+        Ok(updater) => updater.check().await,
+        Err(err) => Err(err),
+    };
+    let update = match update {
+        Ok(Some(update)) => update,
+        Ok(None) => return,
+        // Offline or GitHub unreachable: the app works fine without updating.
+        Err(err) => {
+            eprintln!("Couldn't check for updates: {err}");
+            return;
+        }
+    };
+
+    let message = format!(
+        "Draft Simulator {} is available (you have {}).\n\n\
+         Updating restarts the app, so players who are connected lose their connection \
+         until it's back. A draft that's under way continues where it left off.",
+        update.version, update.current_version
+    );
+    let wants_update = ask(
+        &app,
+        message,
+        "Update available",
+        MessageDialogButtons::OkCancelCustom("Update now".into(), "Later".into()),
+        MessageDialogKind::Info,
+    )
+    .await;
+    if wants_update {
+        install_update(&app, &update).await;
+    }
+}
+
+/// Returns only if the download fails, leaving the server running. Otherwise
+/// the app restarts, or on Windows exits for the installer.
+async fn install_update(app: &AppHandle, update: &Update) {
+    // Downloaded while the server keeps running: a failed download then costs
+    // the players nothing.
+    let bytes = match update.download(|_, _| {}, || {}).await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            let message = format!("Couldn't download Draft Simulator {}: {err}", update.version);
+            ask(app, message, "Update failed", MessageDialogButtons::Ok, MessageDialogKind::Error).await;
+            return;
+        }
+    };
+    // Stopped before installing: on Windows the installer can't replace the
+    // server's executable while it runs.
+    stop_server(app);
+    if let Err(err) = update.install(bytes) {
+        let message = format!(
+            "Couldn't install Draft Simulator {}: {err}\n\nThe app restarts on the version you have.",
+            update.version
+        );
+        ask(app, message, "Update failed", MessageDialogButtons::Ok, MessageDialogKind::Error).await;
+    }
+    // Also after a failed install, so the server, already stopped, comes back
+    // on the version that's still installed.
+    app.restart();
+}
+
+/// Shows a dialog and waits for it to close. Returns whether the host chose the OK button.
+async fn ask(
+    app: &AppHandle,
+    message: String,
+    title: &str,
+    buttons: MessageDialogButtons,
+    kind: MessageDialogKind,
+) -> bool {
+    let dialog = app.dialog().message(message).title(title).buttons(buttons).kind(kind);
+    // blocking_show must not run on the main thread, and would hold up an async worker.
+    tauri::async_runtime::spawn_blocking(move || dialog.blocking_show())
+        .await
+        .unwrap_or(false)
 }
 
 fn stop_server(app: &AppHandle) {

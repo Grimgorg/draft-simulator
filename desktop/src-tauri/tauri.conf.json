@@ -40,5 +40,16 @@
         "installMode": "currentUser"
       }
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZFQzY3RTUyMDA1RTA3Q0MKUldUTUIxNEFVbjdHYnBoU0lZQjFzeTdUTEJuVXRDa0MwR1RrbUpkK1dWbWxuR1JKSkUvTE5XUTgK",
+      "endpoints": [
+        "https://github.com/Grimgorg/draft-simulator/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
