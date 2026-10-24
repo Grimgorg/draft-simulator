@@ -133,7 +133,7 @@ release/                  built executables, gitignored (as are desktop/src-taur
 | `setImageDirForTests(tmpDir)` | give a test its own image cache dir |
 | `t.mock.method(globalThis, "fetch", …)` | fake CubeCobra responses |
 
-Before restructuring `draftEngine` or `lobbyManager`, add tests for the current behavior. Keep refactors and behavior changes in separate commits.
+Before restructuring `draftEngine` or `lobbyManager`, add tests for the current behavior.
 
 ## Gotchas
 
@@ -215,11 +215,13 @@ To reset a stuck draft, delete `server/data/draft-session.json`.
 
 - Never commit to main. One branch per task: `feat/<desc>`, `fix/<desc>`, `chore/<desc>`.
 - Commit messages and PR titles follow Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `test:`, `refactor:`).
-- Refactors and behavior changes go in separate commits.
 - Every branch bumps the root `package.json` version (`npm version patch --no-git-tag-version`): each merge into main
   publishes it as a release, and CI fails a version that isn't higher than the latest release.
 - PR descriptions follow `.github/pull_request_template.md`.
-- Merge pull requests with a merge commit, not squash or rebase.
+- Merge pull requests with a squash commit (`gh pr merge --squash`), the only method main's ruleset allows. The commit
+  takes the PR's title and description.
+- After a squash merge, `git branch -d` refuses the local branch, because its commits aren't on main. Check that the
+  PR is merged, then use `-D`.
 - Never push to, or merge into, main without explicit permission. Never force-push.
 - `.claude/hooks/guard-main.sh` blocks commit, push and merge while `main` is checked out; `.claude/settings.json`
   denies force-pushes and `.env` access.
