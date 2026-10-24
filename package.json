@@ -1,7 +1,7 @@
 {
   "name": "draft-simulator",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "Self-hosted Magic: The Gathering cube draft simulator for a small group of friends.",
   "engines": {
     "node": ">=22.18"

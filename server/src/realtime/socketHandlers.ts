@@ -1,5 +1,10 @@
 import type { Server, Socket } from "socket.io";
-import type { ClientToServerEvents, ServerToClientEvents } from "@draft-simulator/shared";
+import type {
+  ActionResult,
+  ClientToServerEvents,
+  NewDraftSettings,
+  ServerToClientEvents,
+} from "@draft-simulator/shared";
 import * as lobbyManager from "../session/lobbyManager.js";
 import { buildLobbyStateView } from "../session/lobbyStateView.js";
 import { buildDeckExports } from "../session/deckExport.js";
@@ -12,6 +17,12 @@ type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 const socketPlayers = new Map<string, string>();
 /** playerId -> socket.id, the reverse of socketPlayers. Lets a rejoin evict a stale live session. */
 const playerSockets = new Map<string, string>();
+/**
+ * The running draft server, so the host's actions in the management UI reach
+ * the players. Unset until it first starts; a stopped one has no sockets left
+ * to emit to, and players get the state when they connect again.
+ */
+let currentIo: IoServer | undefined;
 
 function bindSocketToPlayer(io: IoServer, socket: IoSocket, playerId: string): void {
   const staleSocketId = playerSockets.get(playerId);
@@ -22,13 +33,6 @@ function bindSocketToPlayer(io: IoServer, socket: IoSocket, playerId: string): v
   }
   socketPlayers.set(socket.id, playerId);
   playerSockets.set(playerId, socket.id);
-}
-
-/** Throws unless this socket is bound to the current session's host. `action` completes "Only the host can …". */
-function assertHost(socket: IoSocket, action: string): void {
-  const playerId = socketPlayers.get(socket.id);
-  const isHost = lobbyManager.getSession()?.players.find((p) => p.id === playerId)?.isHost === true;
-  if (!isHost) throw new Error(`Only the host can ${action}`);
 }
 
 function broadcastLobbyState(io: IoServer): void {
@@ -66,28 +70,62 @@ function broadcastDraftStateToAll(io: IoServer): void {
   }
 }
 
+function errorResult(err: unknown): ActionResult {
+  return { ok: false, error: err instanceof Error ? err.message : String(err) };
+}
+
+/**
+ * The host's draft controls, called from the management UI. They live here
+ * because this is the only code that emits to players. Like the handlers
+ * below they never throw.
+ */
+export async function createDraft(settings: NewDraftSettings): Promise<ActionResult> {
+  try {
+    await lobbyManager.createLobby(
+      settings.cubeIdOrUrl,
+      settings.packCount,
+      settings.packSize,
+      settings.playerCount,
+      settings.alternatingDraft
+    );
+    if (currentIo) broadcastLobbyState(currentIo);
+    return { ok: true };
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+export function startDraft(): ActionResult {
+  try {
+    lobbyManager.beginDraft();
+    if (currentIo) {
+      // Pack before lobby state, as in draft:pick.
+      broadcastDraftStateToAll(currentIo);
+      broadcastLobbyState(currentIo);
+    }
+    return { ok: true };
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
+export function cancelDraft(): ActionResult {
+  try {
+    const session = lobbyManager.getSession();
+    if (!session || session.status === "complete") throw new Error("No draft in progress to cancel");
+    lobbyManager.cancelDraft();
+    if (currentIo) broadcastLobbyState(currentIo);
+    return { ok: true };
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
 export function registerSocketHandlers(io: IoServer): void {
+  currentIo = io;
   io.on("connection", (socket: IoSocket) => {
     console.log(`Client connected: ${socket.id}`);
     socket.emit("lobby:state", buildLobbyStateView());
-
-    socket.on("lobby:create", async (payload, callback) => {
-      try {
-        const { host, cubeMeta } = await lobbyManager.createLobby(
-          payload.hostName,
-          payload.cubeIdOrUrl,
-          payload.packCount,
-          payload.packSize,
-          payload.playerCount,
-          payload.alternatingDraft
-        );
-        bindSocketToPlayer(io, socket, host.id);
-        callback({ ok: true, playerId: host.id, ...cubeMeta });
-        broadcastLobbyState(io);
-      } catch (err) {
-        callback({ ok: false, error: (err as Error).message });
-      }
-    });
 
     socket.on("cube:preview", async (payload, callback) => {
       try {
@@ -122,48 +160,6 @@ export function registerSocketHandlers(io: IoServer): void {
         callback({ ok: true });
         // Pack before lobby state, as in draft:pick.
         sendDraftStateTo(io, socket.id, player.id);
-        broadcastLobbyState(io);
-      } catch (err) {
-        callback({ ok: false, error: (err as Error).message });
-      }
-    });
-
-    socket.on("draft:start", (callback) => {
-      try {
-        assertHost(socket, "start the draft");
-
-        lobbyManager.beginDraft();
-        callback({ ok: true });
-        // Pack before lobby state, as in draft:pick.
-        broadcastDraftStateToAll(io);
-        broadcastLobbyState(io);
-      } catch (err) {
-        callback({ ok: false, error: (err as Error).message });
-      }
-    });
-
-    socket.on("draft:cancel", (callback) => {
-      try {
-        const session = lobbyManager.getSession();
-        if (!session || session.status === "complete") throw new Error("No draft in progress to cancel");
-        assertHost(socket, "cancel the draft");
-
-        lobbyManager.cancelDraft();
-        callback({ ok: true });
-        broadcastLobbyState(io);
-      } catch (err) {
-        callback({ ok: false, error: (err as Error).message });
-      }
-    });
-
-    socket.on("lobby:reset", (callback) => {
-      try {
-        const session = lobbyManager.getSession();
-        if (!session || session.status !== "complete") throw new Error("No completed draft to reset");
-        assertHost(socket, "reset the draft");
-
-        lobbyManager.cancelDraft();
-        callback({ ok: true });
         broadcastLobbyState(io);
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });

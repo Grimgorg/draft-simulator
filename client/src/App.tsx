@@ -3,7 +3,6 @@ import "./App.css";
 import { CardPreviewProvider } from "./CardPreviewContext.js";
 import { CardPreviewOverlay } from "./components/CardPreviewOverlay.js";
 import { DraftBoard } from "./components/DraftBoard.js";
-import { HostSetupScreen } from "./components/HostSetupScreen.js";
 import { LobbyPasswordScreen } from "./components/LobbyPasswordScreen.js";
 import { RejoinScreen } from "./components/RejoinScreen.js";
 import { ResultsScreen } from "./components/ResultsScreen.js";
@@ -73,10 +72,10 @@ function AppContent() {
   }
 
   if (lobbyState.status === "empty") {
-    return <HostSetupScreen onCreated={setMyPlayerId} />;
+    return <StatusScreen message="The host needs to create and start a draft before players can join." />;
   }
 
-  // Every screen past host setup belongs to a seated player; anyone else
+  // Every screen past this one belongs to a seated player; anyone else
   // (new device, cleared storage, or evicted) picks a seat first.
   const iAmSeated = myPlayerId !== null && lobbyState.players.some((p) => p.id === myPlayerId);
   if (!iAmSeated) {

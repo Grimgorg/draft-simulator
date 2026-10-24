@@ -4,7 +4,6 @@ import type { DecklistEntry } from "./decklist.js";
 export interface Player {
   id: string;
   name: string;
-  isHost: boolean;
   connected: boolean;
 }
 

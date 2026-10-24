@@ -3,7 +3,6 @@ import type { Card, LobbyStateView, Pack } from "@draft-simulator/shared";
 import { neighborSeat, passDirection } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
 import { buildDraftPilesKey, getStoredDraftPiles, storeDraftPiles } from "../pileStorage.js";
-import { CancelDraftButton } from "./CancelDraftButton.js";
 import { CardImage } from "./CardImage.js";
 import { CardPile } from "./CardPile.js";
 
@@ -85,7 +84,6 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
     if (storageKey) storeDraftPiles(storageKey, piles);
   }, [storageKey, piles]);
 
-  const isHost = lobbyState.hostId === myPlayerId;
   const stillWaitingOn = lobbyState.waitingOn ?? [];
   const isMyTurn = stillWaitingOn.includes(myPlayerId);
   const waitingOnNames = stillWaitingOn
@@ -194,7 +192,6 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
             <p className="subtitle">Waiting on: {waitingOnNames.join(", ")}</p>
           )}
           {error && <p className="error">{error}</p>}
-          {isHost && <CancelDraftButton />}
         </header>
 
         <section className="pack-grid">

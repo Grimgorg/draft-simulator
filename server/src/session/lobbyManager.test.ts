@@ -17,28 +17,22 @@ function settings(overrides: Partial<DraftSettings> = {}): DraftSettings {
 
 const fourCards = [testCard("c1"), testCard("c2"), testCard("c3"), testCard("c4")];
 
-test("creates a lobby, seats the host, and enforces capacity", () => {
+test("creates an empty lobby that players join up to its capacity", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
 
-  const { host, cubeMeta } = lobbyManager.createLobbyFromResolvedCube(
-    "Alice",
-    "Test Cube",
-    fourCards,
-    [],
-    settings()
-  );
-  assert.equal(host.isHost, true);
+  const { cubeMeta } = lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
   assert.equal(cubeMeta.cardCount, 4);
+  assert.deepEqual(lobbyManager.getSession()!.players, [], "the host joins from the player page like everyone else");
 
-  const bob = lobbyManager.addPlayer("Bob");
-  assert.equal(bob.isHost, false);
-
+  lobbyManager.addPlayer("Alice");
+  lobbyManager.addPlayer("Bob");
   assert.throws(() => lobbyManager.addPlayer("Cara"), /full/);
 });
 
 test("rejects joining after the draft has started", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
-  lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
+  lobbyManager.addPlayer("Alice");
   lobbyManager.addPlayer("Bob");
 
   lobbyManager.beginDraft();
@@ -48,13 +42,8 @@ test("rejects joining after the draft has started", () => {
 test("runs picks through to completion and persists a snapshot", () => {
   const snapshotPath = freshSnapshotPath();
   lobbyManager.resetForTests(snapshotPath);
-  const { host } = lobbyManager.createLobbyFromResolvedCube(
-    "Alice",
-    "Test Cube",
-    fourCards,
-    [],
-    settings({ packSize: 1 })
-  );
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings({ packSize: 1 }));
+  const host = lobbyManager.addPlayer("Alice");
   const bob = lobbyManager.addPlayer("Bob");
 
   lobbyManager.beginDraft();
@@ -77,7 +66,8 @@ test("runs picks through to completion and persists a snapshot", () => {
 
 test("marks a player disconnected without removing them", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
-  lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
+  lobbyManager.addPlayer("Alice");
   const bob = lobbyManager.addPlayer("Bob");
 
   lobbyManager.setPlayerConnected(bob.id, false);
@@ -95,7 +85,8 @@ test("keeps the draft going when the snapshot can't be saved, and saves it once 
   const errorLog = t.mock.method(console, "error", () => {});
   fs.mkdirSync(snapshotPath);
 
-  const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
+  const host = lobbyManager.addPlayer("Alice");
   const bob = lobbyManager.addPlayer("Bob");
   lobbyManager.beginDraft();
   const session = lobbyManager.getSession()!;
@@ -127,13 +118,8 @@ test("keeps the draft going when the snapshot can't be saved, and saves it once 
 test("a server restart mid-draft resumes from the snapshot, including picks already made this round", () => {
   const snapshotPath = freshSnapshotPath();
   lobbyManager.resetForTests(snapshotPath);
-  const { host } = lobbyManager.createLobbyFromResolvedCube(
-    "Alice",
-    "Test Cube",
-    fourCards,
-    [],
-    settings({ packCount: 2, packSize: 1 })
-  );
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings({ packCount: 2, packSize: 1 }));
+  const host = lobbyManager.addPlayer("Alice");
   const bob = lobbyManager.addPlayer("Bob");
   lobbyManager.beginDraft();
   const firstPick = (playerId: string) => lobbyManager.getSession()!.currentPacks[playerId]!.cards[0]!.scryfallId;
@@ -164,11 +150,11 @@ test("createLobby rejects bad settings before contacting CubeCobra", async (t) =
   });
 
   const cases: [Parameters<typeof lobbyManager.createLobby>, RegExp][] = [
-    [["   ", "cube", 3, 15, 8, true], /Host name is required/],
-    [["Alice", "cube", 3, 15, 1, true], /at least 2 players/],
-    [["Alice", "cube", 3, 15, 2.5, true], /at least 2 players/],
-    [["Alice", "cube", 0, 15, 8, true], /at least 1 pack/],
-    [["Alice", "cube", 3, 0, 8, true], /at least 1 card/],
+    [["   ", 3, 15, 8, true], /Cube URL or ID is required/],
+    [["cube", 3, 15, 1, true], /at least 2 players/],
+    [["cube", 3, 15, 2.5, true], /at least 2 players/],
+    [["cube", 0, 15, 8, true], /at least 1 pack/],
+    [["cube", 3, 0, 8, true], /at least 1 card/],
   ];
   for (const [args, error] of cases) {
     await assert.rejects(lobbyManager.createLobby(...args), error, JSON.stringify(args));
@@ -180,9 +166,10 @@ test("createLobby rejects bad settings before contacting CubeCobra", async (t) =
 test("a new lobby can't replace one that is waiting or drafting, only a finished draft", async (t) => {
   lobbyManager.resetForTests(freshSnapshotPath());
   const fetchMock = t.mock.method(globalThis, "fetch", async () => new Response("", { status: 404, statusText: "Not Found" }));
-  const createAnother = () => lobbyManager.createLobby("Cara", "other-cube", 1, 1, 2, true);
+  const createAnother = () => lobbyManager.createLobby("other-cube", 1, 1, 2, true);
 
-  const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings({ packSize: 1 }));
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings({ packSize: 1 }));
+  const host = lobbyManager.addPlayer("Alice");
   await assert.rejects(createAnother(), /already in progress or waiting/);
   const bob = lobbyManager.addPlayer("Bob");
   lobbyManager.beginDraft();
@@ -201,7 +188,8 @@ test("a new lobby can't replace one that is waiting or drafting, only a finished
 test("trims player names and rejects blank ones", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
   assert.throws(() => lobbyManager.addPlayer("Bob"), /No lobby has been created/);
-  lobbyManager.createLobbyFromResolvedCube("  Alice ", "Test Cube", fourCards, [], settings({ playerCount: 3 }));
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings({ playerCount: 3 }));
+  lobbyManager.addPlayer("  Alice ");
 
   assert.throws(() => lobbyManager.addPlayer("   "), /Player name is required/);
   assert.equal(lobbyManager.addPlayer("  Bob  ").name, "Bob");
@@ -213,7 +201,8 @@ test("trims player names and rejects blank ones", () => {
 
 test("starting before every seat is filled fails and leaves the lobby open to join", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
-  lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
+  lobbyManager.addPlayer("Alice");
 
   assert.throws(() => lobbyManager.beginDraft(), /configured for 2 players but 1 are seated/);
   assert.equal(lobbyManager.getSession()!.status, "lobby");
@@ -225,7 +214,8 @@ test("starting before every seat is filled fails and leaves the lobby open to jo
 test("starting with a cube too small for the packs fails without half-starting the draft", () => {
   const snapshotPath = freshSnapshotPath();
   lobbyManager.resetForTests(snapshotPath);
-  lobbyManager.createLobbyFromResolvedCube("Alice", "Tiny Cube", fourCards.slice(0, 3), [], settings());
+  lobbyManager.createLobbyFromResolvedCube("Tiny Cube", fourCards.slice(0, 3), [], settings());
+  lobbyManager.addPlayer("Alice");
   lobbyManager.addPlayer("Bob");
 
   assert.throws(() => lobbyManager.beginDraft(), /Cube has 3 cards but 4 are needed/);
@@ -239,7 +229,8 @@ test("starting with a cube too small for the packs fails without half-starting t
 test("cancelling clears the draft, and it stays cleared after a restart", () => {
   const snapshotPath = freshSnapshotPath();
   lobbyManager.resetForTests(snapshotPath);
-  lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
+  lobbyManager.addPlayer("Alice");
   lobbyManager.addPlayer("Bob");
   lobbyManager.beginDraft();
 
@@ -258,19 +249,20 @@ test("state listeners hear about every change: joins, connection changes, the st
   let changes = 0;
   const stop = lobbyManager.onStateChange(() => changes++);
   try {
-    const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+    lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
     assert.equal(changes, 1);
+    const host = lobbyManager.addPlayer("Alice");
     const bob = lobbyManager.addPlayer("Bob");
     lobbyManager.setPlayerConnected(bob.id, false);
     lobbyManager.beginDraft();
-    assert.equal(changes, 4);
+    assert.equal(changes, 5);
 
     const pack = lobbyManager.getSession()!.currentPacks[host.id];
     lobbyManager.pick(host.id, pack.cards[0].scryfallId);
-    assert.equal(changes, 5);
+    assert.equal(changes, 6);
 
     lobbyManager.cancelDraft();
-    assert.equal(changes, 6);
+    assert.equal(changes, 7);
   } finally {
     stop();
   }
@@ -278,7 +270,8 @@ test("state listeners hear about every change: joins, connection changes, the st
 
 test("a failing state listener doesn't fail the pick that triggered it", (t) => {
   lobbyManager.resetForTests(freshSnapshotPath());
-  const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", fourCards, [], settings());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
+  const host = lobbyManager.addPlayer("Alice");
   lobbyManager.addPlayer("Bob");
   lobbyManager.beginDraft();
   const loggedErrors = t.mock.method(console, "error", () => {});

@@ -5,9 +5,9 @@ import { beginDraftWithPacks, createDraftSession, submitPick } from "./draftEngi
 import { testPack } from "./testHelpers.js";
 
 const players: Player[] = [
-  { id: "A", name: "Alice", isHost: true, connected: true },
-  { id: "B", name: "Bob", isHost: false, connected: true },
-  { id: "C", name: "Cara", isHost: false, connected: true },
+  { id: "A", name: "Alice", connected: true },
+  { id: "B", name: "Bob", connected: true },
+  { id: "C", name: "Cara", connected: true },
 ];
 
 function seededQueue(): Pack[][] {

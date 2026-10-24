@@ -170,17 +170,6 @@ button:disabled {
   font-size: 0.8rem;
 }
 
-.cancel-draft-button {
-  color: #d1435b;
-  border-color: #d1435b;
-}
-
-.waiting-room-actions {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-}
-
 .confirm-prompt {
   display: flex;
   flex-direction: column;
@@ -393,12 +382,6 @@ button:disabled {
   font-family: ui-monospace, Consolas, monospace;
   font-size: 0.85rem;
   resize: vertical;
-}
-
-.new-draft-section {
-  margin-top: 3rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border);
 }
 
 .card-preview-overlay {

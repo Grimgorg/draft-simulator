@@ -45,29 +45,33 @@ export function RejoinScreen({ lobbyState, onIdentitySelected }: RejoinScreenPro
         </p>
       )}
 
-      <h2>Rejoin as...</h2>
-      <p className="subtitle">Pick your name to rejoin the draft on this device.</p>
-      {error && <p className="error">{error}</p>}
-      <ul className="player-list rejoin-list">
-        {lobbyState.players.map((player) => (
-          <li key={player.id}>
-            <button
-              type="button"
-              className="rejoin-button"
-              onClick={() => handleRejoin(player.id)}
-              disabled={pendingId !== null}
-            >
-              <span className={`dot ${player.connected ? "dot-connected" : "dot-disconnected"}`} />
-              {player.name}
-              {player.isHost && <span className="tag">host</span>}
-              {pendingId === player.id && " ..."}
-            </button>
-            {player.connected && (
-              <span className="warning-inline">connected elsewhere — rejoining will sign that session out</span>
-            )}
-          </li>
-        ))}
-      </ul>
+      {/* A new lobby has no one to rejoin as: the host joins it like everyone else. */}
+      {lobbyState.players.length > 0 && (
+        <>
+          <h2>Rejoin as...</h2>
+          <p className="subtitle">Pick your name to rejoin the draft on this device.</p>
+          {error && <p className="error">{error}</p>}
+          <ul className="player-list rejoin-list">
+            {lobbyState.players.map((player) => (
+              <li key={player.id}>
+                <button
+                  type="button"
+                  className="rejoin-button"
+                  onClick={() => handleRejoin(player.id)}
+                  disabled={pendingId !== null}
+                >
+                  <span className={`dot ${player.connected ? "dot-connected" : "dot-disconnected"}`} />
+                  {player.name}
+                  {pendingId === player.id && " ..."}
+                </button>
+                {player.connected && (
+                  <span className="warning-inline">connected elsewhere — rejoining will sign that session out</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {canJoinNew && <JoinScreen lobbyState={lobbyState} onJoined={onIdentitySelected} />}
     </div>
