@@ -1,5 +1,5 @@
 import type { Card } from "./card.js";
-import type { DeckExport, DraftSettings, Pack } from "./draft.js";
+import type { DeckExport, Pack } from "./draft.js";
 import type { LobbyStateView } from "./lobbyView.js";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -7,31 +7,12 @@ export type ActionResultWithData<T extends Record<string, unknown>> = ({ ok: tru
 
 /** Events the client emits to the server. */
 export interface ClientToServerEvents {
-  "lobby:create": (
-    payload: { hostName: string; cubeIdOrUrl: string } & Pick<
-      DraftSettings,
-      "packCount" | "packSize" | "playerCount" | "alternatingDraft"
-    >,
-    callback: (
-      result: ActionResultWithData<{
-        playerId: string;
-        cubeName: string;
-        cardCount: number;
-        unresolvedCardNames: string[];
-      }>
-    ) => void
-  ) => void;
   "lobby:join": (
     payload: { playerName: string },
     callback: (result: ActionResultWithData<{ playerId: string }>) => void
   ) => void;
   /** Re-attaches this socket to an existing player id, e.g. after a page refresh or a network blip. */
   "lobby:reconnect": (payload: { playerId: string }, callback: (result: ActionResult) => void) => void;
-  "draft:start": (callback: (result: ActionResult) => void) => void;
-  "draft:cancel": (callback: (result: ActionResult) => void) => void;
-  /** Host-only, only once the draft is complete: wipes the session entirely so the server goes back to its
-   * fresh-install "empty" state for every connected client, the same state a brand-new server starts in. */
-  "lobby:reset": (callback: (result: ActionResult) => void) => void;
   "draft:pick": (payload: { scryfallId: string }, callback: (result: ActionResult) => void) => void;
   /** Fetches and resolves a cube's cards for a quick look, without creating a lobby. */
   "cube:preview": (

@@ -8,14 +8,24 @@ import { CUBE_ID, CUBE_NAME, expect, test } from "../fixtures.js";
 // back after a stop or restart can take that long.
 const RECONNECT_TIMEOUT = 15_000;
 
-async function createDraft(host: Page): Promise<void> {
-  await host.getByLabel("Your name").fill("Alice");
-  await host.getByLabel("CubeCobra cube URL or ID").fill(CUBE_ID);
-  await host.getByLabel("Number of players").fill("2");
-  await host.getByLabel("Packs per player").fill("2");
-  await host.getByLabel("Cards per pack").fill("2");
-  await host.getByRole("button", { name: "Create draft" }).click();
-  await expect(host.getByRole("heading", { name: CUBE_NAME })).toBeVisible();
+const NO_DRAFT_MESSAGE = "The host needs to create and start a draft before players can join.";
+
+async function createDraft(management: Page): Promise<void> {
+  await management.getByRole("button", { name: "Create draft" }).click();
+  const dialog = management.getByRole("dialog", { name: "New draft" });
+  await dialog.getByLabel("CubeCobra cube URL or ID").fill(CUBE_ID);
+  await dialog.getByLabel("Number of players").fill("2");
+  await dialog.getByLabel("Packs per player").fill("2");
+  await dialog.getByLabel("Cards per pack").fill("2");
+  await dialog.getByRole("button", { name: "Start draft" }).click();
+  await expect(dialog).toBeHidden();
+}
+
+async function joinDraft(player: Page, name: string): Promise<void> {
+  await player.getByLabel("Your name").fill(name);
+  await player.getByRole("button", { name: "Join draft" }).click();
+  // Only a seated player gets here: the join screen shows the cube's name too.
+  await expect(player.getByText("Waiting for the host to start the draft...")).toBeVisible();
 }
 
 function panel(page: Page, name: string) {
@@ -37,18 +47,20 @@ test("the host watches players join and the draft start", async ({ openManagemen
   await openTab(management, "Draft");
 
   const host = await openPlayer();
-  await createDraft(host);
+  await expect(host.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
+  await createDraft(management);
   await expect(panel(management, "Current draft")).toContainText("Waiting for players to join.");
   await expect(panel(management, "Current draft")).toContainText(`${CUBE_NAME} (8 cards)`);
-  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Host\s*Connected/]);
+  await joinDraft(host, "Alice");
+  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Connected/]);
+  await expect(management.getByRole("button", { name: "Waiting for players (1 of 2)" })).toBeDisabled();
 
   const guest = await openPlayer();
-  await guest.getByLabel("Your name").fill("Bob");
-  await guest.getByRole("button", { name: "Join draft" }).click();
+  await joinDraft(guest, "Bob");
   await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice/, /Bob\s*Connected/]);
   await expect(panel(management, "Players")).toContainText("2 browsers connected");
 
-  await host.getByRole("button", { name: "Start draft" }).click();
+  await management.getByRole("button", { name: "Start picking" }).click();
   await expect(panel(management, "Current draft")).toContainText("Pack 1 of 2, pick 1 of 2");
   await expect(panel(management, "Players").getByText("Picking")).toHaveCount(2);
 
@@ -64,7 +76,7 @@ test("a new lobby password applies after a restart, and players are asked for it
 }) => {
   const management = await openManagement();
   const player = await openPlayer();
-  await expect(player.getByLabel("Your name")).toBeVisible();
+  await expect(player.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
 
   await openTab(management, "Settings");
   const settings = panel(management, "Settings");
@@ -85,7 +97,7 @@ test("a new lobby password applies after a restart, and players are asked for it
   });
   await player.getByLabel("Password").fill("hunter2");
   await player.getByRole("button", { name: "Connect" }).click();
-  await expect(player.getByLabel("Your name")).toBeVisible();
+  await expect(player.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
 });
 
 test("a stopped server keeps the draft, and players get their seat back once it starts", async ({
@@ -93,20 +105,21 @@ test("a stopped server keeps the draft, and players get their seat back once it 
   openPlayer,
 }) => {
   const management = await openManagement();
+  await createDraft(management);
   const host = await openPlayer();
-  await createDraft(host);
+  await joinDraft(host, "Alice");
 
   const server = panel(management, "Server");
   await server.getByRole("button", { name: "Stop server" }).click();
   await server.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(server).toContainText("Stopped. Players can't connect");
   await expect(host.getByText("Connecting to server...")).toBeVisible();
-  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Host\s*Disconnected/]);
+  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Disconnected/]);
 
   await server.getByRole("button", { name: "Start server" }).click();
   await expect(server).toContainText("Running on port");
   await expect(host.getByRole("heading", { name: CUBE_NAME })).toBeVisible({ timeout: RECONNECT_TIMEOUT });
-  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Host\s*Connected/]);
+  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Connected/]);
 });
 
 test("a busy port is reported in the management UI, and another port can be chosen", async ({

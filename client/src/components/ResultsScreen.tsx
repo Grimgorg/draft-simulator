@@ -1,6 +1,5 @@
 import type { Card, LobbyStateView } from "@draft-simulator/shared";
 import { DeckBuilder } from "./DeckBuilder.js";
-import { ResetDraftButton } from "./ResetDraftButton.js";
 
 interface ResultsScreenProps {
   lobbyState: LobbyStateView;
@@ -9,7 +8,6 @@ interface ResultsScreenProps {
 }
 
 export function ResultsScreen({ lobbyState, myPlayerId, myPool }: ResultsScreenProps) {
-  const isHost = lobbyState.hostId === myPlayerId;
   const myPlayerName = lobbyState.players.find((p) => p.id === myPlayerId)?.name ?? "player";
 
   return (
@@ -33,8 +31,6 @@ export function ResultsScreen({ lobbyState, myPlayerId, myPool }: ResultsScreenP
           </li>
         ))}
       </ul>
-
-      {isHost && <ResetDraftButton />}
     </div>
   );
 }

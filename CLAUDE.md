@@ -98,6 +98,7 @@ release/                  built executables, gitignored (as are desktop/src-taur
 - `lobbyManager`: the only holder of session state and the only caller of engine mutators. Saves a snapshot after every change.
 - `socketHandlers`: the only code that emits player socket events. The server, not the client, decides who is picking.
 - `managementServer`: the only code that emits `manage:*` events, and the only caller of `startDraftServer`/`stopDraftServer`. It learns about changes from `lobbyManager.onStateChange`, `onDraftServerChange` and `onLog`.
+  Only the host creates, starts and cancels drafts, from the management UI, through `socketHandlers`' `createDraft`, `startDraft` and `cancelDraft`, which tell the players. Players have no host role: everyone joins with `lobby:join`.
 - `useDraftConnection`: the only client code that listens to player socket events. Components send through the `socket` singleton and get state as props.
 - `useManagementConnection`: the same for the management UI and its `managementSocket` singleton.
 - Dependencies: `server` and `client` use `shared` but **never each other**. `e2e` uses only the browser and HTTP.

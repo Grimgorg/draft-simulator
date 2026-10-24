@@ -71,13 +71,14 @@ test("a started server answers players, and a stopped one doesn't", async (t) =>
 test("stopping keeps the draft: the player is marked disconnected but keeps their seat", async (t) => {
   t.after(ensureStopped);
   lobbyManager.resetForTests(freshSnapshotPath());
-  const { host } = lobbyManager.createLobbyFromResolvedCube(
-    "Alice",
-    "Test Cube",
-    [testCard("c1"), testCard("c2")],
-    [],
-    { cubeId: "test-cube", packCount: 1, packSize: 1, playerCount: 2, alternatingDraft: true },
-  );
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", [testCard("c1"), testCard("c2")], [], {
+    cubeId: "test-cube",
+    packCount: 1,
+    packSize: 1,
+    playerCount: 2,
+    alternatingDraft: true,
+  });
+  const host = lobbyManager.addPlayer("Alice");
   const port = await freePort();
   await startDraftServer({ port, lobbyPassword: "" });
 

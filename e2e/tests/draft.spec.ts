@@ -6,29 +6,40 @@ const PACKS = 2;
 const CARDS_PER_PACK = 2;
 const PICKS_PER_PLAYER = PACKS * CARDS_PER_PACK;
 
-async function createDraft(host: Page): Promise<void> {
-  await host.getByLabel("Your name").fill("Alice");
-  await host.getByLabel("CubeCobra cube URL or ID").fill(CUBE_ID);
-  await host.getByLabel("Number of players").fill("2");
-  await host.getByLabel("Packs per player").fill(String(PACKS));
-  await host.getByLabel("Cards per pack").fill(String(CARDS_PER_PACK));
-  await host.getByRole("button", { name: "Create draft" }).click();
-  await expect(host.getByRole("heading", { name: CUBE_NAME })).toBeVisible();
+async function createDraft(management: Page): Promise<void> {
+  await management.getByRole("button", { name: "Create draft" }).click();
+  const dialog = management.getByRole("dialog", { name: "New draft" });
+  await dialog.getByLabel("CubeCobra cube URL or ID").fill(CUBE_ID);
+  await dialog.getByLabel("Number of players").fill("2");
+  await dialog.getByLabel("Packs per player").fill(String(PACKS));
+  await dialog.getByLabel("Cards per pack").fill(String(CARDS_PER_PACK));
+  await dialog.getByRole("button", { name: "Start draft" }).click();
+  await expect(dialog).toBeHidden();
 }
 
-async function joinDraft(guest: Page): Promise<void> {
-  await guest.getByLabel("Your name").fill("Bob");
-  await guest.getByRole("button", { name: "Join draft" }).click();
-  await expect(guest.getByText("Waiting for the host to start the draft...")).toBeVisible();
+async function joinDraft(player: Page, name: string): Promise<void> {
+  await player.getByLabel("Your name").fill(name);
+  await player.getByRole("button", { name: "Join draft" }).click();
+  // Only a seated player gets here: the join screen shows the cube's name too.
+  await expect(player.getByText("Waiting for the host to start the draft...")).toBeVisible();
 }
 
-/** Host creates the draft, a guest joins from a second browser, and the host starts it. */
-async function startTwoPlayerDraft(openPlayer: () => Promise<Page>): Promise<{ host: Page; guest: Page }> {
+/**
+ * The host creates the draft in the management UI, joins it from the player page like the guest does from a
+ * second browser, and starts it from the management UI.
+ */
+async function startTwoPlayerDraft(
+  openManagement: () => Promise<Page>,
+  openPlayer: () => Promise<Page>
+): Promise<{ host: Page; guest: Page }> {
+  const management = await openManagement();
   const host = await openPlayer();
-  await createDraft(host);
+  await expect(host.getByText("The host needs to create and start a draft before players can join.")).toBeVisible();
+  await createDraft(management);
+  await joinDraft(host, "Alice");
   const guest = await openPlayer();
-  await joinDraft(guest);
-  await host.getByRole("button", { name: "Start draft" }).click();
+  await joinDraft(guest, "Bob");
+  await management.getByRole("button", { name: "Start picking" }).click();
   return { host, guest };
 }
 
@@ -54,9 +65,10 @@ function cardNamesIn(page: Page, selector: string): Promise<string[]> {
 }
 
 test("host and guest draft the whole cube and each builds a deck from exactly their own picks", async ({
+  openManagement,
   openPlayer,
 }) => {
-  const { host, guest } = await startTwoPlayerDraft(openPlayer);
+  const { host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
   const picks = new Map<Page, string[]>([
     [host, []],
     [guest, []],
@@ -79,9 +91,10 @@ test("host and guest draft the whole cube and each builds a deck from exactly th
 });
 
 test("a player who refreshes mid-draft gets back the same pack and pool and keeps picking", async ({
+  openManagement,
   openPlayer,
 }) => {
-  const { host, guest } = await startTwoPlayerDraft(openPlayer);
+  const { host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
   await pickFirstCard(host);
   await expectPoolSize(host, 1);
   await pickFirstCard(guest);

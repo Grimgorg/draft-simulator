@@ -299,6 +299,18 @@ code {
   border-color: var(--busy);
 }
 
+/* New draft */
+
+.create-draft-modal {
+  max-width: 34rem;
+  overflow-y: auto;
+}
+
+.create-draft-modal .form {
+  max-width: none;
+  margin-top: 1rem;
+}
+
 /* Settings */
 
 .settings-form {

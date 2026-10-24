@@ -20,7 +20,6 @@ export function PlayersPanel({ lobby, playerConnections }: PlayersPanelProps) {
             <li key={player.id}>
               <span className={`status-dot ${player.connected ? "dot-on" : "dot-off"}`} aria-hidden="true" />
               <span className="player-name">{player.name}</span>
-              {player.isHost && <span className="tag">Host</span>}
               <span className="muted">{player.connected ? "Connected" : "Disconnected"}</span>
               {drafting && (
                 <span className={waitingOn.has(player.id) ? "tag tag-active" : "tag"}>

@@ -1,3 +1,4 @@
+import type { DraftSettings } from "./draft.js";
 import type { ActionResult } from "./events.js";
 import type { LobbyStateView } from "./lobbyView.js";
 
@@ -30,6 +31,9 @@ export interface ServerSettings {
   /** Empty means no password: anyone who can reach the port can join. */
   lobbyPassword: string;
 }
+
+/** What the host picks for a new draft. The cube is fetched from CubeCobra when the draft is created. */
+export type NewDraftSettings = { cubeIdOrUrl: string } & Omit<DraftSettings, "cubeId">;
 
 /**
  * Everything the management UI shows, sent only to the management UI, which
@@ -71,6 +75,12 @@ export interface ManagementClientToServerEvents {
    * desktop app a link would replace the management UI in its only window.
    */
   "manage:openInBrowser": (target: BrowserTarget, callback: (result: ActionResult) => void) => void;
+  /** Imports the cube and opens a lobby players can join. Replaces a completed draft, never an active one. */
+  "manage:createDraft": (payload: NewDraftSettings, callback: (result: ActionResult) => void) => void;
+  /** Deals the first packs. Only once every seat is filled. */
+  "manage:startDraft": (callback: (result: ActionResult) => void) => void;
+  /** Ends an open lobby or a draft under way for everyone, back to no draft at all. */
+  "manage:cancelDraft": (callback: (result: ActionResult) => void) => void;
 }
 
 /** Events the server emits to the management UI. */

@@ -15,6 +15,7 @@ import {
 import { countCards, getLastImportedAt } from "../cardData/cardRepository.js";
 import { serveEmbeddedClient } from "../packaged/embeddedClient.js";
 import { isPackaged, resolveClientDist } from "../packaged/seaRuntime.js";
+import { cancelDraft, createDraft, startDraft } from "../realtime/socketHandlers.js";
 import * as lobbyManager from "../session/lobbyManager.js";
 import { buildLobbyStateView } from "../session/lobbyStateView.js";
 import {
@@ -207,6 +208,38 @@ export async function startManagementServer(options: ManagementServerOptions): P
     socket.on("manage:openInBrowser", async (target, callback) => {
       try {
         callback(await openTarget(target));
+      } catch (err) {
+        callback({ ok: false, error: errorMessage(err) });
+      }
+    });
+
+    socket.on("manage:createDraft", async (payload, callback) => {
+      try {
+        callback(
+          await createDraft({
+            cubeIdOrUrl: String(payload.cubeIdOrUrl).trim(),
+            packCount: Number(payload.packCount),
+            packSize: Number(payload.packSize),
+            playerCount: Number(payload.playerCount),
+            alternatingDraft: payload.alternatingDraft === true,
+          }),
+        );
+      } catch (err) {
+        callback({ ok: false, error: errorMessage(err) });
+      }
+    });
+
+    socket.on("manage:startDraft", (callback) => {
+      try {
+        callback(startDraft());
+      } catch (err) {
+        callback({ ok: false, error: errorMessage(err) });
+      }
+    });
+
+    socket.on("manage:cancelDraft", (callback) => {
+      try {
+        callback(cancelDraft());
       } catch (err) {
         callback({ ok: false, error: errorMessage(err) });
       }

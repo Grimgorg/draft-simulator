@@ -74,28 +74,28 @@ export function getCubeMeta(): CubeMeta | undefined {
   return getState().cubeMeta;
 }
 
-function validateNewLobbyInputs(hostName: string, packCount: number, packSize: number, playerCount: number): void {
+function validateNewLobbyInputs(cubeIdOrUrl: string, packCount: number, packSize: number, playerCount: number): void {
   const current = getState().session;
   if (current && current.status !== "complete") {
     throw new Error("A draft is already in progress or waiting to start on this server");
   }
-  if (!hostName.trim()) throw new Error("Host name is required");
+  if (!cubeIdOrUrl.trim()) throw new Error("Cube URL or ID is required");
   if (!Number.isInteger(playerCount) || playerCount < 2) throw new Error("Need at least 2 players");
   if (!Number.isInteger(packCount) || packCount < 1) throw new Error("Need at least 1 pack");
   if (!Number.isInteger(packSize) || packSize < 1) throw new Error("Packs need at least 1 card");
 }
 
+/** Opens a lobby with no players yet: everyone, the host included, joins it from the player page. */
 export async function createLobby(
-  hostName: string,
   cubeIdOrUrl: string,
   packCount: number,
   packSize: number,
   playerCount: number,
   alternatingDraft: boolean
-): Promise<{ host: Player; cubeMeta: CubeMeta }> {
-  validateNewLobbyInputs(hostName, packCount, packSize, playerCount);
+): Promise<{ cubeMeta: CubeMeta }> {
+  validateNewLobbyInputs(cubeIdOrUrl, packCount, packSize, playerCount);
   const imported = await importCubeFromCubeCobra(cubeIdOrUrl);
-  return createLobbyFromResolvedCube(hostName, imported.cubeName, imported.cards, imported.unresolvedNames, {
+  return createLobbyFromResolvedCube(imported.cubeName, imported.cards, imported.unresolvedNames, {
     cubeId: cubeIdOrUrl,
     packCount,
     packSize,
@@ -111,32 +111,29 @@ export async function createLobby(
  * tested without network access.
  */
 export function createLobbyFromResolvedCube(
-  hostName: string,
   cubeName: string,
   cards: Card[],
   unresolvedCardNames: string[],
   settings: DraftSettings
-): { host: Player; cubeMeta: CubeMeta } {
+): { cubeMeta: CubeMeta } {
   const cubeMeta: CubeMeta = { cubeName, cardCount: cards.length, unresolvedCardNames };
-  const newState: LobbyManagerState = {
+  state = {
     session: createDraftSession(randomUUID(), settings, []),
     cardPool: cards,
     cubeMeta,
   };
-  state = newState;
-
-  const host = addPlayer(hostName, true);
-  return { host, cubeMeta };
+  persist();
+  return { cubeMeta };
 }
 
-export function addPlayer(name: string, isHost = false): Player {
+export function addPlayer(name: string): Player {
   const session = getState().session;
   if (!session) throw new Error("No lobby has been created yet");
   if (session.status !== "lobby") throw new Error("Cannot join: the draft has already started");
   if (session.players.length >= session.settings.playerCount) throw new Error("Lobby is full");
   if (!name.trim()) throw new Error("Player name is required");
 
-  const player: Player = { id: randomUUID(), name: name.trim(), isHost, connected: true };
+  const player: Player = { id: randomUUID(), name: name.trim(), connected: true };
   session.players.push(player);
   session.pools[player.id] = [];
   persist();

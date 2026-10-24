@@ -1,7 +1,4 @@
-import { useState } from "react";
 import type { LobbyStateView } from "@draft-simulator/shared";
-import { socket } from "../socket.js";
-import { CancelDraftButton } from "./CancelDraftButton.js";
 import { UnresolvedCardsWarning } from "./UnresolvedCardsWarning.js";
 
 interface WaitingRoomProps {
@@ -10,21 +7,6 @@ interface WaitingRoomProps {
 }
 
 export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const isHost = lobbyState.hostId === myPlayerId;
-  const isFull = lobbyState.players.length === lobbyState.settings?.playerCount;
-
-  function handleStart() {
-    setStarting(true);
-    setError(null);
-    socket.emit("draft:start", (result) => {
-      setStarting(false);
-      if (!result.ok) setError(result.error);
-    });
-  }
-
   return (
     <div className="screen">
       <h1>{lobbyState.cubeName}</h1>
@@ -40,25 +22,12 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
           <li key={player.id}>
             <span className={`dot ${player.connected ? "dot-connected" : "dot-disconnected"}`} />
             {player.name}
-            {player.isHost && <span className="tag">host</span>}
             {player.id === myPlayerId && <span className="tag">you</span>}
           </li>
         ))}
       </ul>
 
-      {isHost ? (
-        <>
-          {error && <p className="error">{error}</p>}
-          <div className="waiting-room-actions">
-            <button type="button" onClick={handleStart} disabled={!isFull || starting}>
-              {starting ? "Starting..." : isFull ? "Start draft" : "Waiting for more players..."}
-            </button>
-            <CancelDraftButton />
-          </div>
-        </>
-      ) : (
-        <p className="subtitle">Waiting for the host to start the draft...</p>
-      )}
+      <p className="subtitle">Waiting for the host to start the draft...</p>
     </div>
   );
 }

@@ -15,7 +15,6 @@ export interface LobbyStateView {
    * state (e.g. pool pile arrangement) that should survive a refresh and
    * carry over into deck building. */
   sessionId?: string;
-  hostId?: string;
   settings?: DraftSettings;
   cubeName?: string;
   cardCount?: number;

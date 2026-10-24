@@ -7,8 +7,8 @@ import { buildDeckExports } from "./deckExport.js";
 
 test("exports each player's pool with duplicate copies counted, in first-picked order", () => {
   const players: Player[] = [
-    { id: "A", name: "Alice", isHost: true, connected: true },
-    { id: "B", name: "Bob", isHost: false, connected: true },
+    { id: "A", name: "Alice", connected: true },
+    { id: "B", name: "Bob", connected: true },
   ];
   const session = createDraftSession("draft-export", { cubeId: "x", packCount: 1, packSize: 3, playerCount: 2, alternatingDraft: true }, players);
   session.pools["A"] = [testCard("bolt"), testCard("island"), testCard("bolt")];

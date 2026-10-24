@@ -20,18 +20,19 @@ test("with no lobby, the view is empty", () => {
 
 test("a waiting lobby shows the table and cube but no turn information", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
-  const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", secretCards, ["Missing Card"], {
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", secretCards, ["Missing Card"], {
     cubeId: "test",
     packCount: 1,
     packSize: 2,
     playerCount: 2,
     alternatingDraft: true,
   });
+  lobbyManager.addPlayer("Alice");
 
   const view = buildLobbyStateView();
 
   assert.equal(view.status, "lobby");
-  assert.equal(view.hostId, host.id);
+  assert.deepEqual(view.players.map((p) => p.name), ["Alice"]);
   assert.equal(view.cubeName, "Test Cube");
   assert.equal(view.cardCount, 4);
   assert.deepEqual(view.unresolvedCardNames, ["Missing Card"]);
@@ -41,13 +42,14 @@ test("a waiting lobby shows the table and cube but no turn information", () => {
 
 test("while drafting, the public view says whose turn it is but carries no pack, pool or pick contents", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
-  const { host } = lobbyManager.createLobbyFromResolvedCube("Alice", "Test Cube", secretCards, [], {
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", secretCards, [], {
     cubeId: "test",
     packCount: 1,
     packSize: 2,
     playerCount: 2,
     alternatingDraft: true,
   });
+  const host = lobbyManager.addPlayer("Alice");
   const bob = lobbyManager.addPlayer("Bob");
   lobbyManager.beginDraft();
   lobbyManager.pick(host.id, lobbyManager.getSession()!.currentPacks[host.id]!.cards[0]!.scryfallId);
