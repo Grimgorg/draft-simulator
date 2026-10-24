@@ -23,7 +23,8 @@ npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
-.claude/
+.claude/settings.local.json
+.claude/worktrees/
 
 # Playwright output
 e2e/test-results/
