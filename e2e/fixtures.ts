@@ -22,6 +22,14 @@ export const CUBE_CARDS = [
   "Serra Angel",
   "Shivan Dragon",
 ];
+/** The test cube plus a card that isn't in the card cache, so the server leaves it out. */
+export const UNRESOLVED_CUBE_ID = "e2e-cube-unresolved";
+const UNRESOLVED_CARD = "Not A Real Card";
+
+const CUBES_BY_PATH = new Map([
+  [`/cube/api/cubeJSON/${CUBE_ID}`, CUBE_CARDS],
+  [`/cube/api/cubeJSON/${UNRESOLVED_CUBE_ID}`, [...CUBE_CARDS, UNRESOLVED_CARD]],
+]);
 
 const SERVER_ENTRY = path.join(import.meta.dirname, "../server/dist/index.js");
 
@@ -39,11 +47,12 @@ interface DraftServer extends RunningServer {
 /** Stands in for CubeCobra's cube JSON endpoint, so the tests never depend on cubecobra.com. */
 async function startFakeCubeCobra(): Promise<RunningServer> {
   const server = createServer((req, res) => {
-    if (req.url !== `/cube/api/cubeJSON/${CUBE_ID}`) {
+    const cardNames = CUBES_BY_PATH.get(req.url ?? "");
+    if (!cardNames) {
       res.writeHead(404).end();
       return;
     }
-    const mainboard = CUBE_CARDS.map((name) => ({ details: { name } }));
+    const mainboard = cardNames.map((name) => ({ details: { name } }));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ name: CUBE_NAME, cards: { mainboard } }));
   });

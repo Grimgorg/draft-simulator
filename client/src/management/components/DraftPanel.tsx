@@ -60,8 +60,9 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
       )}
       {unresolved > 0 && (
         <p className="warning">
-          {unresolved} {unresolved === 1 ? "card" : "cards"} in the cube weren't found in the card database and are left
-          out.
+          {unresolved === 1
+            ? "1 card in the cube wasn't found in the card database and is left out."
+            : `${unresolved} cards in the cube weren't found in the card database and are left out.`}
         </p>
       )}
 
