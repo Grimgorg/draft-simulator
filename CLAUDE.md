@@ -83,6 +83,7 @@ client/src/
   components/             React components
   management/             the management UI (manage.html): its own socket, useManagementConnection, panels
 e2e/                      Playwright tests against the production build
+docs/sets/                one researched booster reference per set (slots, odds, special rules): the spec for set-draft packs
 desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, shows its UI, stops it, offers updates),
                           splash/ (page shown while it starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
