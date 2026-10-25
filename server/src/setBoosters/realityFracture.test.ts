@@ -3,10 +3,11 @@ import fs from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import type { Card } from "@draft-simulator/shared";
+import { DRAFTABLE_SETS, type Card } from "@draft-simulator/shared";
 import { testCard } from "../draftEngine/testHelpers.js";
 import { buildRealityFractureBooster, ECHOED_PAIR_NUMBERS, REALITY_FRACTURE_PRINTING_SETS } from "./realityFracture.js";
-import { generateSetPacks } from "./setBoosters.js";
+import { generateSetPacks, printingSetsFor } from "./setBoosters.js";
+import { SET_PRINTING_CODES } from "./printingSets.js";
 import type { SetPrinting } from "./setPrinting.js";
 
 /** A small seeded generator (mulberry32), so the statistical tests below always see the same packs. */
@@ -256,3 +257,9 @@ test(
     for (let i = 0; i < 500; i++) assert.equal(booster.generatePack(random).length, 14);
   }
 );
+
+test("the card import keeps the printing sets of every draftable set", () => {
+  for (const set of DRAFTABLE_SETS) {
+    for (const printingSet of printingSetsFor(set.code)) assert.ok(SET_PRINTING_CODES.includes(printingSet), printingSet);
+  }
+});

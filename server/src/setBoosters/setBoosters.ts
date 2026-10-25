@@ -13,11 +13,6 @@ const DEFINITIONS: Record<string, SetBoosterDefinition> = {
   fra: { printingSets: REALITY_FRACTURE_PRINTING_SETS, build: buildRealityFractureBooster },
 };
 
-/** Every set whose printings the card import keeps, for all draftable sets together. */
-export const SET_PRINTING_CODES: readonly string[] = [
-  ...new Set(Object.values(DEFINITIONS).flatMap((definition) => definition.printingSets)),
-];
-
 export function findDraftableSet(setCode: string): DraftableSet {
   const set = DRAFTABLE_SETS.find((candidate) => candidate.code === setCode);
   if (!set || !DEFINITIONS[setCode]) throw new Error(`"${setCode}" is not a set that can be drafted`);

@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
 import { DB_PATH, getDb } from "../db/database.js";
-import { SET_PRINTING_CODES } from "../setBoosters/setBoosters.js";
+import { SET_PRINTING_CODES } from "../setBoosters/printingSets.js";
 import { setLastImportedAt } from "./cardRepository.js";
 
 const USER_AGENT = "DraftSimulator/0.1 (personal cube draft tool; not for redistribution)";
