@@ -388,6 +388,56 @@ jobs:
           cat latest.json
           gh release upload "$TAG" latest.json --clobber
 
+      # GitHub lists a release's files alphabetically, with each .sig next to
+      # its installer, so the notes start with a link to each installer.
+      # The marker keeps a re-run from adding the table twice.
+      - name: Add download links to the release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          marker="<!-- downloads -->"
+          body=$(gh release view "$TAG" --json body --jq .body)
+          if [[ "$body" == "$marker"* ]]; then
+            echo "The release notes already list the downloads."
+            exit 0
+          fi
+          # The computer it's for, then the file to download.
+          installers=(
+            "Windows|draft-simulator-windows-x64-setup.exe"
+            "Mac with Apple Silicon (M1 and newer)|draft-simulator-macos-arm64.dmg"
+            "Intel Mac|draft-simulator-macos-x64.dmg"
+            "Linux|draft-simulator-linux-x64.AppImage"
+            "Linux (Debian, Ubuntu)|draft-simulator-linux-x64.deb"
+          )
+          assets=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for entry in "${installers[@]}"; do
+            if ! grep -qxF "${entry#*|}" <<< "$assets"; then
+              echo "::error::Release $TAG has no ${entry#*|} to link to."
+              exit 1
+            fi
+          done
+          base="https://github.com/$GH_REPO/releases/download/$TAG"
+          {
+            echo "$marker"
+            echo "## Downloads"
+            echo
+            echo "| Computer | Installer |"
+            echo "|---|---|"
+            for entry in "${installers[@]}"; do
+              IFS="|" read -r computer file <<< "$entry"
+              echo "| $computer | [$file]($base/$file) |"
+            done
+            echo
+            echo "See the [README](https://github.com/$GH_REPO#download-and-run-no-node-needed) for installing and the first-start warnings. Installed apps update themselves from most of the other files below."
+            echo
+            echo "$body"
+          } > notes.md
+          cat notes.md
+          gh release edit "$TAG" --notes-file notes.md
+
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
