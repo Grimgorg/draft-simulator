@@ -1,6 +1,6 @@
 # Draft Simulator
 
-A self-hosted Magic: The Gathering cube draft simulator for a small group of friends. One person runs the server on their PC, imports a cube from [CubeCobra](https://cubecobra.com), and everyone else joins over the browser to draft together — packs, pass-direction rotation, live "who's still picking" status, and a decklist export at the end.
+A self-hosted Magic: The Gathering cube draft simulator for a small group of friends. One person runs the server on their PC, imports a cube from [CubeCobra](https://cubecobra.com) or picks a set to draft from its boosters, and everyone else joins over the browser to draft together — packs, pass-direction rotation, live "who's still picking" status, and a decklist export at the end.
 
 Developed with the help of AI coding assistants (Claude Code).
 
@@ -22,7 +22,7 @@ The management UI has three tabs:
 - **Draft**, with these panels:
   - **Server:** whether it's running, with buttons to start, stop and restart it. Stopping disconnects everyone but keeps the draft; players get their seats back once it runs again.
   - **Invite players:** the addresses to send friends, the port to forward and the lobby password. **Open in browser** opens the player page in your default browser, where you play too.
-  - **Current draft:** the cube, the pack and pick, and the controls for the draft: **Create draft**, then **Start picking** once every seat is filled, and **Cancel draft** while one is open or under way.
+  - **Current draft:** the cube or set, the pack and pick, and the controls for the draft: **Create draft**, then **Start picking** once every seat is filled, and **Cancel draft** while one is open or under way.
   - **Players:** who is connected and still picking.
 - **Settings:** the port and the lobby password. Saving writes them to the settings file; restart the server to use them. Set a lobby password before forwarding the port. The tab shows "Restart required" until you do.
 - **Logs:** everything the server logs, with a filter for warnings and errors. The tab shows how many warnings and errors there are.
@@ -58,7 +58,11 @@ The management UI saves the port and password to the `.env` file. A real environ
 
 ## How a draft works
 
-1. In the management UI, the host clicks **Create draft**, pastes a CubeCobra cube URL (or ID), sets the number of players / packs / cards per pack, and clicks **Start draft**. Until then, the player page says the host needs to create a draft first.
+1. In the management UI, the host clicks **Create draft** and chooses what to draft from:
+   - **A CubeCobra cube:** paste its URL (or ID) and set the number of players, packs and cards per pack.
+   - **A set's boosters** (so far Reality Fracture): set the number of players and packs. Every pack is a freshly opened 14-card Play Booster, with the set's real rarities, its echoed pairs and its alternate-frame versions.
+
+   Then click **Start draft**. Until then, the player page says the host needs to create a draft first. A set draft needs the set in the card database, which Draft Simulator downloads at startup: after updating, the first start downloads it again.
 2. Everyone, the host included, opens the player page and joins with their name.
 3. Once every seat is filled, the host clicks **Start picking** in the management UI. **Cancel draft** ends it for everyone, before or during the picks.
 4. Everyone picks from their own pack each round; packs rotate automatically once everyone's picked. There's no time limit.

@@ -1,6 +1,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { Card } from "@draft-simulator/shared";
 import { getDb } from "../db/database.js";
+import type { SetPrinting } from "../setBoosters/setPrinting.js";
 
 const statements = new WeakMap<BetterSqlite3.Database, Map<string, BetterSqlite3.Statement>>();
 
@@ -34,8 +35,6 @@ const BY_FRONT_NAME = "SELECT * FROM cards WHERE front_name_lower = ? LIMIT 1";
 interface CardRow {
   scryfall_id: string;
   name: string;
-  name_lower: string;
-  front_name_lower: string;
   mana_cost: string;
   cmc: number;
   colors: string;
@@ -85,13 +84,45 @@ export function findCardByOracleId(oracleId: string): Card | undefined {
   return row ? rowToCard(row) : undefined;
 }
 
+interface SetPrintingRow extends CardRow {
+  set_code: string;
+  collector_number: string;
+  rarity: string;
+}
+
+/** Every imported printing of the given sets (see selectSetPrintings), for building their boosters. */
+export function findSetPrintings(setCodes: readonly string[]): SetPrinting[] {
+  const printings: SetPrinting[] = [];
+  for (const setCode of setCodes) {
+    const rows = statement("SELECT * FROM set_printings WHERE set_code = ?").all(setCode) as SetPrintingRow[];
+    for (const row of rows) {
+      printings.push({
+        card: rowToCard(row),
+        setCode: row.set_code,
+        collectorNumber: row.collector_number,
+        rarity: row.rarity,
+        // Reversible cards have no top-level oracle id; their name still tells their printings apart from other cards.
+        oracleId: row.oracle_id ?? row.name,
+      });
+    }
+  }
+  return printings;
+}
+
+// Set drafts deal printings that are only in set_printings, so the image lookups fall back to it.
 export function getSourceImageUri(scryfallId: string): string | undefined {
-  const row = statement("SELECT source_image_uri FROM cards WHERE scryfall_id = ?").get(scryfallId) as { source_image_uri: string } | undefined;
+  const row = (statement("SELECT source_image_uri FROM cards WHERE scryfall_id = ?").get(scryfallId) ??
+    statement("SELECT source_image_uri FROM set_printings WHERE scryfall_id = ?").get(scryfallId)) as
+    | { source_image_uri: string }
+    | undefined;
   return row?.source_image_uri;
 }
 
 export function getBackImageUri(scryfallId: string): string | undefined {
-  const row = statement("SELECT back_image_uri FROM cards WHERE scryfall_id = ?").get(scryfallId) as { back_image_uri: string | null } | undefined;
+  const row = (statement("SELECT back_image_uri FROM cards WHERE scryfall_id = ?").get(scryfallId) ??
+    statement("SELECT back_image_uri FROM set_printings WHERE scryfall_id = ?").get(scryfallId)) as
+    | { back_image_uri: string | null }
+    | undefined;
   return row?.back_image_uri ?? undefined;
 }
 

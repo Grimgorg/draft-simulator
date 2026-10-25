@@ -57,5 +57,33 @@ export function getDb(): Database.Database {
   // Created only after the migration: on an older table the column doesn't exist before it.
   db.exec("CREATE INDEX IF NOT EXISTS idx_cards_oracle_id ON cards(oracle_id)");
 
+  // Every printing of the sets that set drafts open boosters of (`cards` keeps one printing per card, and adding
+  // these there would let a cube's card names resolve to a set's alternate-frame versions).
+  const hadSetPrintings = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'set_printings'")
+    .get();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS set_printings (
+      scryfall_id TEXT PRIMARY KEY,
+      set_code TEXT NOT NULL,
+      collector_number TEXT NOT NULL,
+      rarity TEXT NOT NULL,
+      name TEXT NOT NULL,
+      mana_cost TEXT NOT NULL,
+      cmc REAL NOT NULL,
+      colors TEXT NOT NULL,
+      type_line TEXT NOT NULL,
+      source_image_uri TEXT NOT NULL,
+      back_image_uri TEXT,
+      oracle_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_set_printings_set_code ON set_printings(set_code);
+  `);
+  if (!hadSetPrintings) {
+    // Like the oracle_id migration: the new table stays empty until the next import, so set drafts can't
+    // start until then. Marking the cache stale makes the next startup refresh it.
+    db.exec("DELETE FROM import_meta WHERE key = 'last_imported_at'");
+  }
+
   return db;
 }

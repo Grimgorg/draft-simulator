@@ -203,11 +203,13 @@ The pairs are from mtg.wtf's booster data; their numbers and names were checked 
 
 ## Notes for this simulator
 
-- The card cache holds one printing per card (`selectFirstPrintings` in `server/src/cardData/importBulkData.ts`)
-  and stores no set, collector number or rarity. Generating FRA packs needs those for every FRA and SPG printing.
-- Packs show the booster-fun version that was drawn, so the card data needs those printings too (numbers 281–401
-  and SPG 159–168), not just the regular ones.
-- Rule 3 is the one a cube-style "random cards by rarity" generator gets wrong: slot 4 must be built from the pair
+- The generator is `server/src/setBoosters/realityFracture.ts`, tested against these rules and odds in
+  `realityFracture.test.ts`. Change this file and the code together.
+- It draws from the `set_printings` table of the card cache, which the card import fills with every FRA and SPG
+  printing. A draft can't be created while any collector number above is missing from it.
+- Rule 8 lowers some shares a little below the weights: a card already in the pack can't come up again, so slot 6
+  shows a common about 48% of the time rather than 49.8% (the pack's own commons are out of its draw).
+- Rule 3 is the one a cube-style "random cards by rarity" generator gets wrong: slot 4 is built from the pair
   list, not drawn card by card.
 
 ## Conflicts and decisions

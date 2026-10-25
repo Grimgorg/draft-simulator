@@ -7,8 +7,12 @@ export interface Player {
   connected: boolean;
 }
 
+/** A draft deals either from a CubeCobra cube (`cubeId`) or from a set's boosters (`setCode`), never both. */
 export interface DraftSettings {
-  cubeId: string;
+  /** The cube as the host entered it: an id or a CubeCobra URL. */
+  cubeId?: string;
+  /** One of DRAFTABLE_SETS' codes. */
+  setCode?: string;
   packCount: number;
   packSize: number;
   playerCount: number;

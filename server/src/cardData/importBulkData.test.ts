@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { selectFirstPrintings, type ScryfallCard } from "./importBulkData.js";
+import { selectFirstPrintings, selectSetPrintings, type ScryfallCard } from "./importBulkData.js";
 
 function printing(id: string, overrides: Partial<ScryfallCard> = {}): ScryfallCard {
   return {
@@ -10,6 +10,9 @@ function printing(id: string, overrides: Partial<ScryfallCard> = {}): ScryfallCa
     layout: "normal",
     lang: "en",
     released_at: "2000-01-01",
+    set: "lea",
+    collector_number: "1",
+    rarity: "common",
     image_uris: { normal: `https://img/${id}.jpg` },
     ...overrides,
   };
@@ -81,4 +84,20 @@ test("keeps one printing per distinct card", () => {
   ];
 
   assert.deepEqual(selectedIds(cards).sort(), ["bolt-a", "counterspell"]);
+});
+
+test("keeps every printing of a drafted set, alternate frames included, but no tokens or imageless ones", () => {
+  const cards = [
+    printing("fra-bolt", { set: "fra", collector_number: "100" }),
+    printing("fra-bolt-borderless", { set: "fra", collector_number: "330", border_color: "borderless" }),
+    printing("fra-token", { set: "fra", layout: "token", name: "Spirit" }),
+    printing("fra-no-image", { set: "fra", collector_number: "101", image_uris: undefined }),
+    printing("spg-guest", { set: "spg", collector_number: "159" }),
+    printing("lea-bolt", { set: "lea" }),
+  ];
+
+  assert.deepEqual(
+    selectSetPrintings(cards, ["fra", "spg"]).map((c) => c.id),
+    ["fra-bolt", "fra-bolt-borderless", "spg-guest"]
+  );
 });

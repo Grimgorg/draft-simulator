@@ -32,8 +32,11 @@ export interface ServerSettings {
   lobbyPassword: string;
 }
 
-/** What the host picks for a new draft. The cube is fetched from CubeCobra when the draft is created. */
-export type NewDraftSettings = { cubeIdOrUrl: string } & Omit<DraftSettings, "cubeId">;
+/**
+ * What the host picks for a new draft: a cube, fetched from CubeCobra when the draft is created, or a set
+ * from DRAFTABLE_SETS. A set fixes the pack size, so `packSize` is ignored for one.
+ */
+export type NewDraftSettings = { cubeIdOrUrl?: string; setCode?: string } & Omit<DraftSettings, "cubeId" | "setCode">;
 
 /**
  * Everything the management UI shows, sent only to the management UI, which
