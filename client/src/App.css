@@ -47,6 +47,7 @@ h2 {
 }
 
 .form input,
+.form select,
 .export-text {
   font: inherit;
   padding: 0.5rem 0.6rem;

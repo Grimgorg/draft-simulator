@@ -73,7 +73,7 @@ jobs:
       - name: Compute card cache key
         id: card-cache-key
         shell: bash
-        run: echo "key=cards-v2-$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+        run: echo "key=cards-v3-$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
       - name: Restore card cache
         id: card-cache
         uses: actions/cache@v6

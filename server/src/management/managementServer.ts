@@ -217,7 +217,9 @@ export async function startManagementServer(options: ManagementServerOptions): P
       try {
         callback(
           await createDraft({
-            cubeIdOrUrl: String(payload.cubeIdOrUrl).trim(),
+            ...(payload.setCode !== undefined
+              ? { setCode: String(payload.setCode) }
+              : { cubeIdOrUrl: String(payload.cubeIdOrUrl ?? "").trim() }),
             packCount: Number(payload.packCount),
             packSize: Number(payload.packSize),
             playerCount: Number(payload.playerCount),

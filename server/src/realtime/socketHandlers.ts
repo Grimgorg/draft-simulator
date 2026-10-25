@@ -81,13 +81,18 @@ function errorResult(err: unknown): ActionResult {
  */
 export async function createDraft(settings: NewDraftSettings): Promise<ActionResult> {
   try {
-    await lobbyManager.createLobby(
-      settings.cubeIdOrUrl,
-      settings.packCount,
-      settings.packSize,
-      settings.playerCount,
-      settings.alternatingDraft
-    );
+    if (settings.setCode !== undefined) {
+      if (settings.cubeIdOrUrl) throw new Error("Choose a cube or a set, not both");
+      lobbyManager.createSetLobby(settings.setCode, settings.packCount, settings.playerCount, settings.alternatingDraft);
+    } else {
+      await lobbyManager.createLobby(
+        settings.cubeIdOrUrl ?? "",
+        settings.packCount,
+        settings.packSize,
+        settings.playerCount,
+        settings.alternatingDraft
+      );
+    }
     if (currentIo) broadcastLobbyState(currentIo);
     return { ok: true };
   } catch (err) {

@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { Card, DraftSettings, Player } from "@draft-simulator/shared";
+import { findSetPrintings } from "../cardData/cardRepository.js";
 import { importCubeFromCubeCobra } from "../cubeImport/cubeCobraImporter.js";
 import {
+  beginDraftWithPacks,
   createDraftSession,
   startDraft,
   submitPick,
   type DraftSession,
   type PickOutcome,
 } from "../draftEngine/draftEngine.js";
+import { buildSetBooster, findDraftableSet, generateSetPacks, printingSetsFor } from "../setBoosters/setBoosters.js";
 import { loadSnapshot, resetSnapshotStoreForTests, saveSnapshot } from "./snapshotStore.js";
 
 interface CubeMeta {
@@ -74,12 +77,11 @@ export function getCubeMeta(): CubeMeta | undefined {
   return getState().cubeMeta;
 }
 
-function validateNewLobbyInputs(cubeIdOrUrl: string, packCount: number, packSize: number, playerCount: number): void {
+function validateNewLobbyInputs(packCount: number, packSize: number, playerCount: number): void {
   const current = getState().session;
   if (current && current.status !== "complete") {
     throw new Error("A draft is already in progress or waiting to start on this server");
   }
-  if (!cubeIdOrUrl.trim()) throw new Error("Cube URL or ID is required");
   if (!Number.isInteger(playerCount) || playerCount < 2) throw new Error("Need at least 2 players");
   if (!Number.isInteger(packCount) || packCount < 1) throw new Error("Need at least 1 pack");
   if (!Number.isInteger(packSize) || packSize < 1) throw new Error("Packs need at least 1 card");
@@ -93,7 +95,8 @@ export async function createLobby(
   playerCount: number,
   alternatingDraft: boolean
 ): Promise<{ cubeMeta: CubeMeta }> {
-  validateNewLobbyInputs(cubeIdOrUrl, packCount, packSize, playerCount);
+  validateNewLobbyInputs(packCount, packSize, playerCount);
+  if (!cubeIdOrUrl.trim()) throw new Error("Cube URL or ID is required");
   const imported = await importCubeFromCubeCobra(cubeIdOrUrl);
   return createLobbyFromResolvedCube(imported.cubeName, imported.cards, imported.unresolvedNames, {
     cubeId: cubeIdOrUrl,
@@ -126,6 +129,34 @@ export function createLobbyFromResolvedCube(
   return { cubeMeta };
 }
 
+/**
+ * Opens a lobby for a draft of the set's boosters. Builds the booster once to check that the card database has
+ * every printing its packs need, so a missing one shows up now rather than when the draft starts.
+ */
+export function createSetLobby(
+  setCode: string,
+  packCount: number,
+  playerCount: number,
+  alternatingDraft: boolean
+): { cubeMeta: CubeMeta } {
+  const set = findDraftableSet(setCode);
+  validateNewLobbyInputs(packCount, set.packSize, playerCount);
+  const booster = buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode)));
+
+  const cubeMeta: CubeMeta = { cubeName: set.name, cardCount: booster.cardCount, unresolvedCardNames: [] };
+  state = {
+    session: createDraftSession(
+      randomUUID(),
+      { setCode, packCount, packSize: set.packSize, playerCount, alternatingDraft },
+      []
+    ),
+    cardPool: [],
+    cubeMeta,
+  };
+  persist();
+  return { cubeMeta };
+}
+
 export function addPlayer(name: string): Player {
   const session = getState().session;
   if (!session) throw new Error("No lobby has been created yet");
@@ -152,7 +183,18 @@ export function setPlayerConnected(playerId: string, connected: boolean): void {
 export function beginDraft(): DraftSession {
   const session = getState().session;
   if (!session) throw new Error("No lobby has been created yet");
-  const started = startDraft(session, getState().cardPool);
+  const { setCode, packCount } = session.settings;
+  const started =
+    setCode === undefined
+      ? startDraft(session, getState().cardPool)
+      : beginDraftWithPacks(
+          session,
+          generateSetPacks(
+            buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode))),
+            packCount,
+            session.players.length
+          )
+        );
   persist();
   return started;
 }

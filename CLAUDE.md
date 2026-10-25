@@ -1,6 +1,6 @@
 ## Project
 
-Self-hosted Magic: The Gathering cube draft simulator for a small group of friends: one host runs the server and imports a CubeCobra cube, and players join from a browser. The host installs a Tauri desktop app whose window is the server's management UI (on `127.0.0.1:4001` when run from source). README.md is for hosts only: the installers and where they keep data, the management UI, updates, configuration (`PORT`, `LOBBY_PASSWORD`, `CARD_CACHE_MAX_AGE_DAYS`) and draft flow. DEVELOPMENT.md covers running from source, `MANAGEMENT_PORT`, tests, the desktop app's dev setup, building and releasing.
+Self-hosted Magic: The Gathering cube draft simulator for a small group of friends: one host runs the server and imports a CubeCobra cube or picks a set to draft from its boosters, and players join from a browser. The host installs a Tauri desktop app whose window is the server's management UI (on `127.0.0.1:4001` when run from source). README.md is for hosts only: the installers and where they keep data, the management UI, updates, configuration (`PORT`, `LOBBY_PASSWORD`, `CARD_CACHE_MAX_AGE_DAYS`) and draft flow. DEVELOPMENT.md covers running from source, `MANAGEMENT_PORT`, tests, the desktop app's dev setup, building and releasing.
 
 ## Stack
 
@@ -72,7 +72,9 @@ server/src/
   draftEngine/            draft rules: deal, pick, pass packs, advance rounds
   session/                lobbyManager (owns the state), snapshotStore (saves it), outgoing views
   realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware
-  cardData/, db/          SQLite cache of Scryfall card data, downloaded on startup
+  cardData/, db/          SQLite cache of Scryfall card data, downloaded on startup: one printing per card (`cards`), and
+                          every printing of the sets set drafts open (`set_printings`)
+  setBoosters/            set drafts' packs: one booster per set, built from docs/sets/<set>.md (realityFracture)
   cubeImport/             CubeCobra import (host set by CUBECOBRA_BASE_URL)
   images/                 /images/:scryfallId proxy, so clients never call Scryfall
 server/scripts/           buildExecutable.ts, smokeTestExecutable.ts (run with tsx, type-checked by the server typecheck)
@@ -83,6 +85,7 @@ client/src/
   components/             React components
   management/             the management UI (manage.html): its own socket, useManagementConnection, panels
 e2e/                      Playwright tests against the production build
+docs/sets/                one researched booster reference per set (slots, odds, special rules): the spec for set-draft packs
 desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, shows its UI, stops it, offers updates),
                           splash/ (page shown while it starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
@@ -95,6 +98,9 @@ release/                  built executables, gitignored (as are desktop/src-taur
 
 **Who does what.** Each job has exactly one owner:
 - `draftEngine`: the draft rules. Imports only `shared`, does no I/O, and mutates the session in place by design. `submitPick` returns a `PickOutcome`; branch on it instead of re-deriving round state from `waitingOn`.
+- `setBoosters`: a set's pack layout. Like `draftEngine`, imports only `shared` and does no I/O: it gets the set's
+  printings from `lobbyManager` and a random source, so tests can seed it. Its rules and odds come from the set's
+  file in `docs/sets/`; change both together.
 - `lobbyManager`: the only holder of session state and the only caller of engine mutators. Saves a snapshot after every change.
 - `socketHandlers`: the only code that emits player socket events. The server, not the client, decides who is picking.
 - `managementServer`: the only code that emits `manage:*` events, and the only caller of `startDraftServer`/`stopDraftServer`. It learns about changes from `lobbyManager.onStateChange`, `onDraftServerChange` and `onLog`.
@@ -178,7 +184,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 | What | Breaks if changed carelessly |
 |---|---|
 | Snapshot shape (`server/data/draft-session.json`, path set by `DRAFT_SNAPSHOT_PATH`) | resuming a running draft after a server restart |
-| Card DB schema (`server/data/cards.sqlite3`) | existing caches. Only additive migrations, in `getDb()` (`db/database.ts`): check `PRAGMA table_info`, then `ALTER TABLE` |
+| Card DB schema (`server/data/cards.sqlite3`) | existing caches. Only additive migrations, in `getDb()` (`db/database.ts`): check `PRAGMA table_info`, then `ALTER TABLE`, or add a table. When existing caches lack the new data, mark them stale (delete `last_imported_at`), and bump CI's card cache key |
 | Socket events (`shared/src/events.ts`, `managementEvents.ts`) | server and client talking. Change both in the same commit |
 | Executable layout (`data/` and `.env` in `DRAFT_SIMULATOR_HOME` or next to the executable, asset names in `buildExecutable.ts`) | hosts' existing data and settings after updating |
 | Tauri `identifier` (`desktop/src-tauri/tauri.conf.json`) | the app data folder's name: changing it loses hosts' data and settings |

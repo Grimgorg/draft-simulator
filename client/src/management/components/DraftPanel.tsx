@@ -33,7 +33,7 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
       <p>{STATUS_LABELS[status]}</p>
       {settings && (
         <dl className="details">
-          <dt>Cube</dt>
+          <dt>{settings.setCode !== undefined ? "Set" : "Cube"}</dt>
           <dd>
             {lobby.cubeName} ({lobby.cardCount} cards)
           </dd>

@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type { DraftSettings } from "@draft-simulator/shared";
+import { getSourceImageUri } from "../cardData/cardRepository.js";
+import { getDb } from "../db/database.js";
 import { testCard } from "../draftEngine/testHelpers.js";
 import * as lobbyManager from "./lobbyManager.js";
 
@@ -285,4 +287,40 @@ test("a failing state listener doesn't fail the pick that triggered it", (t) => 
     stop();
   }
   assert.equal(loggedErrors.mock.callCount(), 1);
+});
+
+function cacheHasRealityFracture(): boolean {
+  return getDb().prepare("SELECT 1 FROM set_printings WHERE set_code = 'fra' LIMIT 1").get() !== undefined;
+}
+
+const NEEDS_SET_PRINTINGS = "needs a card cache with set printings: npm run import-cards --workspace server";
+
+test("a set lobby fixes the pack size and deals the set's boosters, also after a restart", { skip: !cacheHasRealityFracture() && NEEDS_SET_PRINTINGS }, () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const { cubeMeta } = lobbyManager.createSetLobby("fra", 2, 2, true);
+  assert.equal(cubeMeta.cubeName, "Reality Fracture");
+  assert.ok(cubeMeta.cardCount > 250, `${cubeMeta.cardCount} cards`);
+  assert.deepEqual(lobbyManager.getSession()!.settings, {
+    setCode: "fra",
+    packCount: 2,
+    packSize: 14,
+    playerCount: 2,
+    alternatingDraft: true,
+  });
+  const host = lobbyManager.addPlayer("Alice");
+  lobbyManager.addPlayer("Bob");
+
+  lobbyManager.reloadFromSnapshotForTests();
+  lobbyManager.beginDraft();
+  const session = lobbyManager.getSession()!;
+  assert.equal(session.currentPacks[host.id]!.cards.length, 14);
+  // The set's alternate printings aren't in `cards`; the image proxy finds them all the same.
+  for (const card of session.currentPacks[host.id]!.cards) assert.ok(getSourceImageUri(card.scryfallId), card.name);
+  assert.equal(session.packQueue.length, 1, "the second round's packs are waiting");
+});
+
+test("refuses a set that can't be drafted", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  assert.throws(() => lobbyManager.createSetLobby("lea", 3, 8, true), /not a set that can be drafted/);
+  assert.equal(lobbyManager.getSession(), undefined);
 });

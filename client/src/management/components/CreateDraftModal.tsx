@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { DraftSettings, NewDraftSettings } from "@draft-simulator/shared";
+import { DRAFTABLE_SETS, type DraftSettings, type NewDraftSettings } from "@draft-simulator/shared";
 import { managementSocket } from "../managementSocket.js";
 import { useManagementAction } from "../useManagementAction.js";
 
@@ -9,7 +9,17 @@ interface CreateDraftModalProps {
   onClose: () => void;
 }
 
-const DEFAULT_SETTINGS: NewDraftSettings = {
+/** What the form edits: both a cube and a set, so switching between them keeps what was typed. */
+interface DraftForm extends Omit<NewDraftSettings, "cubeIdOrUrl" | "setCode"> {
+  cubeIdOrUrl: string;
+  /** "cube", or the code of the set to draft. */
+  source: string;
+}
+
+const CUBE_SOURCE = "cube";
+
+const DEFAULT_FORM: DraftForm = {
+  source: CUBE_SOURCE,
   cubeIdOrUrl: "",
   playerCount: 8,
   packCount: 3,
@@ -17,18 +27,25 @@ const DEFAULT_SETTINGS: NewDraftSettings = {
   alternatingDraft: true,
 };
 
-function initialSettings(previous: DraftSettings | undefined): NewDraftSettings {
-  if (!previous) return DEFAULT_SETTINGS;
-  const { cubeId, ...rest } = previous;
-  return { cubeIdOrUrl: cubeId, ...rest };
+function initialForm(previous: DraftSettings | undefined): DraftForm {
+  if (!previous) return DEFAULT_FORM;
+  const { cubeId, setCode, ...rest } = previous;
+  // A set's pack size is the set's own; a later cube draft starts from the default instead.
+  if (setCode !== undefined) return { ...rest, packSize: DEFAULT_FORM.packSize, source: setCode, cubeIdOrUrl: "" };
+  return { ...rest, source: CUBE_SOURCE, cubeIdOrUrl: cubeId ?? "" };
 }
 
-/** The new draft's settings. Starting it imports the cube and opens the lobby for players to join. */
-export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModalProps) {
-  const [settings, setSettings] = useState(() => initialSettings(previousSettings));
-  const { pending, error, run } = useManagementAction();
+function toNewDraftSettings({ source, cubeIdOrUrl, ...rest }: DraftForm): NewDraftSettings {
+  return source === CUBE_SOURCE ? { ...rest, cubeIdOrUrl } : { ...rest, setCode: source };
+}
 
-  function update(changes: Partial<NewDraftSettings>) {
+/** The new draft's settings. Starting it imports the cube, if it's a cube draft, and opens the lobby for players to join. */
+export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModalProps) {
+  const [settings, setSettings] = useState(() => initialForm(previousSettings));
+  const { pending, error, run } = useManagementAction();
+  const set = DRAFTABLE_SETS.find((candidate) => candidate.code === settings.source);
+
+  function update(changes: Partial<DraftForm>) {
     setSettings((current) => ({ ...current, ...changes }));
   }
 
@@ -57,19 +74,35 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
           className="form"
           onSubmit={(e) => {
             e.preventDefault();
-            run((callback) => managementSocket.emit("manage:createDraft", settings, callback), onClose);
+            run(
+              (callback) => managementSocket.emit("manage:createDraft", toNewDraftSettings(settings), callback),
+              onClose
+            );
           }}
         >
           <label>
-            CubeCobra cube URL or ID
-            <input
-              value={settings.cubeIdOrUrl}
-              onChange={(e) => update({ cubeIdOrUrl: e.target.value })}
-              placeholder="https://cubecobra.com/cube/overview/..."
-              required
-              autoFocus
-            />
+            Draft from
+            <select value={settings.source} onChange={(e) => update({ source: e.target.value })}>
+              <option value={CUBE_SOURCE}>A CubeCobra cube</option>
+              {DRAFTABLE_SETS.map((candidate) => (
+                <option key={candidate.code} value={candidate.code}>
+                  {candidate.name} boosters
+                </option>
+              ))}
+            </select>
           </label>
+          {!set && (
+            <label>
+              CubeCobra cube URL or ID
+              <input
+                value={settings.cubeIdOrUrl}
+                onChange={(e) => update({ cubeIdOrUrl: e.target.value })}
+                placeholder="https://cubecobra.com/cube/overview/..."
+                required
+                autoFocus
+              />
+            </label>
+          )}
           <div className="form-row">
             <label>
               Number of players
@@ -91,17 +124,20 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
                 required
               />
             </label>
-            <label>
-              Cards per pack
-              <input
-                type="number"
-                min={1}
-                value={settings.packSize}
-                onChange={(e) => update({ packSize: Number(e.target.value) })}
-                required
-              />
-            </label>
+            {!set && (
+              <label>
+                Cards per pack
+                <input
+                  type="number"
+                  min={1}
+                  value={settings.packSize}
+                  onChange={(e) => update({ packSize: Number(e.target.value) })}
+                  required
+                />
+              </label>
+            )}
           </div>
+          {set && <p className="muted">Every pack is a {set.name} Play Booster: {set.packSize} cards.</p>}
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -117,7 +153,7 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
           )}
           <div className="panel-actions">
             <button type="submit" disabled={pending}>
-              {pending ? "Importing cube..." : "Start draft"}
+              {pending ? (set ? "Creating draft..." : "Importing cube...") : "Start draft"}
             </button>
             <button type="button" disabled={pending} onClick={onClose}>
               Cancel

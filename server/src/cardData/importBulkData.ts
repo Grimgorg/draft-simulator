@@ -3,7 +3,8 @@
  * data file (every printing of every card), reduces each card down to its
  * first (earliest-released) normal paper-set printing, and loads the result
  * into the local SQLite cache used for CubeCobra import resolution and image
- * serving.
+ * serving. Also keeps every printing of the sets that set drafts open (see
+ * selectSetPrintings).
  *
  * Run with: npm run import-cards --workspace server
  */
@@ -12,6 +13,7 @@ import { pathToFileURL } from "node:url";
 import { Readable } from "node:stream";
 import zlib from "node:zlib";
 import { DB_PATH, getDb } from "../db/database.js";
+import { SET_PRINTING_CODES } from "../setBoosters/printingSets.js";
 import { setLastImportedAt } from "./cardRepository.js";
 
 const USER_AGENT = "DraftSimulator/0.1 (personal cube draft tool; not for redistribution)";
@@ -29,6 +31,9 @@ export interface ScryfallCard {
   layout: string;
   lang: string;
   released_at: string;
+  set: string;
+  collector_number: string;
+  rarity: string;
   digital?: boolean;
   promo?: boolean;
   full_art?: boolean;
@@ -161,6 +166,33 @@ export function selectFirstPrintings(cards: ScryfallCard[]): ScryfallCard[] {
   return selected;
 }
 
+/**
+ * Every printing of the given sets that a booster can hold, for set drafts: unlike a cube, which names
+ * cards, a set's packs are built from specific printings (an alternate frame is a different printing of
+ * the same card). Imageless printings are dropped like in selectFirstPrintings.
+ */
+export function selectSetPrintings(cards: ScryfallCard[], setCodes: readonly string[]): ScryfallCard[] {
+  return cards.filter(
+    (card) => setCodes.includes(card.set) && !NON_CARD_LAYOUTS.has(card.layout) && extractImageUri(card) !== undefined
+  );
+}
+
+/** The columns `cards` and `set_printings` share. */
+function cardColumns(card: ScryfallCard, imageUri: string) {
+  return {
+    scryfall_id: card.id,
+    name: card.name,
+    mana_cost: extractManaCost(card),
+    cmc: card.cmc ?? 0,
+    colors: JSON.stringify(extractColors(card)),
+    type_line: card.type_line ?? "",
+    source_image_uri: imageUri,
+    back_image_uri: extractBackImageUri(card) ?? null,
+    // Missing on some layouts (reversible cards keep it on each face only).
+    oracle_id: card.oracle_id ?? null,
+  };
+}
+
 export async function importCardDatabase(): Promise<{ imported: number; skipped: number }> {
   console.log("Fetching Scryfall bulk data catalog...");
   const { data: entries } = await fetchJson<{ data: BulkDataEntry[] }>("https://api.scryfall.com/bulk-data");
@@ -175,16 +207,33 @@ export async function importCardDatabase(): Promise<{ imported: number; skipped:
   const printings = await fetchBulkCards(defaultCards.jsonl_download_uri);
   console.log(`Downloaded ${printings.length} printings. Selecting first printing per card...`);
   const cards = selectFirstPrintings(printings);
-  console.log(`Resolved to ${cards.length} unique cards. Importing into local database...`);
+  const setPrintings = selectSetPrintings(printings, SET_PRINTING_CODES);
+  console.log(
+    `Resolved to ${cards.length} unique cards and ${setPrintings.length} printings for set drafts. ` +
+      "Importing into local database..."
+  );
 
   const db = getDb();
   const insert = db.prepare(`
     INSERT INTO cards (scryfall_id, name, name_lower, front_name_lower, mana_cost, cmc, colors, type_line, source_image_uri, back_image_uri, oracle_id)
     VALUES (@scryfall_id, @name, @name_lower, @front_name_lower, @mana_cost, @cmc, @colors, @type_line, @source_image_uri, @back_image_uri, @oracle_id)
   `);
+  const insertSetPrinting = db.prepare(`
+    INSERT INTO set_printings (scryfall_id, set_code, collector_number, rarity, name, mana_cost, cmc, colors, type_line, source_image_uri, back_image_uri, oracle_id)
+    VALUES (@scryfall_id, @set_code, @collector_number, @rarity, @name, @mana_cost, @cmc, @colors, @type_line, @source_image_uri, @back_image_uri, @oracle_id)
+  `);
 
   const importAll = db.transaction((rows: ScryfallCard[]) => {
     db.exec("DELETE FROM cards");
+    db.exec("DELETE FROM set_printings");
+    for (const printing of setPrintings) {
+      insertSetPrinting.run({
+        ...cardColumns(printing, extractImageUri(printing)!),
+        set_code: printing.set,
+        collector_number: printing.collector_number,
+        rarity: printing.rarity,
+      });
+    }
     let imported = 0;
     let skipped = 0;
     for (const card of rows) {
@@ -194,21 +243,12 @@ export async function importCardDatabase(): Promise<{ imported: number; skipped:
         continue;
       }
       insert.run({
-        scryfall_id: card.id,
-        name: card.name,
+        ...cardColumns(card, imageUri),
         name_lower: card.name.toLowerCase(),
         // CubeCobra (and other sources) often refer to double-faced cards by
         // just their front face name, e.g. "Delver of Secrets" rather than
         // Scryfall's combined "Delver of Secrets // Insectile Aberration".
         front_name_lower: card.name.split(" // ")[0]!.trim().toLowerCase(),
-        mana_cost: extractManaCost(card),
-        cmc: card.cmc ?? 0,
-        colors: JSON.stringify(extractColors(card)),
-        type_line: card.type_line ?? "",
-        source_image_uri: imageUri,
-        back_image_uri: extractBackImageUri(card) ?? null,
-        // Missing on some layouts (reversible cards keep it on each face only).
-        oracle_id: card.oracle_id ?? null,
       });
       imported++;
     }
