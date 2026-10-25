@@ -1,6 +1,6 @@
 ## Project
 
-Self-hosted Magic: The Gathering cube draft simulator for a small group of friends: one host runs the server and imports a CubeCobra cube, and players join from a browser. The host installs a Tauri desktop app whose window is the server's management UI (on `127.0.0.1:4001` when run from source). README.md covers user-facing setup, the installers and where they keep data, the management UI, the desktop app's dev setup, configuration (`PORT`, `LOBBY_PASSWORD`, `MANAGEMENT_PORT`, `CARD_CACHE_MAX_AGE_DAYS`), releasing and draft flow.
+Self-hosted Magic: The Gathering cube draft simulator for a small group of friends: one host runs the server and imports a CubeCobra cube, and players join from a browser. The host installs a Tauri desktop app whose window is the server's management UI (on `127.0.0.1:4001` when run from source). README.md is for hosts only: the installers and where they keep data, the management UI, updates, configuration (`PORT`, `LOBBY_PASSWORD`, `CARD_CACHE_MAX_AGE_DAYS`) and draft flow. DEVELOPMENT.md covers running from source, `MANAGEMENT_PORT`, tests, the desktop app's dev setup, building and releasing.
 
 ## Stack
 
