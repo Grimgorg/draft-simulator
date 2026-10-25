@@ -2,15 +2,17 @@
 
 Researched 2026-10-25. Confidence marks follow [README.md](README.md#confidence).
 
+Only what this app drafts is covered: the 14 Magic cards of a Play Booster. Foil versus non-foil is ignored (a foil
+card is drafted like any other), and so are the cards in a pack that aren't Magic cards (the token or counter card).
+
 ## Summary
 
 | | |
 |---|---|
-| Set code | `FRA` (Scryfall `fra`); Special Guests are `SPG`, tokens are `TFRA` |
+| Set code | `FRA` (Scryfall `fra`); Special Guests are `SPG` |
 | Released | 2026-10-02 |
 | Drafted booster | Play Booster |
-| Magic cards per pack | 14 |
-| Not drafted | 1 non-foil double-sided token or punch-out counter card per pack |
+| Cards per pack | 14 |
 | Draft | 3 Play Boosters per player, the usual pick-one draft |
 
 Collector Boosters are not drafted and are out of scope. The Draft Night box (12 Play Boosters, 1 Collector
@@ -47,13 +49,13 @@ All in set `FRA` unless noted. Numbers are Scryfall collector numbers, checked a
 | Echoed pairs | 195–280 | | 66 | 14 | 6 | 43 pairs, [listed below](#echoed-pairs-list) |
 | Default basic lands | 281–290 | 10 | | | | 2 artworks per basic type |
 | Borderless echoed pairs | 291–320 | | 10 | 14 | 6 | Every rare and mythic pair, plus the uncommon Teyo, Thalia, Fblthp, Winter and Marwyn pairs |
-| Shattered mirror | 321–333 | | | 5 | 8 | Non-foil only (the facet foils, 449–461, are Collector Booster only) |
+| Shattered mirror | 321–333 | | | 5 | 8 | |
 | Sculptor's stronghold | 334–358 | | | 18 | 7 | Showcase frame |
 | Braintwister series | 359–381 | | 5 | 15 | 3 | Borderless |
 | Tower basic lands | 382–396 | 15 | | | | 3 artworks per basic type |
 | Portal view lands | 397–401 | | | 5 | | Borderless versions of the rare lands 176, 180, 185, 186, 189 |
 | Special Guests (`SPG`) | SPG 159–168 | | | | 10 | Eye of Ugin, Austere Command, Flesh Duplicate, Consign to Memory, Sublime Epiphany, Consider, Necrodominance, Mind Twist, Splinter Twin, Root Maze |
-| Not in Play Boosters | 402–461 | | | | | Headliner, Japan Showcase, extended art, promo pack, bundle and Collector Booster foils |
+| Not in Play Boosters | 402–461 | | | | | Headliner, Japan Showcase, extended art, promo pack, bundle and Collector Booster printings |
 
 Rarity totals as Wizards counts them, with echoed pairs: 71 commons, 109 uncommons, 64 rares, 26 mythics.
 *official*, and they match the table.
@@ -67,19 +69,18 @@ use the collector numbers above.
 
 ## Pack layout
 
-14 Magic cards, in this order. Odds are per pack. "Wizards" is the official figure; "weights" are mtg.wtf's
+14 cards, in this order. Odds are per pack. "Wizards" is the official figure; "weights" are mtg.wtf's
 per-card weights, which reproduce it (*derived*).
 
 | # | Slot | Cards | Draws from | Wizards | Weights |
 |---|---|---|---|---|---|
-| 1 | Commons | 6 | Main-set commons (71) | In 1 of 55 packs, 1 of the 6 is replaced by a Special Guest (non-foil) | Special Guest: 1 in 55 = 1.82% |
+| 1 | Commons | 6 | Main-set commons (71) | In 1 of 55 packs, 1 of the 6 is replaced by a Special Guest | Special Guest: 1 in 55 = 1.82% |
 | 2 | Uncommon | 1 | Main-set uncommons (43), no echoed cards | Braintwister version 3.8% | Per card: braintwister 1, its regular printing 2, other uncommons 3, giving 3.88% |
 | 3 | Common or uncommon | 1 | Slot 1's or slot 2's pool | Common 23%, uncommon 74%, braintwister uncommon 3% | Common 23 : uncommon 77, then slot 2's weights, giving 2.98% braintwister |
 | 4 | Echoed pairs | 3 | Echoed pairs (and their borderless versions) | Uncommon 88.9%, rare 6.7%, mythic 1.4%; borderless uncommon 1.7%, rare and mythic < 1% each | See [below](#slot-4-echoed-pairs) |
 | 5 | Rare or mythic | 1 | Main-set rares (50) and mythics (20), no echoed cards | Rare 74.4%, mythic 14.8%, plus the versions in the next table | Per card: rare 2, mythic 1, giving rare 83.33% and mythic 16.67% in all |
-| 6 | Traditional foil | 1 | Any rarity, echoed cards included, foil | Common 49.5%, uncommon 40.5%, rare 6%, mythic 1.2%; each booster-fun foil < 1% | Per card: common 40, uncommon 22, rare 6, mythic 3, giving 49.82%, 42.07%, 6.74%, 1.37% |
+| 6 | Any rarity | 1 | All of slots 1, 2 and 5's pools plus the echoed pairs (the pack's foil card) | Common 49.5%, uncommon 40.5%, rare 6%, mythic 1.2%; each booster-fun version < 1% | Per card: common 40, uncommon 22, rare 6, mythic 3, giving 49.82%, 42.07%, 6.74%, 1.37% |
 | 7 | Land | 1 | Default basics, tower basics, common duals | See [below](#slot-7-land) | See below |
-| — | Token or counter card | (1) | `TFRA` / counter cards | | Not a Magic card: skip it |
 
 Slot counts: 6 + 1 + 1 + 3 + 1 + 1 + 1 = 14.
 
@@ -99,9 +100,9 @@ Slot 5, rare or mythic:
 | Braintwister series | 3.1% | 3.13% | < 1% | 0.31% |
 | Portal view land | 1% | 1.04% | | |
 
-Slot 6, traditional foil: borderless echoed pairs, braintwister, sculptor's stronghold and portal view lands can
-appear in foil, each under 1% (*official*), with the same 1-in-8 split. Shattered mirror cards have no traditional
-foil printing, so their regular printing keeps the full weight in this slot. *derived*
+Slot 6, any rarity: borderless echoed pairs, braintwister, sculptor's stronghold and portal view lands can
+appear, each under 1% (*official*), with the same 1-in-8 split. Shattered mirror versions never appear in this slot,
+so their regular printing keeps the full weight here. *derived*
 
 ### Slot 4: echoed pairs
 
@@ -109,36 +110,42 @@ foil printing, so their regular printing keeps the full weight in this slot. *de
    1.65%. This matches Wizards once their borderless figures are added (88.9 + 1.7, 6.7 + < 1, 1.4 + < 1). *derived*
 2. **Borderless?** If the pair has a borderless version, it is borderless 1 time in 8, and then **both** halves are
    borderless: borderless uncommon pair 1.72% of packs (Wizards: 1.7%), rare 0.96%, mythic 0.21%. That both halves
-   switch together is an *assumption*: mtg.wtf based it on a box-opening video, and Wizards doesn't say.
+   switch together is an *assumption* this app adopts: mtg.wtf based it on a box-opening video, and Wizards
+   doesn't say.
 3. **Add a third echoed card** from any **other** pair, with per-card weight uncommon 5, rare 2, mythic 1
    (90.66% / 7.69% / 1.65% before removing the chosen pair). It can be borderless the same 1 time in 8. Its rarity
-   doesn't depend on the pair's. *derived* from mtg.wtf; Wizards gives no separate odds for it.
+   doesn't depend on the pair's. *derived* from mtg.wtf; Wizards gives no separate odds for it, and this app
+   follows mtg.wtf.
 
 ### Slot 7: land
 
-Weights per group: default basics 1, tower basics 1, common duals 3, but per card that's 1/10, 1/15 and 3/10, so
-each group's share is weight × size: 10 : 15 : 30. Any land is foil 1 time in 5. *derived*, and it matches Wizards
-exactly. *official*
+Every card in a group has the same weight: default basics 1, tower basics 1, common duals 3. With 10, 15 and 10
+cards, the groups' shares are 10 : 15 : 30. *derived*, and it matches Wizards exactly once their foil and non-foil
+figures are added together. *official*
 
-| Land | Share | Non-foil (Wizards) | Foil (Wizards) |
-|---|---|---|---|
-| Default basic (281–290) | 18.18% | 14.55% (14.6%) | 3.64% (3.6%) |
-| Tower basic (382–396) | 27.27% | 21.82% (21.8%) | 5.45% (5.5%) |
-| Common dual (10 numbers above) | 54.55% | 43.64% (43.6%) | 10.91% (10.9%) |
+| Land | Share | Wizards |
+|---|---|---|
+| Default basic (281–290) | 18.18% | 18.2% (14.6 + 3.6) |
+| Tower basic (382–396) | 27.27% | 27.3% (21.8 + 5.5) |
+| Common dual (10 numbers above) | 54.55% | 54.5% (43.6 + 10.9) |
 
 ## Rules the generator must keep
 
-1. A pack has exactly 14 Magic cards; the token or counter card isn't one of them.
-2. Echoed pair cards (195–280, 291–320) appear only in slot 4 and the foil slot, never in slots 1, 2, 3 or 5.
+1. A pack has exactly 14 cards.
+2. Echoed pair cards (195–280, 291–320) appear only in slots 4 and 6, never in slots 1, 2, 3 or 5.
 3. Slot 4 always holds both halves of exactly one pair plus one card from a different pair, at that card's own
    rarity.
-4. The common dual lands appear only in the land slot: never in slots 1 or 3, nor as slot 6's foil common.
+4. The common dual lands appear only in the land slot: never in slots 1 or 3, nor as slot 6's common.
    *derived*: Wizards' common count (71) leaves them out, and so does mtg.wtf.
-5. Every pack has at least one rare or mythic (slot 5). Slots 4 and 6 can add more.
+5. Every pack has at least one rare or mythic (slot 5).
 6. A Special Guest replaces a common, so that pack has 5 commons in slot 1, not 6.
-7. Booster-fun versions only replace their regular printing; they never add cards that aren't in the set.
-8. Slots 1, 2 and 3 never repeat a card already in the pack. *assumption*: real packs are cut from print
-   sheets, which makes a repeat within one pack very rare, but Wizards doesn't say.
+7. Booster-fun versions only replace their regular printing; they never add cards that aren't in the set. The
+   pack shows the version that was drawn.
+8. No card appears twice in a pack, counting a booster-fun version as its regular card. A slot that draws a card
+   already in the pack draws again. (Real packs come from print sheets, which makes repeats very rare; Wizards
+   doesn't say.)
+9. There's no cap on rares and mythics: slot 5 always adds one, and slots 1 (Special Guest), 4 and 6 add more only
+   by their own odds.
 
 ## Echoed pairs list
 
@@ -198,25 +205,26 @@ The pairs are from mtg.wtf's booster data; their numbers and names were checked 
 
 - The card cache holds one printing per card (`selectFirstPrintings` in `server/src/cardData/importBulkData.ts`)
   and stores no set, collector number or rarity. Generating FRA packs needs those for every FRA and SPG printing.
-- Foil and booster-fun versions don't change how a card plays. The generator can show the regular printing and
-  still keep the rarity odds, or show the actual version; that choice belongs to the generator change.
+- Packs show the booster-fun version that was drawn, so the card data needs those printings too (numbers 281–401
+  and SPG 159–168), not just the regular ones.
 - Rule 3 is the one a cube-style "random cards by rarity" generator gets wrong: slot 4 must be built from the pair
   list, not drawn card by card.
 
-## Conflicting sources
+## Conflicts and decisions
 
-- Some retailer listings give "7 commons, 3 uncommons, 1 wildcard, 1 rare or mythic, 1 foil, 1 land". That's the
-  generic Play Booster layout of earlier sets and is wrong for FRA, which trades commons and uncommons for the
-  echoed pairs slot.
-- Wizards says "5–6 commons": 5 only when a Special Guest has replaced one (1 in 55 packs).
-- One retailer claims "1–5 cards of rarity rare or higher" per pack. That's a range, not a typical pack: most
-  packs have exactly one (slot 5). A rare pair, a rare third echoed card and a rare foil add up to 5, and a
-  Special Guest (all mythic) to 6.
-- One source says "at least one echoed pair of legendary cards" per pack. The five "Way of the …" pairs are
-  enchantments, so a pack's pair isn't always legendary.
-- Wizards' foil-slot figures (49.5 / 40.5 / 6 / 1.2%) and the weights (49.82 / 42.07 / 6.74 / 1.37%) differ by
-  up to 1.6 points for uncommons. Wizards' figures leave about 2.8% for booster-fun foils, listed separately; the
-  weights fold them into each rarity. Use the weights; recheck if Wizards publishes more detail.
+Each point where sources disagree or say nothing, and what this app does about it. Decided 2026-10-25.
+
+| Point | Decision |
+|---|---|
+| Some retailer listings give "7 commons, 3 uncommons, 1 wildcard, 1 rare or mythic, 1 foil, 1 land", the generic Play Booster layout of earlier sets. | Use Wizards' layout ([Pack layout](#pack-layout)). |
+| Wizards says "5–6 commons". | 5 only when a Special Guest replaces one, in 1 of 55 packs. Special Guests are included. |
+| Slot 6 odds: Wizards gives 49.5 / 40.5 / 6 / 1.2% and lists the booster-fun versions (about 2.8%) separately; mtg.wtf's weights give 49.82 / 42.07 / 6.74 / 1.37% with those versions counted in each rarity. | Use mtg.wtf's weights. |
+| One source says every pack has an echoed pair "of legendary cards", but the five "Way of the …" pairs are enchantments. | All 43 pairs can be a pack's pair. |
+| One retailer says "1–5 cards of rarity rare or higher" per pack. | No cap: the count follows from the slot odds. Almost every pack has exactly one; slots 4 and 6 and a Special Guest can add more, up to 6. |
+| Booster-fun versions play like the regular card, so the app could skip them. | Show the actual version, drawn at its odds. |
+| Whether a borderless pair has both cards borderless: Wizards doesn't say, mtg.wtf assumes so from a box-opening video. | Both halves are borderless together. Still an *assumption*. |
+| Whether a pack can hold the same card twice: Wizards doesn't say. | Never: see rule 8. |
+| The third echoed card's rarity: Wizards gives no odds for it. | Its rarity is drawn on its own, as mtg.wtf does ([slot 4](#slot-4-echoed-pairs)). |
 
 ## Sources
 

@@ -5,6 +5,9 @@ records what goes into that set's draft booster: the card pools, every slot and 
 that real packs follow. It is the spec the pack generator is built from and checked against. Research a set here
 before writing any code for it.
 
+The files describe packs as this app drafts them, not everything in a real booster: foil and non-foil count as the
+same card, and anything that isn't a Magic card (tokens, art cards, counter cards) is left out.
+
 ## Naming
 
 `<set code>-<set name>.md`, lowercase, with the set code Scryfall uses: `fra-reality-fracture.md`.
@@ -13,8 +16,7 @@ before writing any code for it.
 
 Every file uses these sections, in this order. Leave out a section only when the set has nothing for it.
 
-1. **Summary**: set code(s), release date, which booster is drafted, how many Magic cards it holds and what
-   else is in it that isn't drafted (tokens, art cards).
+1. **Summary**: set code(s), release date, which booster is drafted and how many cards it holds.
 2. **Set mechanics that affect packs**: anything that makes this set's packs differ from a plain rarity split.
 3. **Card pools**: every group of printings a slot draws from, by collector number, with counts per rarity.
 4. **Pack layout**: one row per slot: how many cards, which pools, the official odds, and the weights that
@@ -23,7 +25,8 @@ Every file uses these sections, in this order. Leave out a section only when the
 6. **Lists**: tables the rules need, such as which cards belong together.
 7. **Notes for this simulator**: what the pack layout means for this codebase. Keep it short; the generator's
    design belongs in its own change.
-8. **Conflicting sources**: claims found during research that are wrong or that disagree, and which one won.
+8. **Conflicts and decisions**: every point where sources disagree or say nothing, and what the app does about
+   it. Ask the maintainer to decide each one; record the answer and the date.
 9. **Sources**: links, with the date they were read.
 
 ## Confidence
