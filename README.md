@@ -57,9 +57,9 @@ The management UI saves the port and password to the `.env` file. A real environ
 
 ## How a draft works
 
-1. In the management UI, the host clicks **Create draft** and chooses what to draft from:
-   - **A CubeCobra cube:** paste its URL (or ID) and set the number of packs and cards per pack.
-   - **A set's boosters** (so far Reality Fracture): set the number of packs. Every pack is a freshly opened 14-card Play Booster, with the set's real rarities, its echoed pairs and its alternate-frame versions.
+1. In the management UI, the host clicks **Create draft** and picks the kind of draft:
+   - **Cube draft:** paste a CubeCobra cube's URL (or ID) and set the number of packs and cards per pack.
+   - **Set draft:** pick the set from the list (so far Reality Fracture) and set the number of packs. Every pack is a freshly opened 14-card Play Booster, with the set's real rarities, its echoed pairs and its alternate-frame versions.
 
    Then click **Start draft**. Until then, the player page says the host needs to create a draft first. A set draft needs the set in the card database, which Draft Simulator downloads at startup: after updating, the first start downloads it again.
 2. Everyone, the host included, opens the player page and joins with their name.
