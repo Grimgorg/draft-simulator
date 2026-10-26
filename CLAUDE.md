@@ -163,11 +163,13 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 - The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app, and starts the draft server only to resume an open or running draft (`shouldStartDraftServerAtLaunch`): otherwise the host starts it. Run from source, it always starts.
 - `tauri.bundle.conf.json` holds the settings that need `build:exe` and `notices` to have run (the sidecar and `desktop/src-tauri/THIRD_PARTY_NOTICES.txt`, which `desktop/scripts/buildNotices.ts` builds from the server's notices plus cargo-about's list of Rust crates). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
 - macOS `hardenedRuntime` must stay `false`: Tauri re-signs the bundled server, and with the hardened runtime V8 can't reserve memory for its JIT, so the server crashes at start. CI smoke-tests the server inside the `.app` for this reason.
-- The window loads `http://127.0.0.1:<port>`, not app files, and has no capabilities: the page can't call Rust. Keep it that way.
-  The updater and its dialogs run from Rust only.
-- Updates: release builds check `releases/latest/download/latest.json` at start and ask before installing (`offer_update` in
-  `main.rs`). The update files are signed with a key held only in the repo secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`;
-  the app accepts only that key (`plugins.updater.pubkey`). Only CI passes `tauri.updater.conf.json`, which builds the signed
+- The window shows the bundled start page (`desktop/splash/`), then loads `http://127.0.0.1:<port>`. It has no capabilities:
+  no page can call Rust. Keep it that way. The updater runs from Rust only; the start page's buttons reach it only by going
+  to `draft-simulator.invalid` addresses, which `on_navigation` catches (`choose` in `main.rs`).
+- Updates: release builds check `releases/latest/download/latest.json` at start, before starting the server, and ask on the
+  start page before installing (`check_for_update` in `main.rs`, with a 10-second timeout). The update files are signed
+  with a key held only in the repo secrets `TAURI_SIGNING_PRIVATE_KEY(_PASSWORD)`; the app accepts only that key
+  (`plugins.updater.pubkey`). Only CI passes `tauri.updater.conf.json`, which builds the signed
   bundles, so a local `build:desktop` needs no key. `publish-release` writes `latest.json` while the release is still a draft.
 - Links in the management UI would replace it in the app's only window. Show addresses as text with a copy button, and
   open pages through `manage:openInBrowser`, which takes a fixed target, never a URL: the server hands it to a shell on Windows.
