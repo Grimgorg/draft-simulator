@@ -6,9 +6,11 @@ Developed with the help of AI coding assistants (Claude Code).
 
 Want to run it from source, work on the code or build a release? See [DEVELOPMENT.md](DEVELOPMENT.md).
 
-## Download and run (no Node needed)
+## Download and run
 
 Only the host installs Draft Simulator. Everyone else just opens its address in a browser.
+
+### Install
 
 1. Download the installer for your computer from the repository's [Releases](https://github.com/Grimgorg/draft-simulator/releases) page.
    - Windows: `draft-simulator-windows-x64-setup.exe`
@@ -18,16 +20,7 @@ Only the host installs Draft Simulator. Everyone else just opens its address in 
 2. Install it: run the Windows installer, or drag Draft Simulator from the `.dmg` into Applications.
 3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the **Logs** tab shows how far along it is.
 
-The management UI has three tabs:
-- **Draft**, with these panels:
-  - **Server:** whether it's running, with buttons to start, stop and restart it. Stopping disconnects everyone but keeps the draft; players get their seats back once it runs again.
-  - **Invite players:** the addresses to send friends, the port to forward and the lobby password. **Open in browser** opens the player page in your default browser, where you play too.
-  - **Current draft:** the cube or set, the pack and pick, and the controls for the draft: **Create draft**, then **Start picking** once every seat is filled, and **Cancel draft** while one is open or under way.
-  - **Players:** who is connected and still picking.
-- **Settings:** the port and the lobby password. Saving writes them to the settings file; restart the server to use them. Set a lobby password before forwarding the port. The tab shows "Restart required" until you do.
-- **Logs:** everything the server logs, with a filter for warnings and errors. The tab shows how many warnings and errors there are.
-
-The footer shows the app's version and the address of this repository.
+### Where your data is stored
 
 Everything the server stores goes in your user's app data folder: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file.
 - Windows: `%APPDATA%\io.github.grimgorg.draft-simulator`
@@ -36,19 +29,23 @@ Everything the server stores goes in your user's app data folder: a `data/` fold
 
 The management UI saves the port and password in `.env`. For the other settings, remove the `#` in front of the line (see [Configuration](#configuration)) and restart.
 
-**Updates.** At each start the app checks this repository's latest release. If it's newer, the app asks whether to update. **Update now** downloads it, installs it and restarts the app. Connected players lose their connection until the server is back, then pick up where they left off. **Later** asks again at the next start. This works for the Windows installer, the macOS app and the AppImage. With the `.deb`, or with version 0.3.3 or older, install the new version from the Releases page by hand.
+### Updates
 
-**Updating from 0.2 or older.** Those versions were a single executable that kept `data/` and `.env` next to itself. The app doesn't use that folder. On the first start it downloads the card database again, and you set the port and password once in Settings. A draft running at the moment you update isn't carried over. Once the app works, you can delete the old executable's folder.
+At each start the app checks this repository's latest release. If it's newer, the app asks whether to update. **Update now** downloads it, installs it and restarts the app. Connected players lose their connection until the server is back, then pick up where they left off. **Later** asks again at the next start. This works for the Windows installer, the macOS app and the AppImage. With the `.deb`, or with version 0.3.3 or older, install the new version from the Releases page by hand.
 
-**First-start warnings.** The app isn't code-signed, so the system warns you the first time:
+### First-start warnings
+
+The app isn't code-signed, so the system warns you the first time:
 - **macOS:** "Draft Simulator can't be opened" or "is damaged". Open **System Settings → Privacy & Security** and click **Open Anyway** next to Draft Simulator. Or run `xattr -cr "/Applications/Draft Simulator.app"` in Terminal once.
 - **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run anyway**. When the firewall asks about `draft-simulator-server`, allow access, otherwise friends can't connect.
 
-**Friends outside your network** need the port forwarded. In your router's settings, forward the TCP port shown in the management UI (4000 by default) to this computer. Then send them `http://<your public IP>:4000`. Searching "what is my IP" shows your public IP.
+### Friends outside your network
+
+They need the port forwarded. In your router's settings, forward the TCP port shown in the management UI (4000 by default) to this computer. Then send them `http://<your public IP>:4000`. Searching "what is my IP" shows your public IP.
 
 ## Configuration
 
-Settings are environment variables the server reads at startup, from the `.env` file in the app data folder (see [Download and run](#download-and-run-no-node-needed)). A real environment variable takes precedence over the same setting in `.env`.
+Settings are environment variables the server reads at startup, from the `.env` file in the app data folder (see [Where your data is stored](#where-your-data-is-stored)). A real environment variable takes precedence over the same setting in `.env`.
 
 - `PORT` — defaults to `4000`. Also set in the management UI.
 - `LOBBY_PASSWORD` — unset by default (no password required). If set, everyone must enter this password before they can connect at all — useful if you're exposing the server beyond your LAN (e.g. port-forwarding it to the internet for a remote draft). It's a single shared password for the whole server, not per-draft. Also set in the management UI.
