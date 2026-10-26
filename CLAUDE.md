@@ -123,7 +123,7 @@ release/                  built executables, gitignored (as are desktop/src-taur
 - Files: camelCase `.ts` modules grouped by folder, PascalCase `.tsx` components.
 - Named exports only (`App.tsx` is the one default export). Component props use an `XxxProps` interface.
 - Functions that build outgoing views or keys start with `build` (`buildLobbyStateView`).
-- Socket events are named `namespace:action` (`lobby:*`, `draft:*`, `cube:*`, `identity:*`).
+- Socket events are named `namespace:action` (`lobby:*`, `draft:*`, `identity:*`).
 - Relative imports end in `.js`, even in `.ts`/`.tsx` files.
 - No formatter: double quotes, semicolons, lines up to about 120 characters.
 - Comments explain *why*, usually a past failure (a stuck draft, a crash). Keep them and the guards they describe.

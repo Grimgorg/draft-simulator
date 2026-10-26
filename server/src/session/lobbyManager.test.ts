@@ -339,6 +339,38 @@ test("a set lobby fixes the pack size and deals the set's boosters, also after a
   assert.equal(session.packQueue.length, 1, "the second round's packs are waiting");
 });
 
+test("a cube lobby shows its cards to anyone waiting, but opens no sample pack", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, ["Unknown Card"], settings());
+
+  assert.deepEqual(lobbyManager.getCubeCards(), {
+    cubeName: "Test Cube",
+    cards: fourCards,
+    unresolvedNames: ["Unknown Card"],
+  });
+  assert.throws(() => lobbyManager.openSamplePack(), /not a set draft/);
+});
+
+test("without a lobby there are no cube cards and no sample pack", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  assert.throws(() => lobbyManager.getCubeCards(), /No lobby has been created yet/);
+  assert.throws(() => lobbyManager.openSamplePack(), /No lobby has been created yet/);
+});
+
+test("a set lobby opens a sample pack without dealing anything, and has no cube cards", { skip: !cacheHasRealityFracture() && NEEDS_SET_PRINTINGS }, () => {
+  const snapshotPath = freshSnapshotPath();
+  lobbyManager.resetForTests(snapshotPath);
+  lobbyManager.createSetLobby("fra", 2, true);
+  lobbyManager.addPlayer("Alice");
+  const snapshotBefore = fs.readFileSync(snapshotPath, "utf8");
+
+  assert.equal(lobbyManager.openSamplePack().length, 14);
+  assert.equal(lobbyManager.getSession()!.status, "lobby");
+  assert.deepEqual(lobbyManager.getSession()!.currentPacks, {});
+  assert.equal(fs.readFileSync(snapshotPath, "utf8"), snapshotBefore, "nothing about the draft changed");
+  assert.throws(() => lobbyManager.getCubeCards(), /set's boosters, not a cube/);
+});
+
 test("refuses a set that can't be drafted", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
   assert.throws(() => lobbyManager.createSetLobby("lea", 3, true), /not a set that can be drafted/);

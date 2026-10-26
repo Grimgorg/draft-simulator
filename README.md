@@ -62,7 +62,7 @@ The management UI saves the port and password to the `.env` file. A real environ
    - **Set draft:** pick the set from the list (so far Reality Fracture) and set the number of packs. Every pack is a freshly opened 14-card Play Booster, with the set's real rarities, its echoed pairs and its alternate-frame versions.
 
    Then click **Start draft**. Until then, the player page says the host needs to create a draft first. A set draft needs the set in the card database, which Draft Simulator downloads at startup: after updating, the first start downloads it again.
-2. Everyone, the host included, opens the player page and joins with their name.
+2. Everyone, the host included, opens the player page and joins with their name. While they wait, players can click **Preview cube** to look through the cube's cards, or in a set draft **Open a sample pack** to see what its boosters hold.
 3. Once everyone has joined (at least two players), the host clicks **Start picking** in the management UI. There's no seat limit: the draft is for everyone who joined by then. **Cancel draft** ends it for everyone, before or during the picks.
 4. Everyone picks from their own pack each round; packs rotate automatically once everyone's picked. There's no time limit.
 5. If someone's browser refreshes or their connection drops, reopening the same URL in the same browser resumes them automatically. If it's a new browser or device (or the old one lost its storage), open the URL and pick your name from the "Rejoin as..." list — this works at any point in the draft, not just the lobby.

@@ -22,6 +22,15 @@ test("the host creates a Reality Fracture draft and every player opens a 14-card
   await expect(panel(management, "Current draft").getByText("3 per player, 14 cards each")).toBeVisible();
 
   await joinDraft(host, "Alice");
+  await host.getByRole("button", { name: "Open a sample pack" }).click();
+  const samplePack = host.getByRole("dialog", { name: "Reality Fracture" });
+  await expect(samplePack.getByRole("img")).toHaveCount(14);
+  await samplePack.getByRole("button", { name: "Open another" }).click();
+  await expect(samplePack.getByRole("button", { name: "Open another" })).toBeEnabled();
+  await expect(samplePack.getByRole("img")).toHaveCount(14);
+  await samplePack.getByRole("button", { name: "Close sample pack" }).click();
+  await expect(samplePack).toBeHidden();
+
   const guest = await openPlayer();
   await joinDraft(guest, "Bob");
   await management.getByRole("button", { name: "Start picking" }).click();

@@ -667,6 +667,23 @@ test(
   }
 );
 
+test("anyone waiting can look through the cube, but a cube draft opens no sample pack", { timeout: 10_000 }, async (t) => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const server = await startServerFor(t);
+  const { guestSocket } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
+
+  assert.deepEqual(await guestSocket.emitWithAck("lobby:cubeCards"), {
+    ok: true,
+    cubeName: "Test Cube",
+    cards: ["c1", "c2", "c3", "c4"].map(testCard),
+    unresolvedNames: [],
+  });
+  assert.deepEqual(await guestSocket.emitWithAck("lobby:samplePack"), {
+    ok: false,
+    error: "This draft deals from a cube, not a set draft's boosters",
+  });
+});
+
 test("cancelling a draft in progress sends everyone back to an empty server", { timeout: 10_000 }, async (t) => {
   lobbyManager.resetForTests(freshSnapshotPath());
   const server = await startServerFor(t);

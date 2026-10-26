@@ -10,6 +10,7 @@ import {
   type DraftSession,
   type PickOutcome,
 } from "../draftEngine/draftEngine.js";
+import type { RandomSource } from "../setBoosters/boosterSheets.js";
 import { buildSetBooster, findDraftableSet, generateSetPacks, printingSetsFor } from "../setBoosters/setBoosters.js";
 import { loadSnapshot, resetSnapshotStoreForTests, saveSnapshot } from "./snapshotStore.js";
 
@@ -75,6 +76,23 @@ export function getSession(): DraftSession | undefined {
 
 export function getCubeMeta(): CubeMeta | undefined {
   return getState().cubeMeta;
+}
+
+/** The current cube draft's cards, for players to look through while they wait. */
+export function getCubeCards(): { cubeName: string; cards: Card[]; unresolvedNames: string[] } {
+  const { session, cardPool, cubeMeta } = getState();
+  if (!session || !cubeMeta) throw new Error("No lobby has been created yet");
+  if (session.settings.setCode !== undefined) throw new Error("This draft deals from a set's boosters, not a cube");
+  return { cubeName: cubeMeta.cubeName, cards: cardPool, unresolvedNames: cubeMeta.unresolvedCardNames };
+}
+
+/** Opens one booster of the current set draft's set, to show what its packs look like. Deals it to no one. */
+export function openSamplePack(random: RandomSource = Math.random): Card[] {
+  const session = getState().session;
+  if (!session) throw new Error("No lobby has been created yet");
+  const { setCode } = session.settings;
+  if (setCode === undefined) throw new Error("This draft deals from a cube, not a set draft's boosters");
+  return buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode))).generatePack(random);
 }
 
 function validateNewLobbyInputs(packCount: number, packSize: number): void {
