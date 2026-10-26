@@ -33,7 +33,7 @@ The management UI saves the port and password in `.env`. For the other settings,
 
 ### Updates
 
-At each start the app checks this repository's latest release. If it's newer, the app asks whether to update. **Update now** downloads it, installs it and restarts the app. Connected players lose their connection until the server is back, then pick up where they left off. **Later** asks again at the next start. This works for the Windows installer, the macOS app and the AppImage. With the `.deb`, or with version 0.3.3 or older, install the new version from the Releases page by hand.
+At each start, before the server starts, the app checks this repository's latest release. If it's newer, the window asks whether to update. **Update now** downloads it, installs it and restarts the app. **Later** starts the app as usual and asks again at the next start. If the check fails or takes more than 10 seconds, for example while offline, the app starts without it. This works for the Windows installer, the macOS app and the AppImage. With the `.deb`, or with version 0.3.3 or older, install the new version from the Releases page by hand.
 
 ### First-start warnings
 

@@ -15,19 +15,73 @@
         color: #9ca3af;
         font: 16px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
       }
+      main {
+        max-width: 32rem;
+        padding: 0 1rem;
+      }
       h1 {
         color: #f3f4f6;
         font-weight: 500;
         font-size: 1.5rem;
         margin: 0 0 0.5rem;
       }
+      #actions {
+        display: flex;
+        gap: 0.5rem;
+      }
+      #actions[hidden] {
+        display: none;
+      }
+      button {
+        padding: 0.4rem 1rem;
+        border: 1px solid #2e303a;
+        border-radius: 6px;
+        background: #1d1f27;
+        color: #f3f4f6;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: #4b5563;
+      }
+      #update {
+        background: #f3f4f6;
+        border-color: #f3f4f6;
+        color: #16171d;
+      }
     </style>
   </head>
   <body>
-    <!-- Shown while the server starts; the app then opens the management UI in this window. -->
+    <!-- Shown while the app checks for an update and the server starts; the app then opens the management UI in
+         this window. The app (main.rs) changes the text with showStatus and showChoice. The page can't call Rust:
+         the buttons go to fixed addresses on draft-simulator.invalid, which the app catches before they load. -->
     <main>
       <h1>Draft Simulator</h1>
-      <p>Starting...</p>
+      <p id="status">Checking for updates…</p>
+      <div id="actions" hidden>
+        <button id="update" type="button" onclick="location.href = 'https://draft-simulator.invalid/update-now'">
+          Update now
+        </button>
+        <button id="continue" type="button" onclick="location.href = 'https://draft-simulator.invalid/continue'">
+          Later
+        </button>
+      </div>
     </main>
+    <script>
+      function showStatus(text) {
+        document.getElementById("status").textContent = text;
+        document.getElementById("actions").hidden = true;
+      }
+
+      // Without updateLabel, only the continue button shows.
+      function showChoice(text, updateLabel, continueLabel) {
+        document.getElementById("status").textContent = text;
+        const update = document.getElementById("update");
+        update.hidden = !updateLabel;
+        update.textContent = updateLabel || "";
+        document.getElementById("continue").textContent = continueLabel;
+        document.getElementById("actions").hidden = false;
+      }
+    </script>
   </body>
 </html>
