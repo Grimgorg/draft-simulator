@@ -16,7 +16,6 @@ export async function createDraft(management: Page, cubeId = CUBE_ID): Promise<v
   await management.getByRole("button", { name: "Create draft" }).click();
   const dialog = management.getByRole("dialog", { name: "New draft" });
   await dialog.getByLabel("CubeCobra cube URL or ID").fill(cubeId);
-  await dialog.getByLabel("Number of players").fill("2");
   await dialog.getByLabel("Packs per player").fill(String(PACKS));
   await dialog.getByLabel("Cards per pack").fill(String(CARDS_PER_PACK));
   await dialog.getByRole("button", { name: "Start draft" }).click();

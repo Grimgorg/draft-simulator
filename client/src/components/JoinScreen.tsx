@@ -32,7 +32,7 @@ export function JoinScreen({ lobbyState, onJoined }: JoinScreenProps) {
     <>
       <h2>Join as a new player</h2>
       <p className="subtitle">
-        {lobbyState.players.length} / {lobbyState.settings?.playerCount} joined
+        {lobbyState.players.length} joined
       </p>
       <form className="form" onSubmit={handleSubmit}>
         <label>

@@ -12,8 +12,8 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
       <h1>{lobbyState.cubeName}</h1>
       <p className="subtitle">
         {lobbyState.cardCount} cards &middot; {lobbyState.settings?.packCount} packs of{" "}
-        {lobbyState.settings?.packSize} &middot; {lobbyState.players.length} / {lobbyState.settings?.playerCount}{" "}
-        players
+        {lobbyState.settings?.packSize} &middot; {lobbyState.players.length}{" "}
+        {lobbyState.players.length === 1 ? "player" : "players"}
       </p>
       <UnresolvedCardsWarning names={lobbyState.unresolvedCardNames ?? []} />
 

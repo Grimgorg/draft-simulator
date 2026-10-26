@@ -1,5 +1,5 @@
 import type { Card, DraftSettings, DraftState, Pack, Player } from "@draft-simulator/shared";
-import { neighborSeat, passDirection } from "@draft-simulator/shared";
+import { MIN_PLAYERS, neighborSeat, passDirection } from "@draft-simulator/shared";
 import { generatePacks } from "./packGenerator.js";
 
 /**
@@ -59,10 +59,8 @@ export function beginDraftWithPacks(session: DraftSession, packQueue: Pack[][]):
   if (session.status !== "lobby") {
     throw new Error(`Cannot start a draft in status "${session.status}"`);
   }
-  if (session.players.length !== session.settings.playerCount) {
-    throw new Error(
-      `Draft configured for ${session.settings.playerCount} players but ${session.players.length} are seated`
-    );
+  if (session.players.length < MIN_PLAYERS) {
+    throw new Error(`Need at least ${MIN_PLAYERS} players to start`);
   }
 
   session.packQueue = packQueue;

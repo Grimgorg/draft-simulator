@@ -14,7 +14,6 @@ test("the host creates a Reality Fracture draft and every player opens a 14-card
   await dialog.getByLabel("Draft from").selectOption({ label: "Reality Fracture boosters" });
   await expect(dialog.getByLabel("CubeCobra cube URL or ID")).toBeHidden();
   await expect(dialog.getByLabel("Cards per pack")).toBeHidden();
-  await dialog.getByLabel("Number of players").fill("2");
   await dialog.getByRole("button", { name: "Start draft" }).click();
   await expect(dialog).toBeHidden();
   await expect(panel(management, "Current draft").getByText("Reality Fracture (")).toBeVisible();

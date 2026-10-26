@@ -21,7 +21,6 @@ const CUBE_SOURCE = "cube";
 const DEFAULT_FORM: DraftForm = {
   source: CUBE_SOURCE,
   cubeIdOrUrl: "",
-  playerCount: 8,
   packCount: 3,
   packSize: 15,
   alternatingDraft: true,
@@ -104,16 +103,6 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
             </label>
           )}
           <div className="form-row">
-            <label>
-              Number of players
-              <input
-                type="number"
-                min={2}
-                value={settings.playerCount}
-                onChange={(e) => update({ playerCount: Number(e.target.value) })}
-                required
-              />
-            </label>
             <label>
               Packs per player
               <input

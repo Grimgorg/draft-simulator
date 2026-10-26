@@ -58,12 +58,12 @@ The management UI saves the port and password to the `.env` file. A real environ
 ## How a draft works
 
 1. In the management UI, the host clicks **Create draft** and chooses what to draft from:
-   - **A CubeCobra cube:** paste its URL (or ID) and set the number of players, packs and cards per pack.
-   - **A set's boosters** (so far Reality Fracture): set the number of players and packs. Every pack is a freshly opened 14-card Play Booster, with the set's real rarities, its echoed pairs and its alternate-frame versions.
+   - **A CubeCobra cube:** paste its URL (or ID) and set the number of packs and cards per pack.
+   - **A set's boosters** (so far Reality Fracture): set the number of packs. Every pack is a freshly opened 14-card Play Booster, with the set's real rarities, its echoed pairs and its alternate-frame versions.
 
    Then click **Start draft**. Until then, the player page says the host needs to create a draft first. A set draft needs the set in the card database, which Draft Simulator downloads at startup: after updating, the first start downloads it again.
 2. Everyone, the host included, opens the player page and joins with their name.
-3. Once every seat is filled, the host clicks **Start picking** in the management UI. **Cancel draft** ends it for everyone, before or during the picks.
+3. Once everyone has joined (at least two players), the host clicks **Start picking** in the management UI. There's no seat limit: the draft is for everyone who joined by then. **Cancel draft** ends it for everyone, before or during the picks.
 4. Everyone picks from their own pack each round; packs rotate automatically once everyone's picked. There's no time limit.
 5. If someone's browser refreshes or their connection drops, reopening the same URL in the same browser resumes them automatically. If it's a new browser or device (or the old one lost its storage), open the URL and pick your name from the "Rejoin as..." list — this works at any point in the draft, not just the lobby.
 6. Once the last pack is empty, everyone gets their own pool and can copy or download their picks as a decklist.

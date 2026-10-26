@@ -83,13 +83,12 @@ export async function createDraft(settings: NewDraftSettings): Promise<ActionRes
   try {
     if (settings.setCode !== undefined) {
       if (settings.cubeIdOrUrl) throw new Error("Choose a cube or a set, not both");
-      lobbyManager.createSetLobby(settings.setCode, settings.packCount, settings.playerCount, settings.alternatingDraft);
+      lobbyManager.createSetLobby(settings.setCode, settings.packCount, settings.alternatingDraft);
     } else {
       await lobbyManager.createLobby(
         settings.cubeIdOrUrl ?? "",
         settings.packCount,
         settings.packSize,
-        settings.playerCount,
         settings.alternatingDraft
       );
     }

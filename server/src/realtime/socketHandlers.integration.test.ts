@@ -168,7 +168,6 @@ async function seatHostAndGuest(
     cubeId: "test",
     packCount: 1,
     packSize: 2,
-    playerCount: 2,
     alternatingDraft: true,
     ...settings,
   });
@@ -202,7 +201,6 @@ test(
         cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
         packCount: 1,
         packSize: 3,
-        playerCount: 2,
         alternatingDraft: true,
       });
       assert.equal(createResult.ok, true, JSON.stringify(createResult));
@@ -302,7 +300,6 @@ test(
         cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
         packCount: 1,
         packSize: 2,
-        playerCount: 2,
         alternatingDraft: true,
       });
       assert.equal(createResult.ok, true, JSON.stringify(createResult));
@@ -381,7 +378,6 @@ test(
         cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
         packCount: 1,
         packSize: 2,
-        playerCount: 2,
         alternatingDraft: true,
       });
       assert.equal(createResult.ok, true, JSON.stringify(createResult));
@@ -456,7 +452,6 @@ test(
       cubeId: "test",
       packCount: 1,
       packSize: 2,
-      playerCount: 2,
       alternatingDraft: true,
     });
     const host = lobbyManager.addPlayer("Alice");
@@ -537,7 +532,7 @@ test(
 );
 
 test(
-  "the host can start only a full lobby, and cancel only a lobby or a draft under way",
+  "the host can start only a lobby with two players, and cancel only a lobby or a draft under way",
   { timeout: 10_000 },
   async (t) => {
     lobbyManager.resetForTests(freshSnapshotPath());
@@ -549,13 +544,12 @@ test(
       cubeId: "test",
       packCount: 1,
       packSize: 1,
-      playerCount: 2,
       alternatingDraft: true,
     });
     const hostSocket = await server.connect();
     const hostJoin = await hostSocket.emitWithAck("lobby:join", { playerName: "Alice" });
     assert.ok(hostJoin.ok, JSON.stringify(hostJoin));
-    assert.deepEqual(startDraft(), { ok: false, error: "Draft configured for 2 players but 1 are seated" });
+    assert.deepEqual(startDraft(), { ok: false, error: "Need at least 2 players to start" });
     assert.equal(lobbyManager.getSession()!.status, "lobby");
 
     const guestSocket = await server.connect();

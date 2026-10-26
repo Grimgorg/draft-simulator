@@ -191,7 +191,6 @@ test("lobby changes reach the management UI, without anyone's packs", async (t) 
     cubeId: "test-cube",
     packCount: 1,
     packSize: 1,
-    playerCount: 2,
     alternatingDraft: true,
   });
   lobbyManager.addPlayer("Alice");
@@ -213,10 +212,10 @@ test("a draft with bad settings is refused, and no lobby opens", async (t) => {
   const { socket } = await connect(management.url);
   t.after(() => socket.close());
 
-  const settings = { cubeIdOrUrl: "some-cube", packCount: 3, packSize: 15, playerCount: 1, alternatingDraft: true };
+  const settings = { cubeIdOrUrl: "some-cube", packCount: 0, packSize: 15, alternatingDraft: true };
   const result = await new Promise<ActionResult>((resolve) => socket.emit("manage:createDraft", settings, resolve));
-  assert.deepEqual(result, { ok: false, error: "Need at least 2 players" });
-  const blankCube = { ...settings, cubeIdOrUrl: "  ", playerCount: 2 };
+  assert.deepEqual(result, { ok: false, error: "Need at least 1 pack" });
+  const blankCube = { ...settings, packCount: 3, cubeIdOrUrl: "  " };
   assert.deepEqual(await new Promise((resolve) => socket.emit("manage:createDraft", blankCube, resolve)), {
     ok: false,
     error: "Cube URL or ID is required",
@@ -233,7 +232,6 @@ test("the host starts and cancels the draft from the management UI, and players 
     cubeId: "test-cube",
     packCount: 1,
     packSize: 2,
-    playerCount: 2,
     alternatingDraft: true,
   });
 

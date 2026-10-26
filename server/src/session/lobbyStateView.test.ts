@@ -24,7 +24,6 @@ test("a waiting lobby shows the table and cube but no turn information", () => {
     cubeId: "test",
     packCount: 1,
     packSize: 2,
-    playerCount: 2,
     alternatingDraft: true,
   });
   lobbyManager.addPlayer("Alice");
@@ -46,7 +45,6 @@ test("while drafting, the public view says whose turn it is but carries no pack,
     cubeId: "test",
     packCount: 1,
     packSize: 2,
-    playerCount: 2,
     alternatingDraft: true,
   });
   const host = lobbyManager.addPlayer("Alice");

@@ -32,8 +32,7 @@ export function RejoinScreen({ lobbyState, onIdentitySelected }: RejoinScreenPro
     });
   }
 
-  const canJoinNew =
-    lobbyState.status === "lobby" && lobbyState.players.length < (lobbyState.settings?.playerCount ?? 0);
+  const canJoinNew = lobbyState.status === "lobby";
 
   return (
     <div className="screen">
