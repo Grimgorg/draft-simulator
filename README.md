@@ -18,7 +18,7 @@ Only the host installs Draft Simulator. Everyone else just opens its address in 
    - Intel Mac: `draft-simulator-macos-x64.dmg`
    - Linux: `draft-simulator-linux-x64.AppImage` (make it executable, then run it), or `draft-simulator-linux-x64.deb`
 2. Install it: run the Windows installer, or drag Draft Simulator from the `.dmg` into Applications.
-3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the **Logs** tab shows how far along it is.
+3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. Click **Start server** when you're ready for players to connect. If a draft was still open or under way when you closed the app, the server starts by itself, so players get back in. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the **Logs** tab shows how far along it is.
 
 ![The management UI during a four-player Reality Fracture draft](docs/images/management-ui.png)
 

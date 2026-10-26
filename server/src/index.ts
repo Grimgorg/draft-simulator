@@ -8,11 +8,15 @@ import { getDb } from "./db/database.js";
 import { countCards } from "./cardData/cardRepository.js";
 import { refreshCardDatabaseIfStale } from "./cardData/cardDatabaseFreshness.js";
 import { ensureImageDir } from "./images/imageCache.js";
+import { shouldStartDraftServerAtLaunch } from "./management/launchStart.js";
 import { startManagementServer } from "./management/managementServer.js";
 import { readStartupSettings } from "./management/settingsFile.js";
+import { getSession } from "./session/lobbyManager.js";
 import { exitAfterFatalError, resolveEnvFilePath } from "./packaged/seaRuntime.js";
 
 const MANAGEMENT_PORT = Number(process.env.MANAGEMENT_PORT ?? 4001);
+/** Run by the desktop app rather than from source. */
+const MANAGED = process.env.DRAFT_SIMULATOR_MANAGED === "1";
 
 // Node's default for an unhandled rejection is to kill the process, which
 // for a host running a live draft means everyone is stuck until a restart.
@@ -26,7 +30,7 @@ process.on("unhandledRejection", (reason) => {
 // If the app goes away without doing that (a crash, a force quit), its end
 // of this pipe closes; exiting then frees the ports instead of leaving an
 // invisible server running that the next start can't get past.
-if (process.env.DRAFT_SIMULATOR_MANAGED === "1") {
+if (MANAGED) {
   process.stdin.on("end", () => process.exit(0));
   process.stdin.resume();
 }
@@ -68,6 +72,10 @@ async function main(): Promise<void> {
     refreshCardDatabase();
   }
 
+  if (!shouldStartDraftServerAtLaunch(MANAGED, getSession()?.status)) {
+    console.log("Draft server not started: start it from the management UI.");
+    return;
+  }
   // A failed start (a busy port) is logged and shown in the management UI,
   // where the host can choose another port, so it doesn't end the process.
   await management.startDraftServer();

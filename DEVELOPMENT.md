@@ -49,7 +49,7 @@ In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.d
 
 ### The desktop app
 
-The installed app is a [Tauri](https://tauri.app) window (`desktop/`) around the same server: it starts the server executable, shows its management UI, stops the server when it closes and offers to install newer releases. Working on it needs [Rust](https://rustup.rs) and Tauri's [system prerequisites](https://tauri.app/start/prerequisites/) (Xcode Command Line Tools on macOS, WebView2 and the MSVC build tools on Windows, WebKitGTK on Linux).
+The installed app is a [Tauri](https://tauri.app) window (`desktop/`) around the same server: it starts the server executable, shows its management UI (where the host starts the draft server, unless a draft is there to resume), stops the server when it closes and offers to install newer releases. Working on it needs [Rust](https://rustup.rs) and Tauri's [system prerequisites](https://tauri.app/start/prerequisites/) (Xcode Command Line Tools on macOS, WebView2 and the MSVC build tools on Windows, WebKitGTK on Linux).
 
 ```bash
 npm run dev:desktop    # the app window, with the server and client in dev mode behind it (stop both by closing the window)
