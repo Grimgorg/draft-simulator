@@ -8,7 +8,6 @@ import type {
 import * as lobbyManager from "../session/lobbyManager.js";
 import { buildLobbyStateView } from "../session/lobbyStateView.js";
 import { buildDeckExports } from "../session/deckExport.js";
-import { importCubeFromCubeCobra } from "../cubeImport/cubeCobraImporter.js";
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -131,10 +130,17 @@ export function registerSocketHandlers(io: IoServer): void {
     console.log(`Client connected: ${socket.id}`);
     socket.emit("lobby:state", buildLobbyStateView());
 
-    socket.on("cube:preview", async (payload, callback) => {
+    socket.on("lobby:cubeCards", (callback) => {
       try {
-        const result = await importCubeFromCubeCobra(payload.cubeIdOrUrl);
-        callback({ ok: true, cubeName: result.cubeName, cards: result.cards, unresolvedNames: result.unresolvedNames });
+        callback({ ok: true, ...lobbyManager.getCubeCards() });
+      } catch (err) {
+        callback({ ok: false, error: (err as Error).message });
+      }
+    });
+
+    socket.on("lobby:samplePack", (callback) => {
+      try {
+        callback({ ok: true, cards: lobbyManager.openSamplePack() });
       } catch (err) {
         callback({ ok: false, error: (err as Error).message });
       }

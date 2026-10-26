@@ -14,13 +14,14 @@ export interface ClientToServerEvents {
   /** Re-attaches this socket to an existing player id, e.g. after a page refresh or a network blip. */
   "lobby:reconnect": (payload: { playerId: string }, callback: (result: ActionResult) => void) => void;
   "draft:pick": (payload: { scryfallId: string }, callback: (result: ActionResult) => void) => void;
-  /** Fetches and resolves a cube's cards for a quick look, without creating a lobby. */
-  "cube:preview": (
-    payload: { cubeIdOrUrl: string },
+  /** The current cube draft's cards, for players to look through while they wait. Fails for a set draft. */
+  "lobby:cubeCards": (
     callback: (
       result: ActionResultWithData<{ cubeName: string; cards: Card[]; unresolvedNames: string[] }>
     ) => void
   ) => void;
+  /** Opens one booster of the current set draft's set, dealt to no one, to show what its packs look like. */
+  "lobby:samplePack": (callback: (result: ActionResultWithData<{ cards: Card[] }>) => void) => void;
 }
 
 /** Events the server emits to clients. */

@@ -23,10 +23,16 @@ export function CubePreviewModal({ cubeName, cards, unresolvedNames, onClose }: 
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cube-preview-heading"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="modal-header">
           <div>
-            <h2>{cubeName}</h2>
+            <h2 id="cube-preview-heading">{cubeName}</h2>
             <p className="subtitle">
               {uniqueCards.length} unique card{uniqueCards.length === 1 ? "" : "s"} ({cards.length} total)
             </p>

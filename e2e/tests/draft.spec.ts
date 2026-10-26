@@ -1,11 +1,14 @@
 import type { Page } from "@playwright/test";
-import { CUBE_CARDS, expect, test } from "../fixtures.js";
+import { CUBE_CARDS, CUBE_NAME, expect, test } from "../fixtures.js";
 import {
   CARDS_PER_PACK,
+  NO_DRAFT_MESSAGE,
   PACKS,
   PICKS_PER_PLAYER,
+  createDraft,
   draftWholeCube,
   expectPoolSize,
+  joinDraft,
   packCards,
   pickFirstCard,
   startTwoPlayerDraft,
@@ -14,6 +17,24 @@ import {
 function cardNamesIn(page: Page, selector: string): Promise<string[]> {
   return page.locator(selector).getByRole("img").evaluateAll((imgs) => imgs.map((img) => img.getAttribute("alt")!));
 }
+
+test("a player waiting for the draft to start looks through the cube's cards", async ({
+  openManagement,
+  openPlayer,
+}) => {
+  const management = await openManagement();
+  const player = await openPlayer();
+  await expect(player.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
+  await createDraft(management);
+  await joinDraft(player, "Alice");
+
+  await player.getByRole("button", { name: "Preview cube" }).click();
+  const preview = player.getByRole("dialog", { name: CUBE_NAME });
+  await expect(preview.getByText(`${CUBE_CARDS.length} unique cards`)).toBeVisible();
+  expect((await cardNamesIn(player, ".modal")).sort()).toEqual([...CUBE_CARDS].sort());
+  await preview.getByRole("button", { name: "Close preview" }).click();
+  await expect(preview).toBeHidden();
+});
 
 test("host and guest draft the whole cube and each builds a deck from exactly their own picks", async ({
   openManagement,

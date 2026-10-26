@@ -457,6 +457,10 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
+.preview-actions {
+  margin: 0.75rem 0;
+}
+
 .modal-body {
   overflow-y: auto;
   margin-top: 1rem;
