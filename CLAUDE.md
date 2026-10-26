@@ -160,7 +160,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 - When packaged, the data dir and `.env` are in `DRAFT_SIMULATOR_HOME` (the desktop app sets it to the OS app data folder), or next to the executable without it. Never in `server/`.
 
 **Desktop app**
-- The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app.
+- The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app, and starts the draft server only to resume an open or running draft (`shouldStartDraftServerAtLaunch`): otherwise the host starts it. Run from source, it always starts.
 - `tauri.bundle.conf.json` holds the settings that need `build:exe` and `notices` to have run (the sidecar and `desktop/src-tauri/THIRD_PARTY_NOTICES.txt`, which `desktop/scripts/buildNotices.ts` builds from the server's notices plus cargo-about's list of Rust crates). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
 - macOS `hardenedRuntime` must stay `false`: Tauri re-signs the bundled server, and with the hardened runtime V8 can't reserve memory for its JIT, so the server crashes at start. CI smoke-tests the server inside the `.app` for this reason.
 - The window loads `http://127.0.0.1:<port>`, not app files, and has no capabilities: the page can't call Rust. Keep it that way.

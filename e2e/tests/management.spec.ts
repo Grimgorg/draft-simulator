@@ -33,7 +33,7 @@ test("the host watches players join and the draft start", async ({ openManagemen
   await expect(panel(management, "Current draft")).toContainText(`${CUBE_NAME} (8 cards)`);
   await joinDraft(host, "Alice");
   await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Connected/]);
-  await expect(management.getByRole("button", { name: "Waiting for players (1 of 2)" })).toBeDisabled();
+  await expect(management.getByRole("button", { name: "Waiting for players (1 of at least 2)" })).toBeDisabled();
 
   const guest = await openPlayer();
   await joinDraft(guest, "Bob");
@@ -177,8 +177,20 @@ test("the create-draft dialog can be dismissed, and stays open to show a failed 
   const draft = panel(management, "Current draft");
   const dialog = management.getByRole("dialog", { name: "New draft" });
 
+  // First the type, as image buttons named by the label below them.
   await draft.getByRole("button", { name: "Create draft" }).click();
-  await expect(dialog.getByLabel("Number of players")).toHaveValue("8");
+  await expect(dialog.getByText("Cube draft")).toBeVisible();
+  await expect(dialog.getByText("Set draft")).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+
+  await draft.getByRole("button", { name: "Create draft" }).click();
+  await dialog.getByRole("button", { name: "Set draft" }).click();
+  await expect(dialog.getByLabel("Set")).toBeVisible();
+  await expect(dialog.getByLabel("Cards per pack")).toBeHidden();
+  await dialog.getByRole("button", { name: "Back" }).click();
+  await dialog.getByRole("button", { name: "Cube draft" }).click();
+  await expect(dialog.getByLabel("Set")).toBeHidden();
   await expect(dialog.getByLabel("Packs per player")).toHaveValue("3");
   await expect(dialog.getByLabel("Cards per pack")).toHaveValue("15");
   await expect(dialog.getByLabel("Alternate pack direction each round")).toBeChecked();
@@ -192,6 +204,7 @@ test("the create-draft dialog can be dismissed, and stays open to show a failed 
   await expect(draft).toContainText("No draft yet.");
 
   await draft.getByRole("button", { name: "Create draft" }).click();
+  await dialog.getByRole("button", { name: "Cube draft" }).click();
   await dialog.getByLabel("CubeCobra cube URL or ID").fill("no-such-cube");
   await dialog.getByRole("button", { name: "Start draft" }).click();
   await expect(dialog.getByRole("alert")).toContainText('Could not fetch cube "no-such-cube" from CubeCobra: 404');
@@ -202,7 +215,7 @@ test("the create-draft dialog can be dismissed, and stays open to show a failed 
   await dialog.getByRole("button", { name: "Start draft" }).click();
   await expect(dialog).toBeHidden();
   await expect(draft).toContainText("Waiting for players to join.");
-  await expect(draft).toContainText("0 of 8");
+  await expect(draft).toContainText(/Players\s*0/);
 });
 
 test("cancelling a draft needs a confirmation, and sends everyone back to the start", async ({
@@ -239,15 +252,15 @@ test("after a finished draft, the next one starts from its settings", async ({ o
   await draft.getByRole("button", { name: "Create draft" }).click();
   await draft.getByRole("button", { name: "Create a new draft" }).click();
   const dialog = management.getByRole("dialog", { name: "New draft" });
+  await dialog.getByRole("button", { name: "Cube draft" }).click();
   await expect(dialog.getByLabel("CubeCobra cube URL or ID")).toHaveValue(CUBE_ID);
-  await expect(dialog.getByLabel("Number of players")).toHaveValue("2");
   await expect(dialog.getByLabel("Packs per player")).toHaveValue(String(PACKS));
   await expect(dialog.getByLabel("Cards per pack")).toHaveValue(String(CARDS_PER_PACK));
   await dialog.getByRole("button", { name: "Start draft" }).click();
   await expect(dialog).toBeHidden();
 
   await expect(draft).toContainText("Waiting for players to join.");
-  await expect(draft).toContainText("0 of 2");
+  await expect(draft).toContainText(/Players\s*0/);
   await expect(host.getByRole("button", { name: "Join draft" })).toBeVisible();
 });
 

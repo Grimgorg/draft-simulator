@@ -80,7 +80,7 @@ export interface ManagementClientToServerEvents {
   "manage:openInBrowser": (target: BrowserTarget, callback: (result: ActionResult) => void) => void;
   /** Imports the cube and opens a lobby players can join. Replaces a completed draft, never an active one. */
   "manage:createDraft": (payload: NewDraftSettings, callback: (result: ActionResult) => void) => void;
-  /** Deals the first packs. Only once every seat is filled. */
+  /** Deals the first packs to everyone seated, once at least MIN_PLAYERS are. */
   "manage:startDraft": (callback: (result: ActionResult) => void) => void;
   /** Ends an open lobby or a draft under way for everyone, back to no draft at all. */
   "manage:cancelDraft": (callback: (result: ActionResult) => void) => void;

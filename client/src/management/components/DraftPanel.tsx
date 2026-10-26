@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { LobbyStateView } from "@draft-simulator/shared";
+import { MIN_PLAYERS, type LobbyStateView } from "@draft-simulator/shared";
 import { ConfirmButton } from "../../components/ConfirmButton.js";
 import { managementSocket } from "../managementSocket.js";
 import { useManagementAction } from "../useManagementAction.js";
@@ -25,7 +25,7 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
   const start = () => run((callback) => managementSocket.emit("manage:startDraft", callback));
   const cancel = () => run((callback) => managementSocket.emit("manage:cancelDraft", callback));
   const seated = lobby.players.length;
-  const full = settings !== undefined && seated >= settings.playerCount;
+  const enoughPlayers = seated >= MIN_PLAYERS;
 
   return (
     <section className="panel" aria-labelledby="draft-heading">
@@ -38,9 +38,7 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
             {lobby.cubeName} ({lobby.cardCount} cards)
           </dd>
           <dt>Players</dt>
-          <dd>
-            {seated} of {settings.playerCount}
-          </dd>
+          <dd>{seated}</dd>
           <dt>Packs</dt>
           <dd>
             {settings.packCount} per player, {settings.packSize} cards each
@@ -81,8 +79,8 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
           />
         )}
         {status === "lobby" && settings && (
-          <button type="button" disabled={!full || pending} onClick={start}>
-            {full ? "Start picking" : `Waiting for players (${seated} of ${settings.playerCount})`}
+          <button type="button" disabled={!enoughPlayers || pending} onClick={start}>
+            {enoughPlayers ? "Start picking" : `Waiting for players (${seated} of at least ${MIN_PLAYERS})`}
           </button>
         )}
         {(status === "lobby" || status === "drafting") && (

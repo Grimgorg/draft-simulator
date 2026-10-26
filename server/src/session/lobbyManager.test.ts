@@ -14,21 +14,23 @@ function freshSnapshotPath(): string {
 }
 
 function settings(overrides: Partial<DraftSettings> = {}): DraftSettings {
-  return { cubeId: "test-cube", packCount: 1, packSize: 2, playerCount: 2, alternatingDraft: true, ...overrides };
+  return { cubeId: "test-cube", packCount: 1, packSize: 2, alternatingDraft: true, ...overrides };
 }
 
 const fourCards = [testCard("c1"), testCard("c2"), testCard("c3"), testCard("c4")];
 
-test("creates an empty lobby that players join up to its capacity", () => {
+test("creates an empty lobby that any number of players can join", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
 
   const { cubeMeta } = lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
   assert.equal(cubeMeta.cardCount, 4);
   assert.deepEqual(lobbyManager.getSession()!.players, [], "the host joins from the player page like everyone else");
 
-  lobbyManager.addPlayer("Alice");
-  lobbyManager.addPlayer("Bob");
-  assert.throws(() => lobbyManager.addPlayer("Cara"), /full/);
+  for (const name of ["Alice", "Bob", "Cara"]) lobbyManager.addPlayer(name);
+  assert.deepEqual(
+    lobbyManager.getSession()!.players.map((p) => p.name),
+    ["Alice", "Bob", "Cara"]
+  );
 });
 
 test("rejects joining after the draft has started", () => {
@@ -152,11 +154,9 @@ test("createLobby rejects bad settings before contacting CubeCobra", async (t) =
   });
 
   const cases: [Parameters<typeof lobbyManager.createLobby>, RegExp][] = [
-    [["   ", 3, 15, 8, true], /Cube URL or ID is required/],
-    [["cube", 3, 15, 1, true], /at least 2 players/],
-    [["cube", 3, 15, 2.5, true], /at least 2 players/],
-    [["cube", 0, 15, 8, true], /at least 1 pack/],
-    [["cube", 3, 0, 8, true], /at least 1 card/],
+    [["   ", 3, 15, true], /Cube URL or ID is required/],
+    [["cube", 0, 15, true], /at least 1 pack/],
+    [["cube", 3, 0, true], /at least 1 card/],
   ];
   for (const [args, error] of cases) {
     await assert.rejects(lobbyManager.createLobby(...args), error, JSON.stringify(args));
@@ -168,7 +168,7 @@ test("createLobby rejects bad settings before contacting CubeCobra", async (t) =
 test("a new lobby can't replace one that is waiting or drafting, only a finished draft", async (t) => {
   lobbyManager.resetForTests(freshSnapshotPath());
   const fetchMock = t.mock.method(globalThis, "fetch", async () => new Response("", { status: 404, statusText: "Not Found" }));
-  const createAnother = () => lobbyManager.createLobby("other-cube", 1, 1, 2, true);
+  const createAnother = () => lobbyManager.createLobby("other-cube", 1, 1, true);
 
   lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings({ packSize: 1 }));
   const host = lobbyManager.addPlayer("Alice");
@@ -190,7 +190,7 @@ test("a new lobby can't replace one that is waiting or drafting, only a finished
 test("trims player names and rejects blank ones", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
   assert.throws(() => lobbyManager.addPlayer("Bob"), /No lobby has been created/);
-  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings({ playerCount: 3 }));
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
   lobbyManager.addPlayer("  Alice ");
 
   assert.throws(() => lobbyManager.addPlayer("   "), /Player name is required/);
@@ -201,16 +201,37 @@ test("trims player names and rejects blank ones", () => {
   );
 });
 
-test("starting before every seat is filled fails and leaves the lobby open to join", () => {
+test("starting with fewer than two players fails and leaves the lobby open to join", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
   lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
   lobbyManager.addPlayer("Alice");
 
-  assert.throws(() => lobbyManager.beginDraft(), /configured for 2 players but 1 are seated/);
+  assert.throws(() => lobbyManager.beginDraft(), /Need at least 2 players to start/);
   assert.equal(lobbyManager.getSession()!.status, "lobby");
 
   lobbyManager.addPlayer("Bob");
   assert.equal(lobbyManager.beginDraft().status, "drafting");
+});
+
+test("the lobby has no seat limit: the draft deals to everyone seated when it starts", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const sixCards = ["c1", "c2", "c3", "c4", "c5", "c6"].map(testCard);
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", sixCards, [], settings({ packCount: 1, packSize: 2 }));
+  const seated = ["Alice", "Bob", "Carol"].map((name) => lobbyManager.addPlayer(name));
+
+  const session = lobbyManager.beginDraft();
+  assert.deepEqual(session.waitingOn, seated.map((player) => player.id));
+  for (const player of seated) assert.equal(session.currentPacks[player.id]!.cards.length, 2);
+  assert.throws(() => lobbyManager.addPlayer("Dave"), /already started/);
+});
+
+test("a cube too small for everyone seated is reported when the draft starts, and the lobby stays open", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings({ packCount: 1, packSize: 2 }));
+  for (const name of ["Alice", "Bob", "Carol"]) lobbyManager.addPlayer(name);
+
+  assert.throws(() => lobbyManager.beginDraft(), /Cube has 4 cards but 6 are needed/);
+  assert.equal(lobbyManager.getSession()!.status, "lobby");
 });
 
 test("starting with a cube too small for the packs fails without half-starting the draft", () => {
@@ -297,14 +318,13 @@ const NEEDS_SET_PRINTINGS = "needs a card cache with set printings: npm run impo
 
 test("a set lobby fixes the pack size and deals the set's boosters, also after a restart", { skip: !cacheHasRealityFracture() && NEEDS_SET_PRINTINGS }, () => {
   lobbyManager.resetForTests(freshSnapshotPath());
-  const { cubeMeta } = lobbyManager.createSetLobby("fra", 2, 2, true);
+  const { cubeMeta } = lobbyManager.createSetLobby("fra", 2, true);
   assert.equal(cubeMeta.cubeName, "Reality Fracture");
   assert.ok(cubeMeta.cardCount > 250, `${cubeMeta.cardCount} cards`);
   assert.deepEqual(lobbyManager.getSession()!.settings, {
     setCode: "fra",
     packCount: 2,
     packSize: 14,
-    playerCount: 2,
     alternatingDraft: true,
   });
   const host = lobbyManager.addPlayer("Alice");
@@ -321,6 +341,6 @@ test("a set lobby fixes the pack size and deals the set's boosters, also after a
 
 test("refuses a set that can't be drafted", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
-  assert.throws(() => lobbyManager.createSetLobby("lea", 3, 8, true), /not a set that can be drafted/);
+  assert.throws(() => lobbyManager.createSetLobby("lea", 3, true), /not a set that can be drafted/);
   assert.equal(lobbyManager.getSession(), undefined);
 });

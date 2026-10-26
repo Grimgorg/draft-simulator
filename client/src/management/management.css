@@ -311,6 +311,52 @@ code {
   margin-top: 1rem;
 }
 
+.create-draft-modal h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-h);
+}
+
+.draft-type-choice {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.draft-type-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-h);
+}
+
+.draft-type-button {
+  display: grid;
+  place-items: center;
+  width: 10rem;
+  height: 10rem;
+  padding: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.draft-type-button:hover,
+.draft-type-button:focus-visible {
+  border-color: var(--accent, #6a4cff);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent, #6a4cff);
+}
+
+@media (max-width: 420px) {
+  .draft-type-button {
+    width: 8rem;
+    height: 8rem;
+  }
+}
+
 /* Settings */
 
 .settings-form {

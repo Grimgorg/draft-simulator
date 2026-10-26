@@ -75,7 +75,6 @@ test("stopping keeps the draft: the player is marked disconnected but keeps thei
     cubeId: "test-cube",
     packCount: 1,
     packSize: 1,
-    playerCount: 2,
     alternatingDraft: true,
   });
   const host = lobbyManager.addPlayer("Alice");

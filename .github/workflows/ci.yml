@@ -431,7 +431,7 @@ jobs:
               echo "| $computer | [$file]($base/$file) |"
             done
             echo
-            echo "See the [README](https://github.com/$GH_REPO#download-and-run-no-node-needed) for installing and the first-start warnings. Installed apps update themselves from most of the other files below."
+            echo "See the [README](https://github.com/$GH_REPO#download-and-run) for installing and the first-start warnings. Installed apps update themselves from most of the other files below."
             echo
             echo "$body"
           } > notes.md

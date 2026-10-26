@@ -22,7 +22,7 @@ function idsIn(session: ReturnType<typeof createDraftSession>, playerId: string)
 }
 
 test("runs a full draft with alternating pass direction and produces correct final pools", () => {
-  const session = createDraftSession("draft-1", { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3, alternatingDraft: true }, players);
+  const session = createDraftSession("draft-1", { cubeId: "x", packCount: 2, packSize: 2, alternatingDraft: true }, players);
   beginDraftWithPacks(session, seededQueue());
 
   assert.equal(session.status, "drafting");
@@ -86,7 +86,7 @@ test("runs a full draft with alternating pass direction and produces correct fin
 test("with alternatingDraft off, every pack passes the same direction", () => {
   const session = createDraftSession(
     "draft-5",
-    { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3, alternatingDraft: false },
+    { cubeId: "x", packCount: 2, packSize: 2, alternatingDraft: false },
     players
   );
   beginDraftWithPacks(session, seededQueue());
@@ -118,7 +118,7 @@ test("with alternatingDraft off, every pack passes the same direction", () => {
 });
 
 test("each pick reports whether the round is still open, advanced, or finished the draft", () => {
-  const session = createDraftSession("draft-outcomes", { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3, alternatingDraft: true }, players);
+  const session = createDraftSession("draft-outcomes", { cubeId: "x", packCount: 2, packSize: 2, alternatingDraft: true }, players);
   beginDraftWithPacks(session, seededQueue());
 
   // Pack 1, pick 1: the last pick of the round passes the packs.
@@ -145,7 +145,7 @@ test("each pick reports whether the round is still open, advanced, or finished t
 test("rejects a pick from a player who already picked this round", () => {
   const session = createDraftSession(
     "draft-2",
-    { cubeId: "x", packCount: 1, packSize: 1, playerCount: 2, alternatingDraft: true },
+    { cubeId: "x", packCount: 1, packSize: 1, alternatingDraft: true },
     players.slice(0, 2)
   );
   beginDraftWithPacks(session, [[testPack("pA", 1, ["a1"]), testPack("pB", 1, ["b1"])]]);
@@ -157,7 +157,7 @@ test("rejects a pick from a player who already picked this round", () => {
 test("rejects picking a card that isn't in the player's current pack", () => {
   const session = createDraftSession(
     "draft-3",
-    { cubeId: "x", packCount: 1, packSize: 1, playerCount: 2, alternatingDraft: true },
+    { cubeId: "x", packCount: 1, packSize: 1, alternatingDraft: true },
     players.slice(0, 2)
   );
   beginDraftWithPacks(session, [[testPack("pA", 1, ["a1"]), testPack("pB", 1, ["b1"])]]);
@@ -168,7 +168,7 @@ test("rejects picking a card that isn't in the player's current pack", () => {
 test("rejects starting a draft twice", () => {
   const session = createDraftSession(
     "draft-4",
-    { cubeId: "x", packCount: 1, packSize: 1, playerCount: 2, alternatingDraft: true },
+    { cubeId: "x", packCount: 1, packSize: 1, alternatingDraft: true },
     players.slice(0, 2)
   );
   beginDraftWithPacks(session, [[testPack("pA", 1, ["a1"]), testPack("pB", 1, ["b1"])]]);
@@ -182,7 +182,7 @@ test("a pack holding two copies of the same card lets both copies be drafted, on
   // neither, and the other copy must stay draftable as the pack moves on.
   const session = createDraftSession(
     "draft-dupes",
-    { cubeId: "x", packCount: 1, packSize: 3, playerCount: 2, alternatingDraft: true },
+    { cubeId: "x", packCount: 1, packSize: 3, alternatingDraft: true },
     players.slice(0, 2)
   );
   beginDraftWithPacks(session, [[testPack("pA", 1, ["tarn", "tarn", "a1"]), testPack("pB", 1, ["b1", "b2", "b3"])]]);
@@ -207,7 +207,7 @@ test("a pack holding two copies of the same card lets both copies be drafted, on
 test("rejects picks before the draft starts, after it ends, and from anyone not seated", () => {
   const session = createDraftSession(
     "draft-closed",
-    { cubeId: "x", packCount: 1, packSize: 1, playerCount: 2, alternatingDraft: true },
+    { cubeId: "x", packCount: 1, packSize: 1, alternatingDraft: true },
     players.slice(0, 2)
   );
   assert.throws(() => submitPick(session, "A", "a1"), /status is "lobby"/);
@@ -223,7 +223,7 @@ test("rejects picks before the draft starts, after it ends, and from anyone not 
 test("a rejected pick leaves packs, pools, the pick log and the turn untouched", () => {
   const session = createDraftSession(
     "draft-rejected",
-    { cubeId: "x", packCount: 1, packSize: 2, playerCount: 2, alternatingDraft: true },
+    { cubeId: "x", packCount: 1, packSize: 2, alternatingDraft: true },
     players.slice(0, 2)
   );
   beginDraftWithPacks(session, [[testPack("pA", 1, ["a1", "a2"]), testPack("pB", 1, ["b1", "b2"])]]);
@@ -234,24 +234,21 @@ test("a rejected pick leaves packs, pools, the pick log and the turn untouched",
   assert.deepEqual(session, before);
 });
 
-test("refuses to start unless exactly the configured number of players is seated", () => {
+test("refuses to start with fewer than two players", () => {
   const session = createDraftSession(
     "draft-seats",
-    { cubeId: "x", packCount: 1, packSize: 1, playerCount: 3, alternatingDraft: true },
-    players.slice(0, 2)
+    { cubeId: "x", packCount: 1, packSize: 1, alternatingDraft: true },
+    players.slice(0, 1)
   );
 
-  assert.throws(
-    () => beginDraftWithPacks(session, [[testPack("pA", 1, ["a1"]), testPack("pB", 1, ["b1"])]]),
-    /configured for 3 players but 2 are seated/
-  );
+  assert.throws(() => beginDraftWithPacks(session, [[testPack("pA", 1, ["a1"])]]), /Need at least 2 players to start/);
   assert.equal(session.status, "lobby");
 });
 
 test("logs each pick with the pack and pick number it was made at", () => {
   const session = createDraftSession(
     "draft-log",
-    { cubeId: "x", packCount: 2, packSize: 2, playerCount: 3, alternatingDraft: true },
+    { cubeId: "x", packCount: 2, packSize: 2, alternatingDraft: true },
     players
   );
   beginDraftWithPacks(session, seededQueue());

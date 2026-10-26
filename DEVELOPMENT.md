@@ -34,7 +34,7 @@ The Scryfall card database (~38,000 cards, cached locally at `server/data/cards.
 npm start
 ```
 
-This builds `shared`, `server`, and `client`, then starts the server at **http://localhost:4000** and the management UI at **http://127.0.0.1:4001** (see [Download and run](README.md#download-and-run-no-node-needed) for what it shows). Create the draft in the management UI, then open http://localhost:4000 to play; the host joins there like everyone else. Anyone else on the same network can join by opening `http://<your-computer's-LAN-IP>:4000` in their own browser.
+This builds `shared`, `server`, and `client`, then starts the server at **http://localhost:4000** and the management UI at **http://127.0.0.1:4001** (see [Download and run](README.md#download-and-run) for what it shows). Create the draft in the management UI, then open http://localhost:4000 to play; the host joins there like everyone else. Anyone else on the same network can join by opening `http://<your-computer's-LAN-IP>:4000` in their own browser.
 
 ### Development mode
 
@@ -49,7 +49,7 @@ In dev mode, use the client on port 5173 (it's pre-configured via `client/.env.d
 
 ### The desktop app
 
-The installed app is a [Tauri](https://tauri.app) window (`desktop/`) around the same server: it starts the server executable, shows its management UI, stops the server when it closes and offers to install newer releases. Working on it needs [Rust](https://rustup.rs) and Tauri's [system prerequisites](https://tauri.app/start/prerequisites/) (Xcode Command Line Tools on macOS, WebView2 and the MSVC build tools on Windows, WebKitGTK on Linux).
+The installed app is a [Tauri](https://tauri.app) window (`desktop/`) around the same server: it starts the server executable, shows its management UI (where the host starts the draft server, unless a draft is there to resume), stops the server when it closes and offers to install newer releases. Working on it needs [Rust](https://rustup.rs) and Tauri's [system prerequisites](https://tauri.app/start/prerequisites/) (Xcode Command Line Tools on macOS, WebView2 and the MSVC build tools on Windows, WebKitGTK on Linux).
 
 ```bash
 npm run dev:desktop    # the app window, with the server and client in dev mode behind it (stop both by closing the window)
@@ -117,7 +117,7 @@ Each run also checks that this version is higher than the latest GitHub Release,
 
 GitHub refuses to merge a pull request until these checks pass, because the `protect` rule for `main` under **Settings → Rules** requires them: `test`, `desktop`, `version`, `package (linux-x64)`, `package (windows-x64)`, `package (macos-arm64)` and `package (macos-x64)`. A job renamed in `ci.yml` must be renamed in that rule too, or nothing can be merged. The rule also makes every change to `main` go through a pull request, and stops `main` from being deleted or force-pushed. It allows only squash merges, so each pull request lands on `main` as one commit named after the pull request's title. Under **Settings → General → Pull Requests**, merge commits and rebase merging are turned off, and squash commits use the pull request's title and description as their message. Without the rule, a failing pull request could be merged, and the run on `main` would then fail without releasing anything.
 
-Installed apps update themselves from the releases (see [Updates](README.md#download-and-run-no-node-needed) in the README). The package jobs build signed update bundles next to the installers (`.app.tar.gz`, plus a `.sig` for each update file), using the extra config `desktop/src-tauri/tauri.updater.conf.json`. Before publishing, the workflow attaches `latest.json`, which lists them. The app reads it from `releases/latest/download/latest.json`. It installs an update only if its signature matches the public key in `tauri.conf.json`. The private key lives only in two repository secrets, which the package jobs need: `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. To create the key pair:
+Installed apps update themselves from the releases (see [Updates](README.md#updates) in the README). The package jobs build signed update bundles next to the installers (`.app.tar.gz`, plus a `.sig` for each update file), using the extra config `desktop/src-tauri/tauri.updater.conf.json`. Before publishing, the workflow attaches `latest.json`, which lists them. The app reads it from `releases/latest/download/latest.json`. It installs an update only if its signature matches the public key in `tauri.conf.json`. The private key lives only in two repository secrets, which the package jobs need: `TAURI_SIGNING_PRIVATE_KEY` (the key file's contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. To create the key pair:
 
 ```bash
 npx --workspace desktop tauri signer generate -w ~/.tauri/draft-simulator.key   # asks for a password

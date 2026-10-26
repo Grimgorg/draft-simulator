@@ -2,8 +2,9 @@
  * Starts a built executable in an empty folder, the way the desktop app runs
  * it, and checks the parts that only exist when packaged: the embedded SQLite
  * addon, the embedded client and management UI, the data dir and example
- * .env in DRAFT_SIMULATOR_HOME, the "Management UI:" line the app reads, and
- * that the server exits once the app's end of its stdin closes.
+ * .env in DRAFT_SIMULATOR_HOME, the "Management UI:" line the app reads, that
+ * the draft server waits for the host to start it, and that the server exits
+ * once the app's end of its stdin closes.
  *
  * Run with: npm run smoke-test-exe --workspace server -- <executable> <cards.sqlite3>
  * The card DB is copied in so the executable doesn't download its own.
@@ -14,6 +15,12 @@ import fs from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { io as ioClient, type Socket } from "socket.io-client";
+import type {
+  ActionResult,
+  ManagementClientToServerEvents,
+  ManagementServerToClientEvents,
+} from "@draft-simulator/shared";
 
 const [executableArg, cardDbArg] = process.argv.slice(2);
 if (!executableArg || !cardDbArg) {
@@ -78,7 +85,38 @@ async function waitForHealth(): Promise<{ cardsCached: number }> {
   }
 }
 
+async function waitForOutput(pattern: RegExp, what: string): Promise<RegExpMatchArray> {
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    const match = output.match(pattern);
+    if (match) return match;
+    check(child.exitCode === null, `The executable exited during startup (code ${child.exitCode}).`);
+    check(Date.now() < deadline, `The executable didn't print ${what} within 60s.`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+let management: Socket<ManagementServerToClientEvents, ManagementClientToServerEvents> | undefined;
 try {
+  const managementUrl = (
+    await waitForOutput(
+      /^Management UI: (http:\/\/127\.0\.0\.1:\d+\/)$/m,
+      "the management UI's address in the form the desktop app reads",
+    )
+  )[1];
+  // With no draft to resume, the desktop app leaves starting the draft server to the host.
+  await waitForOutput(/Draft server not started/, "that it left the draft server stopped");
+  const closed = await fetch(`${baseUrl}/health`).then(
+    () => false,
+    () => true,
+  );
+  check(closed, "The draft server started without a draft to resume.");
+
+  management = ioClient(managementUrl, { transports: ["websocket"] });
+  const socket = management;
+  const started = await new Promise<ActionResult>((resolve) => socket.emit("manage:startServer", resolve));
+  check(started.ok, `Starting the draft server from the management UI failed: ${!started.ok && started.error}`);
+
   const health = await waitForHealth();
   check(health.cardsCached > 0, `The executable reports ${health.cardsCached} cached cards; the SQLite addon or data dir is broken.`);
 
@@ -100,8 +138,6 @@ try {
   const playerManagePage = await fetch(`${baseUrl}/manage.html`);
   check(playerManagePage.status === 404, `The player port serves the management UI (status ${playerManagePage.status}).`);
 
-  const managementUrl = output.match(/^Management UI: (http:\/\/127\.0\.0\.1:\d+\/)$/m)?.[1];
-  check(managementUrl, "The management UI's address wasn't printed in the form the desktop app reads.");
   const managePage = await fetch(managementUrl);
   const manageHtml = await managePage.text();
   check(
@@ -125,6 +161,7 @@ try {
   console.error(`Smoke test failed: ${(err as Error).message}\n--- executable output ---\n${output}`);
   process.exitCode = 1;
 } finally {
+  management?.close();
   if (child.exitCode === null) {
     child.kill();
     await once(child, "exit");

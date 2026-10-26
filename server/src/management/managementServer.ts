@@ -222,7 +222,6 @@ export async function startManagementServer(options: ManagementServerOptions): P
               : { cubeIdOrUrl: String(payload.cubeIdOrUrl ?? "").trim() }),
             packCount: Number(payload.packCount),
             packSize: Number(payload.packSize),
-            playerCount: Number(payload.playerCount),
             alternatingDraft: payload.alternatingDraft === true,
           }),
         );

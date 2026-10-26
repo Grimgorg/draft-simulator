@@ -77,12 +77,11 @@ export function getCubeMeta(): CubeMeta | undefined {
   return getState().cubeMeta;
 }
 
-function validateNewLobbyInputs(packCount: number, packSize: number, playerCount: number): void {
+function validateNewLobbyInputs(packCount: number, packSize: number): void {
   const current = getState().session;
   if (current && current.status !== "complete") {
     throw new Error("A draft is already in progress or waiting to start on this server");
   }
-  if (!Number.isInteger(playerCount) || playerCount < 2) throw new Error("Need at least 2 players");
   if (!Number.isInteger(packCount) || packCount < 1) throw new Error("Need at least 1 pack");
   if (!Number.isInteger(packSize) || packSize < 1) throw new Error("Packs need at least 1 card");
 }
@@ -92,17 +91,15 @@ export async function createLobby(
   cubeIdOrUrl: string,
   packCount: number,
   packSize: number,
-  playerCount: number,
   alternatingDraft: boolean
 ): Promise<{ cubeMeta: CubeMeta }> {
-  validateNewLobbyInputs(packCount, packSize, playerCount);
+  validateNewLobbyInputs(packCount, packSize);
   if (!cubeIdOrUrl.trim()) throw new Error("Cube URL or ID is required");
   const imported = await importCubeFromCubeCobra(cubeIdOrUrl);
   return createLobbyFromResolvedCube(imported.cubeName, imported.cards, imported.unresolvedNames, {
     cubeId: cubeIdOrUrl,
     packCount,
     packSize,
-    playerCount,
     alternatingDraft,
   });
 }
@@ -136,18 +133,17 @@ export function createLobbyFromResolvedCube(
 export function createSetLobby(
   setCode: string,
   packCount: number,
-  playerCount: number,
   alternatingDraft: boolean
 ): { cubeMeta: CubeMeta } {
   const set = findDraftableSet(setCode);
-  validateNewLobbyInputs(packCount, set.packSize, playerCount);
+  validateNewLobbyInputs(packCount, set.packSize);
   const booster = buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode)));
 
   const cubeMeta: CubeMeta = { cubeName: set.name, cardCount: booster.cardCount, unresolvedCardNames: [] };
   state = {
     session: createDraftSession(
       randomUUID(),
-      { setCode, packCount, packSize: set.packSize, playerCount, alternatingDraft },
+      { setCode, packCount, packSize: set.packSize, alternatingDraft },
       []
     ),
     cardPool: [],
@@ -161,7 +157,6 @@ export function addPlayer(name: string): Player {
   const session = getState().session;
   if (!session) throw new Error("No lobby has been created yet");
   if (session.status !== "lobby") throw new Error("Cannot join: the draft has already started");
-  if (session.players.length >= session.settings.playerCount) throw new Error("Lobby is full");
   if (!name.trim()) throw new Error("Player name is required");
 
   const player: Player = { id: randomUUID(), name: name.trim(), connected: true };
