@@ -20,6 +20,8 @@ Only the host installs Draft Simulator. Everyone else just opens its address in 
 2. Install it: run the Windows installer, or drag Draft Simulator from the `.dmg` into Applications.
 3. Start Draft Simulator. Its window is the **management UI**, from which you run the server. The server runs while the window is open; closing it stops the server. The first start downloads the card database, which takes a minute, and the **Logs** tab shows how far along it is.
 
+![The management UI during a four-player Reality Fracture draft](docs/images/management-ui.png)
+
 ### Where your data is stored
 
 Everything the server stores goes in your user's app data folder: a `data/` folder with the card database, image cache and running draft, and a `.env` settings file.
