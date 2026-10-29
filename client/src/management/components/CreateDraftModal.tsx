@@ -119,10 +119,12 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
               Normal: packs pass around the table. Winston: {WINSTON_PLAYERS} players take turns choosing from three
               piles.
             </p>
-            <div className="panel-actions">
-              <button type="button" onClick={onClose}>
-                Cancel
-              </button>
+            <div className="modal-footer">
+              <div className="modal-footer-end">
+                <button type="button" className="secondary-button" onClick={onClose}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </>
         ) : type === undefined ? (
@@ -131,13 +133,15 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
               <DraftTypeOption label="Cube draft" image={<CubeImage />} autoFocus onChoose={() => setType("cube")} />
               <DraftTypeOption label="Set draft" image={<CardStackImage />} onChoose={() => setType("set")} />
             </div>
-            <div className="panel-actions">
-              <button type="button" onClick={() => setFormat(undefined)}>
+            <div className="modal-footer">
+              <button type="button" className="secondary-button" onClick={() => setFormat(undefined)}>
                 Back
               </button>
-              <button type="button" onClick={onClose}>
-                Cancel
-              </button>
+              <div className="modal-footer-end">
+                <button type="button" className="secondary-button" onClick={onClose}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </>
         ) : (
@@ -223,16 +227,18 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
                 {error}
               </p>
             )}
-            <div className="panel-actions">
-              <button type="submit" disabled={pending}>
-                {pending ? (type === "set" ? "Creating draft..." : "Importing cube...") : "Start draft"}
-              </button>
-              <button type="button" disabled={pending} onClick={() => setType(undefined)}>
+            <div className="modal-footer">
+              <button type="button" className="secondary-button" disabled={pending} onClick={() => setType(undefined)}>
                 Back
               </button>
-              <button type="button" disabled={pending} onClick={onClose}>
-                Cancel
-              </button>
+              <div className="modal-footer-end">
+                <button type="button" className="secondary-button" disabled={pending} onClick={onClose}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={pending}>
+                  {pending ? (type === "set" ? "Creating draft..." : "Importing cube...") : "Start draft"}
+                </button>
+              </div>
             </div>
           </form>
         )}

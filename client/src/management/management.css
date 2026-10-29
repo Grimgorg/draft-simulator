@@ -350,6 +350,46 @@ code {
   box-shadow: 0 0 0 2px var(--accent, #6a4cff);
 }
 
+/* Runs to the dialog's edges: the negative margins undo .modal's 1.5rem padding. */
+.modal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 1.25rem -1.5rem -1.5rem;
+  padding: 0.85rem 1.5rem;
+  background: var(--panel-bg);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+}
+
+/* The form already spaces its children by 1rem. */
+.create-draft-modal .form .modal-footer {
+  margin-top: 0.25rem;
+}
+
+.modal-footer-end {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.modal-footer button {
+  padding: 0.45rem 0.95rem;
+}
+
+.secondary-button {
+  background: transparent;
+  color: var(--text-h);
+}
+
+.secondary-button:hover:not(:disabled),
+.secondary-button:focus-visible {
+  border-color: var(--text);
+  outline: none;
+}
+
 .draft-format-hint {
   text-align: center;
   margin: 0.5rem 0 0;
@@ -359,6 +399,11 @@ code {
   .draft-type-button {
     width: 8rem;
     height: 8rem;
+  }
+
+  /* Room for Back, Cancel and Start draft on one line. */
+  .modal-footer {
+    padding-inline: 1rem;
   }
 }
 
