@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MIN_PLAYERS, type LobbyStateView } from "@draft-simulator/shared";
+import { MIN_PLAYERS, WINSTON_PLAYERS, type LobbyStateView } from "@draft-simulator/shared";
 import { ConfirmButton } from "../../components/ConfirmButton.js";
 import { managementSocket } from "../managementSocket.js";
 import { useManagementAction } from "../useManagementAction.js";
@@ -25,7 +25,10 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
   const start = () => run((callback) => managementSocket.emit("manage:startDraft", callback));
   const cancel = () => run((callback) => managementSocket.emit("manage:cancelDraft", callback));
   const seated = lobby.players.length;
-  const enoughPlayers = seated >= MIN_PLAYERS;
+  const isWinston = settings?.format === "winston";
+  const neededPlayers = isWinston ? WINSTON_PLAYERS : MIN_PLAYERS;
+  const enoughPlayers = seated >= neededPlayers;
+  const activeName = lobby.players.find((p) => p.id === lobby.winston?.activePlayerId)?.name;
 
   return (
     <section className="panel" aria-labelledby="draft-heading">
@@ -33,6 +36,8 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
       <p>{STATUS_LABELS[status]}</p>
       {settings && (
         <dl className="details">
+          <dt>Format</dt>
+          <dd>{isWinston ? `Winston draft for ${WINSTON_PLAYERS} players` : "Normal draft"}</dd>
           <dt>{settings.setCode !== undefined ? "Set" : "Cube"}</dt>
           <dd>
             {lobby.cubeName} ({lobby.cardCount} cards)
@@ -43,9 +48,21 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
           <dd>
             {settings.packCount} per player, {settings.packSize} cards each
           </dd>
-          <dt>Passing</dt>
-          <dd>{settings.alternatingDraft ? "Alternates direction each pack" : "Same direction every pack"}</dd>
-          {status === "drafting" && (
+          {!isWinston && (
+            <>
+              <dt>Passing</dt>
+              <dd>{settings.alternatingDraft ? "Alternates direction each pack" : "Same direction every pack"}</dd>
+            </>
+          )}
+          {status === "drafting" && lobby.winston && (
+            <>
+              <dt>Progress</dt>
+              <dd>
+                {activeName}'s turn, {lobby.winston.stackCount} cards left in the stack
+              </dd>
+            </>
+          )}
+          {status === "drafting" && !isWinston && (
             <>
               <dt>Progress</dt>
               <dd>
@@ -80,7 +97,9 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
         )}
         {status === "lobby" && settings && (
           <button type="button" disabled={!enoughPlayers || pending} onClick={start}>
-            {enoughPlayers ? "Start picking" : `Waiting for players (${seated} of at least ${MIN_PLAYERS})`}
+            {enoughPlayers
+              ? "Start picking"
+              : `Waiting for players (${seated} of ${isWinston ? "" : "at least "}${neededPlayers})`}
           </button>
         )}
         {(status === "lobby" || status === "drafting") && (

@@ -774,3 +774,67 @@ test("without a lobby password, connections get in whatever they present", { tim
     error: "No lobby has been created yet",
   });
 });
+
+test(
+  "Winston draft: players take turns, only the active player sees a pile, and the draft ends with every card dealt",
+  { timeout: 10_000 },
+  async (t) => {
+    lobbyManager.resetForTests(freshSnapshotPath());
+    const server = await startServerFor(t);
+    const cardIds = Array.from({ length: 8 }, (_, i) => `secret-${i + 1}`);
+    const players = await seatHostAndGuest(server, cardIds, { format: "winston", packCount: 2, alternatingDraft: false });
+    const sockets = { [players.hostId]: players.hostSocket, [players.guestId]: players.guestSocket };
+    const lobbyWires: string[] = [];
+    const piles: Record<string, (Card[] | null | undefined)[]> = { [players.hostId]: [], [players.guestId]: [] };
+    const deckExports: Record<string, DeckExport[]> = { [players.hostId]: [], [players.guestId]: [] };
+    for (const [playerId, socket] of Object.entries(sockets)) {
+      socket.on("lobby:state", (state) => lobbyWires.push(JSON.stringify(state)));
+      socket.on("draft:myState", (state: MyState & { pile?: Card[] | null }) => piles[playerId]!.push(state.pile));
+      socket.on("draft:complete", (deckExport) => deckExports[playerId]!.push(deckExport));
+    }
+
+    /** Sends a Winston action and waits until both players have the state it led to. */
+    async function act(playerId: string, event: "winston:take" | "winston:pass", pileIndex: number) {
+      const updated = Object.values(sockets).map((socket) => waitForLobbyState(socket));
+      assert.deepEqual(await sockets[playerId]!.emitWithAck(event, { pileIndex }), { ok: true });
+      await Promise.all(updated);
+    }
+
+    const started = Object.values(sockets).map((socket) => waitForLobbyState(socket));
+    assert.deepEqual(startDraft(), { ok: true });
+    await Promise.all(started);
+
+    assert.deepEqual(await players.guestSocket.emitWithAck("winston:take", { pileIndex: 0 }), {
+      ok: false,
+      error: "It's not your turn",
+    });
+    assert.deepEqual(await players.hostSocket.emitWithAck("winston:take", { pileIndex: 1 }), {
+      ok: false,
+      error: "You're looking at pile 1, not pile 2",
+    });
+
+    for (let action = 0; lobbyManager.getSession()!.status === "drafting"; action++) {
+      const session = lobbyManager.getSession()!;
+      const table = session.winston!;
+      const active = session.players[table.activeSeat]!.id;
+      const inactive = active === players.hostId ? players.guestId : players.hostId;
+      assert.deepEqual(piles[active]!.at(-1), table.piles[table.pileIndex], "the active player sees their pile");
+      assert.equal(piles[inactive]!.at(-1), null, "the other player sees no pile");
+
+      const canPass = table.stack.length > 0 || table.piles.slice(table.pileIndex + 1).some((p) => p.length > 0);
+      await act(active, canPass && action % 2 === 0 ? "winston:pass" : "winston:take", table.pileIndex);
+      assert.ok(action < 50, "the draft must end");
+    }
+
+    const pools = lobbyManager.getSession()!.pools;
+    assert.deepEqual(
+      [...pools[players.hostId]!, ...pools[players.guestId]!].map((c) => c.scryfallId).sort(),
+      [...cardIds].sort()
+    );
+    assert.deepEqual(deckExports[players.hostId]!.map((e) => e.playerId), [players.hostId]);
+    assert.deepEqual(deckExports[players.guestId]!.map((e) => e.playerId), [players.guestId]);
+    for (const wire of lobbyWires) {
+      assert.ok(!wire.includes("secret-"), `lobby:state leaked card contents: ${wire}`);
+    }
+  }
+);

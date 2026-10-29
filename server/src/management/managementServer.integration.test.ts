@@ -220,6 +220,11 @@ test("a draft with bad settings is refused, and no lobby opens", async (t) => {
     ok: false,
     error: "Cube URL or ID is required",
   });
+  const unknownFormat = { ...settings, packCount: 3, format: "rochester" };
+  assert.deepEqual(await new Promise((resolve) => socket.emit("manage:createDraft", unknownFormat as never, resolve)), {
+    ok: false,
+    error: 'Unknown draft format "rochester"',
+  });
   assert.equal(lobbyManager.getSession(), undefined);
 });
 

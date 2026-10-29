@@ -63,3 +63,34 @@ test("while drafting, the public view says whose turn it is but carries no pack,
     assert.ok(!wire.includes(card.scryfallId), `lobby:state leaked ${card.scryfallId}`);
   }
 });
+
+test("a Winston draft's public view shows the table's sizes and whose turn it is, never its cards", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", secretCards, [], {
+    cubeId: "test",
+    format: "winston",
+    packCount: 1,
+    packSize: 2,
+    alternatingDraft: false,
+  });
+  const alice = lobbyManager.addPlayer("Alice");
+  lobbyManager.addPlayer("Bob");
+  lobbyManager.beginDraft();
+  lobbyManager.passWinstonPile(alice.id, 0);
+
+  const view = buildLobbyStateView();
+
+  assert.deepEqual(view.winston, {
+    activePlayerId: alice.id,
+    pileIndex: 1,
+    pileSizes: [2, 1, 1],
+    stackCount: 0,
+    canPass: true,
+  });
+  assert.deepEqual(view.waitingOn, [alice.id]);
+  assert.equal(view.currentPackNumber, undefined, "a Winston draft has no packs to number");
+  const wire = JSON.stringify(view);
+  for (const card of secretCards) {
+    assert.ok(!wire.includes(card.scryfallId), `lobby:state leaked ${card.scryfallId}`);
+  }
+});

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Card, LobbyStateView } from "@draft-simulator/shared";
+import { WINSTON_PLAYERS, type Card, type LobbyStateView } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
 import { CubePreviewModal } from "./CubePreviewModal.js";
 import { SamplePackModal } from "./SamplePackModal.js";
@@ -22,6 +22,7 @@ interface WaitingRoomProps {
 
 export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
   const isSetDraft = lobbyState.settings?.setCode !== undefined;
+  const isWinston = lobbyState.settings?.format === "winston";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Fetched once: a cube's cards don't change while the lobby waits.
@@ -62,10 +63,16 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
     <div className="screen">
       <h1>{lobbyState.cubeName}</h1>
       <p className="subtitle">
+        {isWinston && <>Winston draft for {WINSTON_PLAYERS} &middot; </>}
         {lobbyState.cardCount} cards &middot; {lobbyState.settings?.packCount} packs of{" "}
         {lobbyState.settings?.packSize} &middot; {lobbyState.players.length}{" "}
         {lobbyState.players.length === 1 ? "player" : "players"}
       </p>
+      {isWinston && (
+        <p className="subtitle">
+          Every player's packs are shuffled into one stack. Take turns choosing from three piles fed by it.
+        </p>
+      )}
       <UnresolvedCardsWarning names={lobbyState.unresolvedCardNames ?? []} />
 
       <div className="preview-actions">

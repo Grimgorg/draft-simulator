@@ -376,3 +376,40 @@ test("refuses a set that can't be drafted", () => {
   assert.throws(() => lobbyManager.createSetLobby("lea", 3, true), /not a set that can be drafted/);
   assert.equal(lobbyManager.getSession(), undefined);
 });
+
+test("a Winston lobby seats exactly two players", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings({ format: "winston" }));
+  lobbyManager.addPlayer("Alice");
+  lobbyManager.addPlayer("Bob");
+
+  assert.throws(() => lobbyManager.addPlayer("Cara"), /already has its 2 players/);
+  assert.equal(lobbyManager.getSession()!.players.length, 2);
+});
+
+test("a Winston draft shuffles every player's packs into its stack and resumes after a restart", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const cards = Array.from({ length: 8 }, (_, i) => testCard(`w${i + 1}`));
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", cards, [], settings({ format: "winston", packCount: 2 }));
+  const alice = lobbyManager.addPlayer("Alice");
+  lobbyManager.addPlayer("Bob");
+
+  lobbyManager.beginDraft();
+  const table = lobbyManager.getSession()!.winston!;
+  assert.equal(table.stack.length + table.piles.flat().length, 8, "2 packs of 2 cards for each of 2 players");
+  assert.deepEqual(lobbyManager.getSession()!.currentPacks, {}, "no packs are dealt");
+  const firstPile = table.piles[0]!.map((c) => c.scryfallId);
+  assert.equal(lobbyManager.takeWinstonPile(alice.id, 0), "turnEnded");
+
+  lobbyManager.reloadFromSnapshotForTests();
+  const resumed = lobbyManager.getSession()!;
+  assert.deepEqual(resumed.pools[alice.id]!.map((c) => c.scryfallId), firstPile);
+  assert.equal(resumed.winston!.activeSeat, 1);
+  assert.equal(resumed.winston!.stack.length, 4);
+});
+
+test("a normal draft's settings have no format", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", fourCards, [], settings());
+  assert.equal("format" in lobbyManager.getSession()!.settings, false);
+});

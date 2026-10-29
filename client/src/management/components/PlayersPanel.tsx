@@ -8,6 +8,8 @@ interface PlayersPanelProps {
 export function PlayersPanel({ lobby, playerConnections }: PlayersPanelProps) {
   const waitingOn = new Set(lobby.waitingOn ?? []);
   const drafting = lobby.status === "drafting";
+  // In a Winston draft the other player waits for their turn rather than having picked this round.
+  const idleLabel = lobby.winston ? "Waiting" : "Picked";
 
   return (
     <section className="panel" aria-labelledby="players-heading">
@@ -23,7 +25,7 @@ export function PlayersPanel({ lobby, playerConnections }: PlayersPanelProps) {
               <span className="muted">{player.connected ? "Connected" : "Disconnected"}</span>
               {drafting && (
                 <span className={waitingOn.has(player.id) ? "tag tag-active" : "tag"}>
-                  {waitingOn.has(player.id) ? "Picking" : "Picked"}
+                  {waitingOn.has(player.id) ? "Picking" : idleLabel}
                 </span>
               )}
             </li>

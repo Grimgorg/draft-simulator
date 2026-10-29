@@ -2,14 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import type { Card, LobbyStateView, Pack } from "@draft-simulator/shared";
 import { neighborSeat, passDirection } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
+import { withOccurrenceKeys } from "../occurrenceKeys.js";
 import { buildDraftPilesKey, getStoredDraftPiles, storeDraftPiles } from "../pileStorage.js";
 import { CardImage } from "./CardImage.js";
 import { CardPile } from "./CardPile.js";
+import { WinstonTable } from "./WinstonTable.js";
 
 interface DraftBoardProps {
   lobbyState: LobbyStateView;
   myPlayerId: string;
   myPack: Pack | null;
+  /** A Winston draft's pile, when it's my turn to look at one. */
+  myPile: Card[] | null;
   myPool: Card[];
 }
 
@@ -26,24 +30,7 @@ const DEFAULT_POOL_PANE_HEIGHT = 280;
 /** How long to wait for the server to acknowledge a pick before letting the player retry. */
 const PICK_ACK_TIMEOUT_MS = 10_000;
 
-/**
- * Pairs each card with a React key that's unique even when a pack holds two
- * copies of the same card (e.g. a cube running two of each fetchland), which
- * share a scryfallId. Keying by scryfallId alone gave React duplicate keys,
- * and when the pack changed it lost track of one copy and left its DOM node
- * on screen for the rest of the draft: a "ghost" card that couldn't be
- * picked. The occurrence index keeps each key stable across renders.
- */
-function withOccurrenceKeys(cards: Card[]): { key: string; card: Card }[] {
-  const seen = new Map<string, number>();
-  return cards.map((card) => {
-    const occurrence = seen.get(card.scryfallId) ?? 0;
-    seen.set(card.scryfallId, occurrence + 1);
-    return { key: `${card.scryfallId}#${occurrence}`, card };
-  });
-}
-
-export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoardProps) {
+export function DraftBoard({ lobbyState, myPlayerId, myPack, myPile, myPool }: DraftBoardProps) {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -177,34 +164,40 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPool }: DraftBoar
   return (
     <div className="draft-screen" ref={containerRef}>
       <div className="pack-pane">
-        <header className="draft-header">
-          <h1>
-            Pack {lobbyState.currentPackNumber} of {lobbyState.settings?.packCount}, pick{" "}
-            {lobbyState.currentPickNumber}
-          </h1>
-          {passingFrom && passingTo && (
-            <div className="pass-info">
-              <span className="tag">◀ Receiving from {passingFrom.name}</span>
-              <span className="tag">Passing to {passingTo.name} ▶</span>
-            </div>
-          )}
-          {waitingOnNames.length > 0 && (
-            <p className="subtitle">Waiting on: {waitingOnNames.join(", ")}</p>
-          )}
-          {error && <p className="error">{error}</p>}
-        </header>
+        {lobbyState.winston ? (
+          <WinstonTable table={lobbyState.winston} players={lobbyState.players} myPlayerId={myPlayerId} myPile={myPile} />
+        ) : (
+          <>
+            <header className="draft-header">
+              <h1>
+                Pack {lobbyState.currentPackNumber} of {lobbyState.settings?.packCount}, pick{" "}
+                {lobbyState.currentPickNumber}
+              </h1>
+              {passingFrom && passingTo && (
+                <div className="pass-info">
+                  <span className="tag">◀ Receiving from {passingFrom.name}</span>
+                  <span className="tag">Passing to {passingTo.name} ▶</span>
+                </div>
+              )}
+              {waitingOnNames.length > 0 && (
+                <p className="subtitle">Waiting on: {waitingOnNames.join(", ")}</p>
+              )}
+              {error && <p className="error">{error}</p>}
+            </header>
 
-        <section className="pack-grid">
-          {!isMyTurn ? (
-            <p className="subtitle">Waiting for other players to pick...</p>
-          ) : myPack ? (
-            withOccurrenceKeys(myPack.cards).map(({ key, card }) => (
-              <CardImage key={key} card={card} onClick={() => handlePick(card)} disabled={picking} />
-            ))
-          ) : (
-            <p className="subtitle">Waiting for the next pack...</p>
-          )}
-        </section>
+            <section className="pack-grid">
+              {!isMyTurn ? (
+                <p className="subtitle">Waiting for other players to pick...</p>
+              ) : myPack ? (
+                withOccurrenceKeys(myPack.cards).map(({ key, card }) => (
+                  <CardImage key={key} card={card} onClick={() => handlePick(card)} disabled={picking} />
+                ))
+              ) : (
+                <p className="subtitle">Waiting for the next pack...</p>
+              )}
+            </section>
+          </>
+        )}
       </div>
 
       <div

@@ -289,6 +289,53 @@ button:disabled {
   gap: 0.75rem;
 }
 
+/* A Winston draft's stack and piles, face down. */
+.winston-table {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.winston-pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  width: 5.5rem;
+  aspect-ratio: 5 / 7;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg, #2e303a);
+  font-size: 0.85rem;
+}
+
+.winston-count {
+  font-size: 1.5rem;
+  color: var(--text-h);
+}
+
+.winston-stack {
+  margin-right: 0.75rem;
+  background: var(--bg);
+}
+
+.winston-pile-empty {
+  opacity: 0.4;
+}
+
+.winston-pile-current {
+  border-color: var(--accent, #6a4cff);
+  box-shadow: 0 0 0 2px var(--accent, #6a4cff);
+}
+
+.winston-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
 .pane-divider {
   flex: none;
   height: 10px;

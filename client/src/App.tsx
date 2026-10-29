@@ -33,6 +33,7 @@ function AppContent() {
     myPlayerId,
     setMyPlayerId,
     myPack,
+    myPile,
     myPool,
     passwordRequired,
     passwordError,
@@ -86,7 +87,9 @@ function AppContent() {
     return <WaitingRoom lobbyState={lobbyState} myPlayerId={myPlayerId} />;
   }
   if (lobbyState.status === "drafting") {
-    return <DraftBoard lobbyState={lobbyState} myPlayerId={myPlayerId} myPack={myPack} myPool={myPool} />;
+    return (
+      <DraftBoard lobbyState={lobbyState} myPlayerId={myPlayerId} myPack={myPack} myPile={myPile} myPool={myPool} />
+    );
   }
   // status === "complete"
   return <ResultsScreen lobbyState={lobbyState} myPlayerId={myPlayerId} myPool={myPool} />;
