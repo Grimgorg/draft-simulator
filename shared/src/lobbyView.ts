@@ -23,6 +23,21 @@ export interface LobbyStateView {
   currentPackNumber?: number;
   currentPickNumber?: number;
   waitingOn?: string[];
+  /** A Winston draft's table while it's drafted: what both players can see of it. Never the cards. */
+  winston?: WinstonTableView;
   /** The five basic lands, available once the draft is complete so players can add them while deck building. */
   basicLands?: Card[];
+}
+
+export interface WinstonTableView {
+  /** Whose turn it is. Also the only id in `waitingOn`. */
+  activePlayerId: string;
+  /** 0-indexed: the pile the active player is looking at. */
+  pileIndex: number;
+  /** How many cards each pile holds, face down. */
+  pileSizes: number[];
+  /** Cards left in the stack. */
+  stackCount: number;
+  /** Whether the active player may pass the pile they're looking at: they can't pass the last card they could get. */
+  canPass: boolean;
 }

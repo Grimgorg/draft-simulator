@@ -8,6 +8,7 @@ import type {
 import * as lobbyManager from "../session/lobbyManager.js";
 import { buildLobbyStateView } from "../session/lobbyStateView.js";
 import { buildDeckExports } from "../session/deckExport.js";
+import { buildWinstonPile } from "../draftEngine/winstonDraft.js";
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -59,6 +60,7 @@ function sendDraftStateTo(io: IoServer, socketId: string, playerId: string): voi
     io.to(socketId).emit("draft:myState", {
       pack: session.currentPacks[playerId] ?? null,
       pool: session.pools[playerId] ?? [],
+      ...(session.settings.format === "winston" ? { pile: buildWinstonPile(session, playerId) } : {}),
     });
   }
 }
@@ -82,13 +84,14 @@ export async function createDraft(settings: NewDraftSettings): Promise<ActionRes
   try {
     if (settings.setCode !== undefined) {
       if (settings.cubeIdOrUrl) throw new Error("Choose a cube or a set, not both");
-      lobbyManager.createSetLobby(settings.setCode, settings.packCount, settings.alternatingDraft);
+      lobbyManager.createSetLobby(settings.setCode, settings.packCount, settings.alternatingDraft, settings.format);
     } else {
       await lobbyManager.createLobby(
         settings.cubeIdOrUrl ?? "",
         settings.packCount,
         settings.packSize,
-        settings.alternatingDraft
+        settings.alternatingDraft,
+        settings.format
       );
     }
     if (currentIo) broadcastLobbyState(currentIo);
@@ -210,6 +213,25 @@ export function registerSocketHandlers(io: IoServer): void {
         callback({ ok: false, error: (err as Error).message });
       }
     });
+
+    // Every Winston action can change what both players see (the active player's pile, the turn, pile sizes),
+    // so both get their state again. The pile goes out before the lobby state, as in draft:pick.
+    const winstonAction =
+      (act: (playerId: string, pileIndex: number) => unknown) =>
+      (payload: { pileIndex: number }, callback: (result: ActionResult) => void) => {
+        try {
+          const playerId = socketPlayers.get(socket.id);
+          if (!playerId) throw new Error("Not joined to this draft");
+          act(playerId, Number(payload?.pileIndex));
+          callback({ ok: true });
+          broadcastDraftStateToAll(io);
+          broadcastLobbyState(io);
+        } catch (err) {
+          callback({ ok: false, error: (err as Error).message });
+        }
+      };
+    socket.on("winston:take", winstonAction(lobbyManager.takeWinstonPile));
+    socket.on("winston:pass", winstonAction(lobbyManager.passWinstonPile));
 
     socket.on("disconnect", () => {
       console.log(`Client disconnected: ${socket.id}`);

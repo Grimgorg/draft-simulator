@@ -19,6 +19,8 @@ export interface DraftConnection {
   setMyPlayerId: (id: string) => void;
   /** My own current pack, or null between rounds / before the draft starts. */
   myPack: Pack | null;
+  /** In a Winston draft, the pile I'm looking at: null unless it's my turn. */
+  myPile: Card[] | null;
   /** My picked pool so far, driven by the server — survives refreshes and reconnects. */
   myPool: Card[];
   /** Set once, when the draft completes while I'm connected (or on reconnect after completion). */
@@ -37,6 +39,7 @@ export function useDraftConnection(): DraftConnection {
   const [lobbyState, setLobbyState] = useState<LobbyStateView | null>(null);
   const [myPlayerId, setMyPlayerIdState] = useState<string | null>(null);
   const [myPack, setMyPack] = useState<Pack | null>(null);
+  const [myPile, setMyPile] = useState<Card[] | null>(null);
   const [myPool, setMyPool] = useState<Card[]>([]);
   const [myDeckExport, setMyDeckExport] = useState<DeckExport | null>(null);
   const [passwordRequired, setPasswordRequired] = useState(false);
@@ -103,8 +106,9 @@ export function useDraftConnection(): DraftConnection {
     function onLobbyState(state: LobbyStateView) {
       setLobbyState(state);
     }
-    function onMyState(state: { pack: Pack | null; pool: Card[] }) {
+    function onMyState(state: { pack: Pack | null; pool: Card[]; pile?: Card[] | null }) {
       setMyPack(state.pack);
+      setMyPile(state.pile ?? null);
       setMyPool(state.pool);
     }
     function onComplete(deckExport: DeckExport) {
@@ -114,6 +118,7 @@ export function useDraftConnection(): DraftConnection {
       clearStoredPlayerId();
       setMyPlayerIdState(null);
       setMyPack(null);
+      setMyPile(null);
       setMyPool([]);
       setMyDeckExport(null);
       setEvicted(true);
@@ -159,6 +164,7 @@ export function useDraftConnection(): DraftConnection {
     myPlayerId,
     setMyPlayerId,
     myPack,
+    myPile,
     myPool,
     myDeckExport,
     passwordRequired,

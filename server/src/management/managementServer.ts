@@ -215,8 +215,12 @@ export async function startManagementServer(options: ManagementServerOptions): P
 
     socket.on("manage:createDraft", async (payload, callback) => {
       try {
+        if (payload.format !== undefined && payload.format !== "winston") {
+          throw new Error(`Unknown draft format "${String(payload.format)}"`);
+        }
         callback(
           await createDraft({
+            ...(payload.format === "winston" ? { format: "winston" as const } : {}),
             ...(payload.setCode !== undefined
               ? { setCode: String(payload.setCode) }
               : { cubeIdOrUrl: String(payload.cubeIdOrUrl ?? "").trim() }),

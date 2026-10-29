@@ -57,16 +57,21 @@ The management UI saves the port and password to the `.env` file. A real environ
 
 ## How a draft works
 
-1. In the management UI, the host clicks **Create draft** and picks the kind of draft:
+1. In the management UI, the host clicks **Create draft** and picks the format:
+   - **Normal draft:** everyone opens packs and passes them around the table.
+   - **Winston draft:** for exactly two players. Both players' packs are shuffled into one stack, and the players
+     take turns choosing from three piles fed by it. See [Winston Draft](docs/winston-draft.md) for the rules.
+
+   Then the kind of draft:
    - **Cube draft:** paste a CubeCobra cube's URL (or ID) and set the number of packs and cards per pack.
    - **Set draft:** pick the set from the list (so far Reality Fracture) and set the number of packs. Every pack is a freshly opened 14-card Play Booster, with the set's real rarities, its echoed pairs and its alternate-frame versions.
 
    Then click **Start draft**. Until then, the player page says the host needs to create a draft first. A set draft needs the set in the card database, which Draft Simulator downloads at startup: after updating, the first start downloads it again.
 2. Everyone, the host included, opens the player page and joins with their name. While they wait, players can click **Preview cube** to look through the cube's cards, or in a set draft **Open a sample pack** to see what its boosters hold.
-3. Once everyone has joined (at least two players), the host clicks **Start picking** in the management UI. There's no seat limit: the draft is for everyone who joined by then. **Cancel draft** ends it for everyone, before or during the picks.
-4. Everyone picks from their own pack each round; packs rotate automatically once everyone's picked. There's no time limit.
+3. Once everyone has joined (at least two players), the host clicks **Start picking** in the management UI. There's no seat limit in a normal draft: it's for everyone who joined by then. A Winston draft seats two players. **Cancel draft** ends it for everyone, before or during the picks.
+4. Everyone picks from their own pack each round; packs rotate automatically once everyone's picked. In a Winston draft, the player whose turn it is sees one pile at a time and clicks **Take pile** or **Pass**. There's no time limit.
 5. If someone's browser refreshes or their connection drops, reopening the same URL in the same browser resumes them automatically. If it's a new browser or device (or the old one lost its storage), open the URL and pick your name from the "Rejoin as..." list — this works at any point in the draft, not just the lobby.
-6. Once the last pack is empty, everyone gets their own pool and can copy or download their picks as a decklist.
+6. Once the last pack (or the Winston stack and its piles) is empty, everyone gets their own pool and can copy or download their picks as a decklist.
 
 ## Known limitations
 

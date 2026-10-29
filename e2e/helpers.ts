@@ -12,9 +12,14 @@ export const RECONNECT_TIMEOUT = 15_000;
 
 export const NO_DRAFT_MESSAGE = "The host needs to create and start a draft before players can join.";
 
-export async function createDraft(management: Page, cubeId = CUBE_ID): Promise<void> {
+export async function createDraft(
+  management: Page,
+  cubeId = CUBE_ID,
+  format: "Normal draft" | "Winston draft" = "Normal draft"
+): Promise<void> {
   await management.getByRole("button", { name: "Create draft" }).click();
   const dialog = management.getByRole("dialog", { name: "New draft" });
+  await dialog.getByRole("button", { name: format }).click();
   await dialog.getByRole("button", { name: "Cube draft" }).click();
   await dialog.getByLabel("CubeCobra cube URL or ID").fill(cubeId);
   await dialog.getByLabel("Packs per player").fill(String(PACKS));

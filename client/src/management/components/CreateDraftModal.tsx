@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { DRAFTABLE_SETS, type DraftSettings, type NewDraftSettings } from "@draft-simulator/shared";
+import { DRAFTABLE_SETS, WINSTON_PLAYERS, type DraftSettings, type NewDraftSettings } from "@draft-simulator/shared";
 import { managementSocket } from "../managementSocket.js";
 import { useManagementAction } from "../useManagementAction.js";
-import { CardStackImage, CubeImage } from "./DraftTypeImages.js";
+import { CardStackImage, CubeImage, NormalDraftImage, WinstonDraftImage } from "./DraftTypeImages.js";
 
 interface CreateDraftModalProps {
   /** The settings to start from: the finished draft's, when there is one. */
@@ -10,6 +10,9 @@ interface CreateDraftModalProps {
   onClose: () => void;
 }
 
+/** How the draft is played: packs passed around the table, or Winston's piles. */
+type DraftFormat = "normal" | "winston";
+/** Where the cards come from. */
 type DraftType = "cube" | "set";
 
 /** What the form edits: both a cube and a set, so going back to the other type keeps what was typed. */
@@ -37,11 +40,10 @@ function initialForm(previous: DraftSettings | undefined): DraftForm {
   return { ...DEFAULT_FORM, cubeIdOrUrl: previous.cubeId ?? "", packCount, packSize: previous.packSize, alternatingDraft };
 }
 
-function toNewDraftSettings(type: DraftType, form: DraftForm): NewDraftSettings {
+function toNewDraftSettings(format: DraftFormat, type: DraftType, form: DraftForm): NewDraftSettings {
   const { packCount, packSize, alternatingDraft } = form;
-  return type === "cube"
-    ? { cubeIdOrUrl: form.cubeIdOrUrl, packCount, packSize, alternatingDraft }
-    : { setCode: form.setCode, packCount, packSize, alternatingDraft };
+  const source = type === "cube" ? { cubeIdOrUrl: form.cubeIdOrUrl } : { setCode: form.setCode };
+  return { ...(format === "winston" ? { format } : {}), ...source, packCount, packSize, alternatingDraft };
 }
 
 interface DraftTypeOptionProps {
@@ -64,14 +66,18 @@ function DraftTypeOption({ label, image, autoFocus, onChoose }: DraftTypeOptionP
 }
 
 /**
- * The new draft: first its type, then its settings. Starting it imports the cube, if it's a cube draft, and opens
- * the lobby for players to join.
+ * The new draft: first its format, then its type, then its settings. Starting it imports the cube, if it's a cube
+ * draft, and opens the lobby for players to join.
  */
 export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModalProps) {
+  const [format, setFormat] = useState<DraftFormat>();
   const [type, setType] = useState<DraftType>();
   const [form, setForm] = useState(() => initialForm(previousSettings));
   const { pending, error, run } = useManagementAction();
   const set = DRAFTABLE_SETS.find((candidate) => candidate.code === form.setCode);
+  const isWinston = format === "winston";
+  const typeLabel = type === "cube" ? "Cube draft" : "Set draft";
+  const winstonStackSize = form.packCount * (type === "set" && set ? set.packSize : form.packSize) * WINSTON_PLAYERS;
 
   function update(changes: Partial<DraftForm>) {
     setForm((current) => ({ ...current, ...changes }));
@@ -98,13 +104,37 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
         <div className="modal-header">
           <h2 id="create-draft-heading">New draft</h2>
         </div>
-        {type === undefined ? (
+        {format === undefined ? (
+          <>
+            <div className="draft-type-choice">
+              <DraftTypeOption
+                label="Normal draft"
+                image={<NormalDraftImage />}
+                autoFocus
+                onChoose={() => setFormat("normal")}
+              />
+              <DraftTypeOption label="Winston draft" image={<WinstonDraftImage />} onChoose={() => setFormat("winston")} />
+            </div>
+            <p className="muted draft-format-hint">
+              Normal: packs pass around the table. Winston: {WINSTON_PLAYERS} players take turns choosing from three
+              piles.
+            </p>
+            <div className="panel-actions">
+              <button type="button" onClick={onClose}>
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : type === undefined ? (
           <>
             <div className="draft-type-choice">
               <DraftTypeOption label="Cube draft" image={<CubeImage />} autoFocus onChoose={() => setType("cube")} />
               <DraftTypeOption label="Set draft" image={<CardStackImage />} onChoose={() => setType("set")} />
             </div>
             <div className="panel-actions">
+              <button type="button" onClick={() => setFormat(undefined)}>
+                Back
+              </button>
               <button type="button" onClick={onClose}>
                 Cancel
               </button>
@@ -116,12 +146,13 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
             onSubmit={(e) => {
               e.preventDefault();
               run(
-                (callback) => managementSocket.emit("manage:createDraft", toNewDraftSettings(type, form), callback),
+                (callback) =>
+                  managementSocket.emit("manage:createDraft", toNewDraftSettings(format, type, form), callback),
                 onClose
               );
             }}
           >
-            <h3>{type === "cube" ? "Cube draft" : "Set draft"}</h3>
+            <h3>{isWinston ? `Winston ${typeLabel.toLowerCase()}` : typeLabel}</h3>
             {type === "cube" ? (
               <label>
                 CubeCobra cube URL or ID
@@ -172,14 +203,21 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
             {type === "set" && set && (
               <p className="muted">Every pack is a {set.name} Play Booster: {set.packSize} cards.</p>
             )}
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={form.alternatingDraft}
-                onChange={(e) => update({ alternatingDraft: e.target.checked })}
-              />
-              Alternate pack direction each round
-            </label>
+            {isWinston ? (
+              <p className="muted">
+                For exactly {WINSTON_PLAYERS} players. Both players' packs are shuffled into one stack of{" "}
+                {winstonStackSize} cards.
+              </p>
+            ) : (
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={form.alternatingDraft}
+                  onChange={(e) => update({ alternatingDraft: e.target.checked })}
+                />
+                Alternate pack direction each round
+              </label>
+            )}
             {error && (
               <p className="error" role="alert">
                 {error}

@@ -11,6 +11,7 @@ test("the host creates a Reality Fracture draft and every player opens a 14-card
 
   await management.getByRole("button", { name: "Create draft" }).click();
   const dialog = management.getByRole("dialog", { name: "New draft" });
+  await dialog.getByRole("button", { name: "Normal draft" }).click();
   await dialog.getByRole("button", { name: "Set draft" }).click();
   await expect(dialog.getByLabel("Set")).toHaveValue("fra");
   await dialog.getByLabel("Set").selectOption({ label: "Reality Fracture" });

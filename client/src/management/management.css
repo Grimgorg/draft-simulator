@@ -350,6 +350,11 @@ code {
   box-shadow: 0 0 0 2px var(--accent, #6a4cff);
 }
 
+.draft-format-hint {
+  text-align: center;
+  margin: 0.5rem 0 0;
+}
+
 @media (max-width: 420px) {
   .draft-type-button {
     width: 8rem;

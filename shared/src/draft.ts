@@ -9,13 +9,22 @@ export interface Player {
 
 /** A draft deals either from a CubeCobra cube (`cubeId`) or from a set's boosters (`setCode`), never both. */
 export interface DraftSettings {
+  /**
+   * "winston": two players take turns choosing from three piles fed by one stack of every pack's cards (see
+   * docs/winston-draft.md). Absent for a normal draft, where packs pass around the table: drafts saved before
+   * Winston existed have no format.
+   */
+  format?: "winston";
   /** The cube as the host entered it: an id or a CubeCobra URL. */
   cubeId?: string;
   /** One of DRAFTABLE_SETS' codes. */
   setCode?: string;
   packCount: number;
   packSize: number;
-  /** When true, pack 1 passes one way, pack 2 the other, and so on. When false, every pack passes the same way. */
+  /**
+   * When true, pack 1 passes one way, pack 2 the other, and so on. When false, every pack passes the same way.
+   * A Winston draft passes no packs and ignores it.
+   */
   alternatingDraft: boolean;
 }
 
@@ -23,6 +32,11 @@ export type DraftStatus = "lobby" | "drafting" | "complete";
 
 /** The table is whoever has taken a seat when the host starts picking, at least this many. */
 export const MIN_PLAYERS = 2;
+
+/** A Winston draft is for exactly this many players. */
+export const WINSTON_PLAYERS = 2;
+/** The piles a Winston draft's players choose from. */
+export const WINSTON_PILE_COUNT = 3;
 
 /** Pass direction for a given pack. If `alternatingDraft` is false, always passes the same way. */
 export function passDirection(packNumber: number, alternatingDraft: boolean): 1 | -1 {

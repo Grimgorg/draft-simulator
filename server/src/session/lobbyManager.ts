@@ -1,15 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { Card, DraftSettings, Player } from "@draft-simulator/shared";
+import { WINSTON_PLAYERS } from "@draft-simulator/shared";
 import { findSetPrintings } from "../cardData/cardRepository.js";
 import { importCubeFromCubeCobra } from "../cubeImport/cubeCobraImporter.js";
 import {
   beginDraftWithPacks,
   createDraftSession,
-  startDraft,
   submitPick,
   type DraftSession,
   type PickOutcome,
 } from "../draftEngine/draftEngine.js";
+import { generatePacks } from "../draftEngine/packGenerator.js";
+import { passPile, startWinstonDraft, takePile, type WinstonOutcome } from "../draftEngine/winstonDraft.js";
 import type { RandomSource } from "../setBoosters/boosterSheets.js";
 import { buildSetBooster, findDraftableSet, generateSetPacks, printingSetsFor } from "../setBoosters/setBoosters.js";
 import { loadSnapshot, resetSnapshotStoreForTests, saveSnapshot } from "./snapshotStore.js";
@@ -104,17 +106,24 @@ function validateNewLobbyInputs(packCount: number, packSize: number): void {
   if (!Number.isInteger(packSize) || packSize < 1) throw new Error("Packs need at least 1 card");
 }
 
+/** Only a Winston draft records its format, so a normal draft's settings stay as they were before Winston. */
+function formatSetting(format: DraftSettings["format"]): Pick<DraftSettings, "format"> {
+  return format === "winston" ? { format } : {};
+}
+
 /** Opens a lobby with no players yet: everyone, the host included, joins it from the player page. */
 export async function createLobby(
   cubeIdOrUrl: string,
   packCount: number,
   packSize: number,
-  alternatingDraft: boolean
+  alternatingDraft: boolean,
+  format?: DraftSettings["format"]
 ): Promise<{ cubeMeta: CubeMeta }> {
   validateNewLobbyInputs(packCount, packSize);
   if (!cubeIdOrUrl.trim()) throw new Error("Cube URL or ID is required");
   const imported = await importCubeFromCubeCobra(cubeIdOrUrl);
   return createLobbyFromResolvedCube(imported.cubeName, imported.cards, imported.unresolvedNames, {
+    ...formatSetting(format),
     cubeId: cubeIdOrUrl,
     packCount,
     packSize,
@@ -151,7 +160,8 @@ export function createLobbyFromResolvedCube(
 export function createSetLobby(
   setCode: string,
   packCount: number,
-  alternatingDraft: boolean
+  alternatingDraft: boolean,
+  format?: DraftSettings["format"]
 ): { cubeMeta: CubeMeta } {
   const set = findDraftableSet(setCode);
   validateNewLobbyInputs(packCount, set.packSize);
@@ -161,7 +171,7 @@ export function createSetLobby(
   state = {
     session: createDraftSession(
       randomUUID(),
-      { setCode, packCount, packSize: set.packSize, alternatingDraft },
+      { ...formatSetting(format), setCode, packCount, packSize: set.packSize, alternatingDraft },
       []
     ),
     cardPool: [],
@@ -176,6 +186,9 @@ export function addPlayer(name: string): Player {
   if (!session) throw new Error("No lobby has been created yet");
   if (session.status !== "lobby") throw new Error("Cannot join: the draft has already started");
   if (!name.trim()) throw new Error("Player name is required");
+  if (session.settings.format === "winston" && session.players.length >= WINSTON_PLAYERS) {
+    throw new Error(`Cannot join: this Winston draft already has its ${WINSTON_PLAYERS} players`);
+  }
 
   const player: Player = { id: randomUUID(), name: name.trim(), connected: true };
   session.players.push(player);
@@ -196,18 +209,18 @@ export function setPlayerConnected(playerId: string, connected: boolean): void {
 export function beginDraft(): DraftSession {
   const session = getState().session;
   if (!session) throw new Error("No lobby has been created yet");
-  const { setCode, packCount } = session.settings;
-  const started =
+  const { setCode, packCount, format } = session.settings;
+  // A Winston draft opens the same packs as a normal one, then shuffles them into its stack.
+  const packQueue =
     setCode === undefined
-      ? startDraft(session, getState().cardPool)
-      : beginDraftWithPacks(
-          session,
-          generateSetPacks(
-            buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode))),
-            packCount,
-            session.players.length
-          )
+      ? generatePacks(getState().cardPool, session.settings, session.players.length)
+      : generateSetPacks(
+          buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode))),
+          packCount,
+          session.players.length
         );
+  const started =
+    format === "winston" ? startWinstonDraft(session, packQueue) : beginDraftWithPacks(session, packQueue);
   persist();
   return started;
 }
@@ -221,6 +234,24 @@ export function pick(playerId: string, scryfallId: string): PickOutcome {
   const session = getState().session;
   if (!session) throw new Error("No lobby has been created yet");
   const outcome = submitPick(session, playerId, scryfallId);
+  persist();
+  return outcome;
+}
+
+/** The Winston draft's active player takes the pile they're looking at (`pileIndex`). */
+export function takeWinstonPile(playerId: string, pileIndex: number): WinstonOutcome {
+  const session = getState().session;
+  if (!session) throw new Error("No lobby has been created yet");
+  const outcome = takePile(session, playerId, pileIndex);
+  persist();
+  return outcome;
+}
+
+/** The Winston draft's active player passes the pile they're looking at (`pileIndex`). */
+export function passWinstonPile(playerId: string, pileIndex: number): WinstonOutcome {
+  const session = getState().session;
+  if (!session) throw new Error("No lobby has been created yet");
+  const outcome = passPile(session, playerId, pileIndex);
   persist();
   return outcome;
 }

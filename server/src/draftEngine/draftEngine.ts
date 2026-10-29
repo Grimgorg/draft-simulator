@@ -1,6 +1,5 @@
 import type { Card, DraftSettings, DraftState, Pack, Player } from "@draft-simulator/shared";
 import { MIN_PLAYERS, neighborSeat, passDirection } from "@draft-simulator/shared";
-import { generatePacks } from "./packGenerator.js";
 
 /**
  * Server-only draft session state: the wire-safe DraftState plus packs not
@@ -11,6 +10,19 @@ import { generatePacks } from "./packGenerator.js";
 export interface DraftSession extends DraftState {
   /** packQueue[round][seat]: packs not yet dealt. Consumed as pack rounds start. */
   packQueue: Pack[][];
+  /** A Winston draft's stack and piles, from the start of drafting. Private like the packs. See winstonDraft.ts. */
+  winston?: WinstonTable;
+}
+
+export interface WinstonTable {
+  /** Face down; the top card is the first. */
+  stack: Card[];
+  /** WINSTON_PILE_COUNT piles, face down. A pile is empty only once the stack is. */
+  piles: Card[][];
+  /** The seat whose turn it is. */
+  activeSeat: number;
+  /** 0-indexed: the pile the active player is looking at. */
+  pileIndex: number;
 }
 
 /**
@@ -44,16 +56,9 @@ export function createDraftSession(id: string, settings: DraftSettings, players:
   };
 }
 
-export function startDraft(session: DraftSession, cardPool: Card[]): DraftSession {
-  const packQueue = generatePacks(cardPool, session.settings, session.players.length);
-  return beginDraftWithPacks(session, packQueue);
-}
-
 /**
- * Starts a draft from a pre-built pack queue, bypassing random pack
- * generation. `startDraft` is the normal entry point; this is exported
- * separately so the round/pass-direction state machine can be tested
- * deterministically without depending on shuffle output.
+ * Starts a draft from a pack queue: `generatePacks`' for a cube, `generateSetPacks`' for a set. Tests pass fixed
+ * packs, so the round/pass-direction state machine is tested without depending on shuffle output.
  */
 export function beginDraftWithPacks(session: DraftSession, packQueue: Pack[][]): DraftSession {
   if (session.status !== "lobby") {

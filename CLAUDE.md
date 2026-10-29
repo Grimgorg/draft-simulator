@@ -69,7 +69,8 @@ server/src/
                           settingsFile (PORT and LOBBY_PASSWORD in .env), logBuffer (console capture for the log viewer),
                           openInBrowser (opens the player page or the repo in the host's default browser)
   packaged/               executable-only runtime: data dir and .env next to it, embedded client and SQLite addon
-  draftEngine/            draft rules: deal, pick, pass packs, advance rounds
+  draftEngine/            draft rules: deal, pick, pass packs, advance rounds; winstonDraft (two-player Winston draft,
+                          from docs/winston-draft.md)
   session/                lobbyManager (owns the state), snapshotStore (saves it), outgoing views
   realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware
   cardData/, db/          SQLite cache of Scryfall card data, downloaded on startup: one printing per card (`cards`), and
@@ -86,6 +87,7 @@ client/src/
   management/             the management UI (manage.html): its own socket, useManagementConnection, panels
 e2e/                      Playwright tests against the production build
 docs/sets/                one researched booster reference per set (slots, odds, special rules): the spec for set-draft packs
+docs/winston-draft.md     Winston draft's rules and the house rules for an empty stack: the spec for winstonDraft.ts
 desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, shows its UI, stops it, offers updates),
                           splash/ (page shown while it starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
