@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ManagementStateView } from "@draft-simulator/shared";
 import { ConfirmButton } from "../../components/ConfirmButton.js";
-import { isDraftActive } from "../lobbyStatus.js";
+import { isAnyDraftActive } from "../lobbyStatus.js";
 import { managementSocket } from "../managementSocket.js";
 import { useManagementAction } from "../useManagementAction.js";
 
@@ -85,7 +85,7 @@ export function SettingsPanel({ state }: SettingsPanelProps) {
       {state.restartRequired && (
         <div className="manage-banner" role="status">
           <p>Saved. The server is still running with the old settings: restart it to use the new ones.</p>
-          {isDraftActive(state.lobby) ? (
+          {isAnyDraftActive(state.drafts) ? (
             <ConfirmButton
               label="Restart now"
               confirmMessage="Restart the server? Players are disconnected for a moment. With a new port or password, send them the new details."

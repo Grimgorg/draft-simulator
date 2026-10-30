@@ -1,17 +1,16 @@
-import type { LobbyStateView } from "@draft-simulator/shared";
+import type { DraftSummary, LobbyStateView } from "@draft-simulator/shared";
 import { findCardsByNames } from "../cardData/cardRepository.js";
 import { buildWinstonTableView } from "../draftEngine/winstonDraft.js";
 import * as lobbyManager from "./lobbyManager.js";
 
 const BASIC_LAND_NAMES = ["Plains", "Island", "Swamp", "Mountain", "Forest"];
 
-export function buildLobbyStateView(): LobbyStateView {
-  const session = lobbyManager.getSession();
-  if (!session) {
-    return { status: "empty", players: [] };
-  }
+/** The state of one draft for the players seated in it, or undefined when it doesn't exist. */
+export function buildLobbyStateView(draftId: string): LobbyStateView | undefined {
+  const session = lobbyManager.getSession(draftId);
+  if (!session) return undefined;
 
-  const cubeMeta = lobbyManager.getCubeMeta();
+  const cubeMeta = lobbyManager.getCubeMeta(draftId);
   const isDrafting = session.status === "drafting";
   // A Winston draft has no packs to number: its table says where it is.
   const isPackDraft = isDrafting && session.settings.format !== "winston";
@@ -20,6 +19,7 @@ export function buildLobbyStateView(): LobbyStateView {
   return {
     status: session.status,
     sessionId: session.id,
+    creatorPlayerId: lobbyManager.getCreatorPlayerId(draftId),
     settings: session.settings,
     cubeName: cubeMeta?.cubeName,
     cardCount: cubeMeta?.cardCount,
@@ -31,4 +31,21 @@ export function buildLobbyStateView(): LobbyStateView {
     winston: buildWinstonTableView(session),
     basicLands: isComplete ? [...findCardsByNames(BASIC_LAND_NAMES).values()] : undefined,
   };
+}
+
+/** Every draft as the draft list shows it, newest first. */
+export function buildDraftSummaries(): DraftSummary[] {
+  return lobbyManager
+    .listDrafts()
+    .map(({ session, cubeMeta, createdAt }) => ({
+      draftId: session.id,
+      status: session.status,
+      settings: session.settings,
+      cubeName: cubeMeta.cubeName,
+      cardCount: cubeMeta.cardCount,
+      players: session.players,
+      creatorPlayerId: lobbyManager.getCreatorPlayerId(session.id),
+      createdAt,
+    }))
+    .reverse();
 }

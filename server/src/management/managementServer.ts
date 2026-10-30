@@ -15,9 +15,9 @@ import {
 import { countCards, getLastImportedAt } from "../cardData/cardRepository.js";
 import { serveEmbeddedClient } from "../packaged/embeddedClient.js";
 import { isPackaged, resolveClientDist } from "../packaged/seaRuntime.js";
-import { cancelDraft, createDraft, startDraft } from "../realtime/socketHandlers.js";
+import { closeDraft } from "../realtime/socketHandlers.js";
 import * as lobbyManager from "../session/lobbyManager.js";
-import { buildLobbyStateView } from "../session/lobbyStateView.js";
+import { buildDraftSummaries } from "../session/lobbyStateView.js";
 import {
   getDraftServerState,
   getPlayerConnectionCount,
@@ -143,7 +143,7 @@ export async function startManagementServer(options: ManagementServerOptions): P
         lastImportedAt: getLastImportedAt() ?? null,
         refreshing: options.isCardDatabaseRefreshing(),
       },
-      lobby: buildLobbyStateView(),
+      drafts: buildDraftSummaries(),
     });
   }
 
@@ -213,38 +213,9 @@ export async function startManagementServer(options: ManagementServerOptions): P
       }
     });
 
-    socket.on("manage:createDraft", async (payload, callback) => {
+    socket.on("manage:closeDraft", (draftId, callback) => {
       try {
-        if (payload.format !== undefined && payload.format !== "winston") {
-          throw new Error(`Unknown draft format "${String(payload.format)}"`);
-        }
-        callback(
-          await createDraft({
-            ...(payload.format === "winston" ? { format: "winston" as const } : {}),
-            ...(payload.setCode !== undefined
-              ? { setCode: String(payload.setCode) }
-              : { cubeIdOrUrl: String(payload.cubeIdOrUrl ?? "").trim() }),
-            packCount: Number(payload.packCount),
-            packSize: Number(payload.packSize),
-            alternatingDraft: payload.alternatingDraft === true,
-          }),
-        );
-      } catch (err) {
-        callback({ ok: false, error: errorMessage(err) });
-      }
-    });
-
-    socket.on("manage:startDraft", (callback) => {
-      try {
-        callback(startDraft());
-      } catch (err) {
-        callback({ ok: false, error: errorMessage(err) });
-      }
-    });
-
-    socket.on("manage:cancelDraft", (callback) => {
-      try {
-        callback(cancelDraft());
+        callback(closeDraft(String(draftId)));
       } catch (err) {
         callback({ ok: false, error: errorMessage(err) });
       }

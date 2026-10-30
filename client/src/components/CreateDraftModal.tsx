@@ -1,12 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { DRAFTABLE_SETS, WINSTON_PLAYERS, type DraftSettings, type NewDraftSettings } from "@draft-simulator/shared";
-import { managementSocket } from "../managementSocket.js";
-import { useManagementAction } from "../useManagementAction.js";
+import { DRAFTABLE_SETS, WINSTON_PLAYERS, type NewDraftSettings } from "@draft-simulator/shared";
+import type { StoredSeat } from "../playerIdentity.js";
+import { socket } from "../socket.js";
 import { CardStackImage, CubeImage, NormalDraftImage, WinstonDraftImage } from "./DraftTypeImages.js";
 
 interface CreateDraftModalProps {
-  /** The settings to start from: the finished draft's, when there is one. */
-  previousSettings?: DraftSettings;
+  /** Called with the creator's seat once the draft is open. */
+  onCreated: (seat: StoredSeat) => void;
   onClose: () => void;
 }
 
@@ -17,6 +17,8 @@ type DraftType = "cube" | "set";
 
 /** What the form edits: both a cube and a set, so going back to the other type keeps what was typed. */
 interface DraftForm {
+  /** The creator's name: they're seated in the draft as they create it. */
+  playerName: string;
   cubeIdOrUrl: string;
   setCode: string;
   packCount: number;
@@ -25,20 +27,13 @@ interface DraftForm {
 }
 
 const DEFAULT_FORM: DraftForm = {
+  playerName: "",
   cubeIdOrUrl: "",
   setCode: DRAFTABLE_SETS[0]!.code,
   packCount: 3,
   packSize: 15,
   alternatingDraft: true,
 };
-
-function initialForm(previous: DraftSettings | undefined): DraftForm {
-  if (!previous) return DEFAULT_FORM;
-  const { packCount, alternatingDraft } = previous;
-  // A set's pack size is the set's own; a later cube draft starts from the default instead.
-  if (previous.setCode !== undefined) return { ...DEFAULT_FORM, setCode: previous.setCode, packCount, alternatingDraft };
-  return { ...DEFAULT_FORM, cubeIdOrUrl: previous.cubeId ?? "", packCount, packSize: previous.packSize, alternatingDraft };
-}
 
 function toNewDraftSettings(format: DraftFormat, type: DraftType, form: DraftForm): NewDraftSettings {
   const { packCount, packSize, alternatingDraft } = form;
@@ -66,14 +61,15 @@ function DraftTypeOption({ label, image, autoFocus, onChoose }: DraftTypeOptionP
 }
 
 /**
- * The new draft: first its format, then its type, then its settings. Starting it imports the cube, if it's a cube
- * draft, and opens the lobby for players to join.
+ * The new draft: first its format, then its type, then its settings and the creator's name. Starting it imports
+ * the cube, if it's a cube draft, and opens the lobby with its creator seated, for other players to join.
  */
-export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModalProps) {
+export function CreateDraftModal({ onCreated, onClose }: CreateDraftModalProps) {
   const [format, setFormat] = useState<DraftFormat>();
   const [type, setType] = useState<DraftType>();
-  const [form, setForm] = useState(() => initialForm(previousSettings));
-  const { pending, error, run } = useManagementAction();
+  const [form, setForm] = useState(DEFAULT_FORM);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const set = DRAFTABLE_SETS.find((candidate) => candidate.code === form.setCode);
   const isWinston = format === "winston";
   const typeLabel = type === "cube" ? "Cube draft" : "Set draft";
@@ -149,14 +145,26 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
             className="form"
             onSubmit={(e) => {
               e.preventDefault();
-              run(
-                (callback) =>
-                  managementSocket.emit("manage:createDraft", toNewDraftSettings(format, type, form), callback),
-                onClose
-              );
+              setPending(true);
+              setError(null);
+              // No timeout: importing a big cube can take a while, and the server always answers.
+              socket.emit("draft:create", { ...toNewDraftSettings(format, type, form), playerName: form.playerName }, (result) => {
+                setPending(false);
+                if (result.ok) onCreated({ draftId: result.draftId, playerId: result.playerId });
+                else setError(result.error);
+              });
             }}
           >
             <h3>{isWinston ? `Winston ${typeLabel.toLowerCase()}` : typeLabel}</h3>
+            <label>
+              Your name
+              <input
+                value={form.playerName}
+                onChange={(e) => update({ playerName: e.target.value })}
+                required
+                autoFocus
+              />
+            </label>
             {type === "cube" ? (
               <label>
                 CubeCobra cube URL or ID
@@ -165,13 +173,12 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
                   onChange={(e) => update({ cubeIdOrUrl: e.target.value })}
                   placeholder="https://cubecobra.com/cube/overview/..."
                   required
-                  autoFocus
                 />
               </label>
             ) : (
               <label>
                 Set
-                <select value={form.setCode} onChange={(e) => update({ setCode: e.target.value })} autoFocus>
+                <select value={form.setCode} onChange={(e) => update({ setCode: e.target.value })}>
                   {DRAFTABLE_SETS.map((candidate) => (
                     <option key={candidate.code} value={candidate.code}>
                       {candidate.name}
@@ -236,7 +243,7 @@ export function CreateDraftModal({ previousSettings, onClose }: CreateDraftModal
                   Cancel
                 </button>
                 <button type="submit" disabled={pending}>
-                  {pending ? (type === "set" ? "Creating draft..." : "Importing cube...") : "Start draft"}
+                  {pending ? (type === "set" ? "Creating draft..." : "Importing cube...") : "Create draft"}
                 </button>
               </div>
             </div>

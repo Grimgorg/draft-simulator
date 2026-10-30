@@ -1,6 +1,5 @@
-import type { DraftSettings } from "./draft.js";
 import type { ActionResult } from "./events.js";
-import type { LobbyStateView } from "./lobbyView.js";
+import type { DraftSummary } from "./lobbyView.js";
 
 export type LogLevel = "info" | "warn" | "error";
 
@@ -33,12 +32,6 @@ export interface ServerSettings {
 }
 
 /**
- * What the host picks for a new draft: a cube, fetched from CubeCobra when the draft is created, or a set
- * from DRAFTABLE_SETS. A set fixes the pack size, so `packSize` is ignored for one.
- */
-export type NewDraftSettings = { cubeIdOrUrl?: string; setCode?: string } & Omit<DraftSettings, "cubeId" | "setCode">;
-
-/**
  * Everything the management UI shows, sent only to the management UI, which
  * is reachable from the host's own computer only. Pack contents and pools
  * stay out of it like they stay out of lobby:state: the host is a player too.
@@ -62,7 +55,8 @@ export interface ManagementStateView {
   /** Open player connections, including browsers that haven't taken a seat. */
   playerConnections: number;
   cardDatabase: { cardCount: number; lastImportedAt: string | null; refreshing: boolean };
-  lobby: LobbyStateView;
+  /** Every draft on the server, newest first, as the players' draft list shows them. */
+  drafts: DraftSummary[];
 }
 
 /** Events the management UI emits to the server. */
@@ -78,12 +72,11 @@ export interface ManagementClientToServerEvents {
    * desktop app a link would replace the management UI in its only window.
    */
   "manage:openInBrowser": (target: BrowserTarget, callback: (result: ActionResult) => void) => void;
-  /** Imports the cube and opens a lobby players can join. Replaces a completed draft, never an active one. */
-  "manage:createDraft": (payload: NewDraftSettings, callback: (result: ActionResult) => void) => void;
-  /** Deals the first packs to everyone seated, once at least MIN_PLAYERS are. */
-  "manage:startDraft": (callback: (result: ActionResult) => void) => void;
-  /** Ends an open lobby or a draft under way for everyone, back to no draft at all. */
-  "manage:cancelDraft": (callback: (result: ActionResult) => void) => void;
+  /**
+   * Ends a draft for everyone and removes it, whatever its status: for a draft that's stuck, or whose creator is
+   * gone. Players create, start and close their own drafts from the player page.
+   */
+  "manage:closeDraft": (draftId: string, callback: (result: ActionResult) => void) => void;
 }
 
 /** Events the server emits to the management UI. */

@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { WINSTON_PLAYERS, type Card, type LobbyStateView } from "@draft-simulator/shared";
+import { MIN_PLAYERS, WINSTON_PLAYERS, type Card, type LobbyStateView } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
+import { CloseDraftButton, LeaveDraftButton } from "./DraftControls.js";
 import { CubePreviewModal } from "./CubePreviewModal.js";
 import { SamplePackModal } from "./SamplePackModal.js";
 import { UnresolvedCardsWarning } from "./UnresolvedCardsWarning.js";
 
 // Like a pick's, so a lost acknowledgement can't leave the button loading until the page is reloaded.
-const PREVIEW_ACK_TIMEOUT_MS = 10_000;
+const ACK_TIMEOUT_MS = 10_000;
 const NO_RESPONSE = "The server didn't respond. Please try again.";
 
 interface CubeCards {
@@ -18,9 +19,11 @@ interface CubeCards {
 interface WaitingRoomProps {
   lobbyState: LobbyStateView;
   myPlayerId: string;
+  /** Called once this browser's seat is gone: it left, or as the creator closed the draft. */
+  onLeft: () => void;
 }
 
-export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
+export function WaitingRoom({ lobbyState, myPlayerId, onLeft }: WaitingRoomProps) {
   const isSetDraft = lobbyState.settings?.setCode !== undefined;
   const isWinston = lobbyState.settings?.format === "winston";
   const [loading, setLoading] = useState(false);
@@ -30,6 +33,23 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
   const [cubeOpen, setCubeOpen] = useState(false);
   const [samplePack, setSamplePack] = useState<Card[] | null>(null);
   const [samplePackOpen, setSamplePackOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const isCreator = lobbyState.creatorPlayerId === myPlayerId;
+  const creatorName = lobbyState.players.find((p) => p.id === lobbyState.creatorPlayerId)?.name ?? "its creator";
+  const seated = lobbyState.players.length;
+  const neededPlayers = isWinston ? WINSTON_PLAYERS : MIN_PLAYERS;
+  const enoughPlayers = seated >= neededPlayers;
+
+  function startDraft() {
+    setStarting(true);
+    setStartError(null);
+    socket.timeout(ACK_TIMEOUT_MS).emit("draft:start", (err, result) => {
+      setStarting(false);
+      if (err) return setStartError(NO_RESPONSE);
+      if (!result.ok) setStartError(result.error);
+    });
+  }
 
   function previewCube() {
     setError(null);
@@ -38,7 +58,7 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
       return;
     }
     setLoading(true);
-    socket.timeout(PREVIEW_ACK_TIMEOUT_MS).emit("lobby:cubeCards", (err, result) => {
+    socket.timeout(ACK_TIMEOUT_MS).emit("lobby:cubeCards", (err, result) => {
       setLoading(false);
       if (err) return setError(NO_RESPONSE);
       if (!result.ok) return setError(result.error);
@@ -51,7 +71,7 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
     setError(null);
     setSamplePackOpen(true);
     setLoading(true);
-    socket.timeout(PREVIEW_ACK_TIMEOUT_MS).emit("lobby:samplePack", (err, result) => {
+    socket.timeout(ACK_TIMEOUT_MS).emit("lobby:samplePack", (err, result) => {
       setLoading(false);
       if (err) return setError(NO_RESPONSE);
       if (!result.ok) return setError(result.error);
@@ -98,7 +118,24 @@ export function WaitingRoom({ lobbyState, myPlayerId }: WaitingRoomProps) {
         ))}
       </ul>
 
-      <p className="subtitle">Waiting for the host to start the draft...</p>
+      {isCreator ? (
+        <div className="lobby-actions">
+          <button type="button" disabled={!enoughPlayers || starting} onClick={startDraft}>
+            {enoughPlayers
+              ? "Start picking"
+              : `Waiting for players (${seated} of ${isWinston ? "" : "at least "}${neededPlayers})`}
+          </button>
+          <CloseDraftButton status={lobbyState.status} onClosed={onLeft} />
+        </div>
+      ) : (
+        <>
+          <p className="subtitle">Waiting for {creatorName} to start the draft...</p>
+          <div className="lobby-actions">
+            <LeaveDraftButton label="Leave draft" onLeft={onLeft} />
+          </div>
+        </>
+      )}
+      {startError && <p className="error">{startError}</p>}
 
       {cubeOpen && cubeCards && (
         <CubePreviewModal

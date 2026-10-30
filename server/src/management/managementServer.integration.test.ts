@@ -13,7 +13,6 @@ import {
   type ActionResult,
   type BrowserTarget,
   type ClientToServerEvents,
-  type LobbyStateView,
   type LogEntry,
   type ManagementClientToServerEvents,
   type ManagementServerToClientEvents,
@@ -107,9 +106,7 @@ function emitAction(
   event:
     | "manage:startServer"
     | "manage:stopServer"
-    | "manage:restartServer"
-    | "manage:startDraft"
-    | "manage:cancelDraft",
+    | "manage:restartServer",
 ): Promise<ActionResult> {
   return new Promise((resolve) => socket.emit(event, resolve));
 }
@@ -181,96 +178,64 @@ test("the server can be started and stopped from the management UI", async (t) =
   assert.deepEqual(await emitAction(socket, "manage:stopServer"), { ok: false, error: "The server isn't running." });
 });
 
-test("lobby changes reach the management UI, without anyone's packs", async (t) => {
+test("every draft's changes reach the management UI, without anyone's packs", async (t) => {
   const { management } = await setUp(t);
   const { socket } = await connect(management.url);
   t.after(() => socket.close());
+  const settings = { cubeId: "test-cube", packCount: 1, packSize: 1, alternatingDraft: true };
 
-  const created = waitForStateWhere(socket, (s) => s.lobby.status === "lobby");
-  lobbyManager.createLobbyFromResolvedCube("Test Cube", [testCard("c1"), testCard("c2")], [], {
-    cubeId: "test-cube",
-    packCount: 1,
-    packSize: 1,
-    alternatingDraft: true,
-  });
-  lobbyManager.addPlayer("Alice");
-  assert.equal((await created).lobby.cubeName, "Test Cube");
+  const created = waitForStateWhere(socket, (s) => s.drafts.length === 2 && s.drafts[1]!.players.length === 1);
+  const { draftId } = lobbyManager.createLobbyFromResolvedCube("Test Cube", [testCard("c1"), testCard("c2")], [], settings);
+  lobbyManager.createLobbyFromResolvedCube("Other Cube", [testCard("d1"), testCard("d2")], [], settings);
+  lobbyManager.addPlayer(draftId, "Alice");
+  assert.deepEqual((await created).drafts.map((d) => d.cubeName), ["Other Cube", "Test Cube"]);
 
-  const drafting = waitForStateWhere(socket, (s) => s.lobby.status === "drafting");
-  lobbyManager.addPlayer("Bob");
-  lobbyManager.beginDraft();
+  const drafting = waitForStateWhere(socket, (s) => s.drafts[1]!.status === "drafting");
+  lobbyManager.addPlayer(draftId, "Bob");
+  lobbyManager.beginDraft(draftId);
   const state = await drafting;
   assert.deepEqual(
-    state.lobby.players.map((p) => p.name),
+    state.drafts[1]!.players.map((p) => p.name),
     ["Alice", "Bob"],
   );
-  assert.doesNotMatch(JSON.stringify(state), /"c1"|"c2"/);
+  assert.equal(state.drafts[0]!.status, "lobby");
+  assert.doesNotMatch(JSON.stringify(state), /"c1"|"c2"|"d1"|"d2"/);
 });
 
-test("a draft with bad settings is refused, and no lobby opens", async (t) => {
-  const { management } = await setUp(t);
-  const { socket } = await connect(management.url);
-  t.after(() => socket.close());
-
-  const settings = { cubeIdOrUrl: "some-cube", packCount: 0, packSize: 15, alternatingDraft: true };
-  const result = await new Promise<ActionResult>((resolve) => socket.emit("manage:createDraft", settings, resolve));
-  assert.deepEqual(result, { ok: false, error: "Need at least 1 pack" });
-  const blankCube = { ...settings, packCount: 3, cubeIdOrUrl: "  " };
-  assert.deepEqual(await new Promise((resolve) => socket.emit("manage:createDraft", blankCube, resolve)), {
-    ok: false,
-    error: "Cube URL or ID is required",
-  });
-  const unknownFormat = { ...settings, packCount: 3, format: "rochester" };
-  assert.deepEqual(await new Promise((resolve) => socket.emit("manage:createDraft", unknownFormat as never, resolve)), {
-    ok: false,
-    error: 'Unknown draft format "rochester"',
-  });
-  assert.equal(lobbyManager.getSession(), undefined);
-});
-
-test("the host starts and cancels the draft from the management UI, and players see both", async (t) => {
+test("the host can close any draft from the management UI, and its players are told", async (t) => {
   const { management, playerPort } = await setUp(t);
   const { socket } = await connect(management.url);
   t.after(() => socket.close());
   assert.deepEqual(await emitAction(socket, "manage:startServer"), { ok: true });
-  lobbyManager.createLobbyFromResolvedCube("Test Cube", ["c1", "c2", "c3", "c4"].map(testCard), [], {
-    cubeId: "test-cube",
-    packCount: 1,
-    packSize: 2,
-    alternatingDraft: true,
-  });
+  const settings = { cubeId: "test-cube", packCount: 1, packSize: 2, alternatingDraft: true };
+  const { draftId } = lobbyManager.createLobbyFromResolvedCube("Test Cube", ["c1", "c2", "c3", "c4"].map(testCard), [], settings);
+  const kept = lobbyManager.createLobbyFromResolvedCube("Kept Cube", ["d1", "d2"].map(testCard), [], settings).draftId;
 
   const players: PlayerSocket[] = [];
   for (const playerName of ["Alice", "Bob"]) {
     const player: PlayerSocket = ioClient(`http://127.0.0.1:${playerPort}`, { forceNew: true, reconnection: false });
     players.push(player);
     t.after(() => player.close());
-    assert.equal((await player.emitWithAck("lobby:join", { playerName })).ok, true);
+    assert.equal((await player.emitWithAck("lobby:join", { draftId, playerName })).ok, true);
   }
 
   const packs = Promise.all(
     players.map((p) => new Promise<Pack | null>((resolve) => p.once("draft:myState", (s) => resolve(s.pack)))),
   );
-  const drafting = waitForStateWhere(socket, (s) => s.lobby.status === "drafting");
-  assert.deepEqual(await emitAction(socket, "manage:startDraft"), { ok: true });
+  const drafting = waitForStateWhere(socket, (s) => s.drafts.some((d) => d.draftId === draftId && d.status === "drafting"));
+  assert.deepEqual(await players[0]!.emitWithAck("draft:start"), { ok: true });
   for (const pack of await packs) assert.equal(pack?.cards.length, 2);
   await drafting;
 
-  const playersEmpty = Promise.all(
-    players.map(
-      (p) =>
-        new Promise<void>((resolve) => {
-          const onState = (state: LobbyStateView) => {
-            if (state.status === "empty") resolve();
-          };
-          p.on("lobby:state", onState);
-        }),
-    ),
+  const playersTold = Promise.all(
+    players.map((p) => new Promise<string>((resolve) => p.once("draft:closed", resolve))),
   );
-  const managementEmpty = waitForStateWhere(socket, (s) => s.lobby.status === "empty");
-  assert.deepEqual(await emitAction(socket, "manage:cancelDraft"), { ok: true });
-  await Promise.all([playersEmpty, managementEmpty]);
-  assert.deepEqual(await emitAction(socket, "manage:cancelDraft"), { ok: false, error: "No draft in progress to cancel" });
+  const managementUpdated = waitForStateWhere(socket, (s) => s.drafts.length === 1);
+  const close = (id: string) => new Promise<ActionResult>((resolve) => socket.emit("manage:closeDraft", id, resolve));
+  assert.deepEqual(await close(draftId), { ok: true });
+  assert.deepEqual(await playersTold, [draftId, draftId]);
+  assert.deepEqual((await managementUpdated).drafts.map((d) => d.draftId), [kept]);
+  assert.deepEqual(await close(draftId), { ok: false, error: "This draft doesn't exist anymore" });
 });
 
 test("saved settings go to the .env file, and a restart applies them", async (t) => {

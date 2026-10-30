@@ -1,22 +1,31 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
-import type { Card, DeckExport, LobbyStateView, Pack } from "@draft-simulator/shared";
+import type { Card, DeckExport, DraftSummary, LobbyStateView, Pack } from "@draft-simulator/shared";
 import { socket } from "./socket.js";
-import { clearStoredPlayerId, getStoredPlayerId, storePlayerId } from "./playerIdentity.js";
+import { clearStoredSeat, getStoredSeat, storeSeat, type StoredSeat } from "./playerIdentity.js";
 import { getStoredPassword, storePassword } from "./lobbyPassword.js";
 
 export interface DraftConnection {
   connected: boolean;
-  /** True while a stored identity is being re-validated against the server after connect. */
+  /** True while a stored seat is being re-validated against the server after connect. */
   reconnecting: boolean;
   /** True after another device/tab just claimed this identity via lobby:reconnect. */
   evicted: boolean;
   /** Clears the eviction notice once the user has acknowledged it. */
   dismissEviction: () => void;
+  /** True after the draft this browser was seated in was closed by its creator or the host. */
+  draftClosed: boolean;
+  dismissDraftClosed: () => void;
+  /** Every draft on the server, newest first; null until the server first sends them. */
+  drafts: DraftSummary[] | null;
+  /** The draft this browser is seated in, as which player. */
+  seat: StoredSeat | null;
+  /** Confirms a seat after create/join/rejoin, and remembers it for reconnect-on-refresh. */
+  takeSeat: (seat: StoredSeat) => void;
+  /** Forgets the seat, after the server let it go (lobby:leave) or the draft was closed. */
+  leaveSeat: () => void;
+  /** The state of the draft this browser is seated in. */
   lobbyState: LobbyStateView | null;
-  myPlayerId: string | null;
-  /** Confirms an identity after create/join, and remembers it for reconnect-on-refresh. */
-  setMyPlayerId: (id: string) => void;
   /** My own current pack, or null between rounds / before the draft starts. */
   myPack: Pack | null;
   /** In a Winston draft, the pile I'm looking at: null unless it's my turn. */
@@ -34,23 +43,52 @@ export interface DraftConnection {
 
 export function useDraftConnection(): DraftConnection {
   const [connected, setConnected] = useState(socket.connected);
-  const [reconnecting, setReconnecting] = useState(() => getStoredPlayerId() !== null);
+  const [reconnecting, setReconnecting] = useState(() => getStoredSeat() !== null);
   const [evicted, setEvicted] = useState(false);
+  const [draftClosed, setDraftClosed] = useState(false);
+  const [drafts, setDrafts] = useState<DraftSummary[] | null>(null);
+  const [seat, setSeat] = useState<StoredSeat | null>(null);
   const [lobbyState, setLobbyState] = useState<LobbyStateView | null>(null);
-  const [myPlayerId, setMyPlayerIdState] = useState<string | null>(null);
   const [myPack, setMyPack] = useState<Pack | null>(null);
   const [myPile, setMyPile] = useState<Card[] | null>(null);
   const [myPool, setMyPool] = useState<Card[]>([]);
   const [myDeckExport, setMyDeckExport] = useState<DeckExport | null>(null);
   const [passwordRequired, setPasswordRequired] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  /**
+   * The seat the socket listeners compare against. A draft's events can still arrive just after leaving it, and
+   * the state of the seat they'd set is a render behind.
+   */
+  const seatRef = useRef<StoredSeat | null>(null);
 
-  const setMyPlayerId = useCallback((id: string) => {
-    storePlayerId(id);
-    setMyPlayerIdState(id);
+  const applySeat = useCallback((next: StoredSeat | null) => {
+    // Reconnecting after a network blip keeps the seat: the screen stays as it was until the server's update.
+    const current = seatRef.current;
+    if (current && next && current.draftId === next.draftId && current.playerId === next.playerId) return;
+    seatRef.current = next;
+    setSeat(next);
+    setLobbyState(null);
+    setMyPack(null);
+    setMyPile(null);
+    setMyPool([]);
+    setMyDeckExport(null);
   }, []);
 
+  const takeSeat = useCallback(
+    (next: StoredSeat) => {
+      storeSeat(next);
+      applySeat(next);
+    },
+    [applySeat]
+  );
+
+  const leaveSeat = useCallback(() => {
+    clearStoredSeat();
+    applySeat(null);
+  }, [applySeat]);
+
   const dismissEviction = useCallback(() => setEvicted(false), []);
+  const dismissDraftClosed = useCallback(() => setDraftClosed(false), []);
 
   const submitPassword = useCallback((password: string) => {
     storePassword(password);
@@ -61,21 +99,24 @@ export function useDraftConnection(): DraftConnection {
 
   useEffect(() => {
     function attemptReconnect() {
-      const storedId = getStoredPlayerId();
-      if (!storedId) {
+      const stored = getStoredSeat();
+      if (!stored) {
         setReconnecting(false);
         return;
       }
       setReconnecting(true);
-      socket.emit("lobby:reconnect", { playerId: storedId }, (result) => {
+      socket.emit("lobby:reconnect", stored, (result) => {
         setReconnecting(false);
         if (result.ok) {
-          setMyPlayerIdState(storedId);
+          applySeat(stored);
         } else {
-          clearStoredPlayerId();
+          clearStoredSeat();
+          applySeat(null);
         }
       });
     }
+
+    const isMine = (draftId: string) => seatRef.current?.draftId === draftId;
 
     function onConnect() {
       setConnected(true);
@@ -103,9 +144,13 @@ export function useDraftConnection(): DraftConnection {
       // retrying with the same known-bad credentials in a loop.
       socket.disconnect();
     }
-    function onLobbyState(state: LobbyStateView) {
-      setLobbyState(state);
+    function onDraftList(list: DraftSummary[]) {
+      setDrafts(list);
     }
+    function onLobbyState(state: LobbyStateView) {
+      if (isMine(state.sessionId)) setLobbyState(state);
+    }
+    // Sent only for the socket's own seat, so no draft id to check: the seat it was sent for may not be stored yet.
     function onMyState(state: { pack: Pack | null; pool: Card[]; pile?: Card[] | null }) {
       setMyPack(state.pack);
       setMyPile(state.pile ?? null);
@@ -114,22 +159,26 @@ export function useDraftConnection(): DraftConnection {
     function onComplete(deckExport: DeckExport) {
       setMyDeckExport(deckExport);
     }
+    function onDraftClosed(draftId: string) {
+      if (!isMine(draftId)) return;
+      clearStoredSeat();
+      applySeat(null);
+      setDraftClosed(true);
+    }
     function onEvicted() {
-      clearStoredPlayerId();
-      setMyPlayerIdState(null);
-      setMyPack(null);
-      setMyPile(null);
-      setMyPool([]);
-      setMyDeckExport(null);
+      clearStoredSeat();
+      applySeat(null);
       setEvicted(true);
     }
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onConnectError);
+    socket.on("drafts:list", onDraftList);
     socket.on("lobby:state", onLobbyState);
     socket.on("draft:myState", onMyState);
     socket.on("draft:complete", onComplete);
+    socket.on("draft:closed", onDraftClosed);
     socket.on("identity:evicted", onEvicted);
 
     // The socket used to connect at module load, and on a fast connection (or
@@ -148,21 +197,27 @@ export function useDraftConnection(): DraftConnection {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
+      socket.off("drafts:list", onDraftList);
       socket.off("lobby:state", onLobbyState);
       socket.off("draft:myState", onMyState);
       socket.off("draft:complete", onComplete);
+      socket.off("draft:closed", onDraftClosed);
       socket.off("identity:evicted", onEvicted);
     };
-  }, []);
+  }, [applySeat]);
 
   return {
     connected,
     reconnecting,
     evicted,
     dismissEviction,
+    draftClosed,
+    dismissDraftClosed,
+    drafts,
+    seat,
+    takeSeat,
+    leaveSeat,
     lobbyState,
-    myPlayerId,
-    setMyPlayerId,
     myPack,
     myPile,
     myPool,

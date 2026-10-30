@@ -71,26 +71,26 @@ test("a started server answers players, and a stopped one doesn't", async (t) =>
 test("stopping keeps the draft: the player is marked disconnected but keeps their seat", async (t) => {
   t.after(ensureStopped);
   lobbyManager.resetForTests(freshSnapshotPath());
-  lobbyManager.createLobbyFromResolvedCube("Test Cube", [testCard("c1"), testCard("c2")], [], {
+  const { draftId } = lobbyManager.createLobbyFromResolvedCube("Test Cube", [testCard("c1"), testCard("c2")], [], {
     cubeId: "test-cube",
     packCount: 1,
     packSize: 1,
     alternatingDraft: true,
   });
-  const host = lobbyManager.addPlayer("Alice");
+  const host = lobbyManager.addPlayer(draftId, "Alice");
   const port = await freePort();
   await startDraftServer({ port, lobbyPassword: "" });
 
   const { socket } = await connect(port);
   const rejoined = await new Promise<ActionResult>((resolve) =>
-    socket.emit("lobby:reconnect", { playerId: host.id }, resolve),
+    socket.emit("lobby:reconnect", { draftId, playerId: host.id }, resolve),
   );
   assert.deepEqual(rejoined, { ok: true });
 
   await stopDraftServer();
   socket.close();
 
-  const session = lobbyManager.getSession()!;
+  const session = lobbyManager.getSession(draftId)!;
   assert.equal(session.status, "lobby");
   assert.deepEqual(
     session.players.map((p) => [p.name, p.connected]),
