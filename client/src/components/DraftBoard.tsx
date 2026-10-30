@@ -6,6 +6,7 @@ import { withOccurrenceKeys } from "../occurrenceKeys.js";
 import { buildDraftPilesKey, getStoredDraftPiles, storeDraftPiles } from "../pileStorage.js";
 import { CardImage } from "./CardImage.js";
 import { CardPile } from "./CardPile.js";
+import { HotkeyInfo } from "./HotkeyInfo.js";
 import { WinstonTable } from "./WinstonTable.js";
 
 interface DraftBoardProps {
@@ -213,7 +214,10 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPile, myPool }: D
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDropOnBackground}
       >
-        <h2>Your pool ({myPool.length})</h2>
+        <div className="pool-pane-header">
+          <h2>Your pool ({myPool.length})</h2>
+          <HotkeyInfo />
+        </div>
         <div className="pile-row">
           {piles.map((pile) => (
             <CardPile

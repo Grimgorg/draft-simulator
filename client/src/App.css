@@ -226,6 +226,79 @@ button:disabled {
   justify-content: space-between;
 }
 
+/* Takes over the h2's uneven margin, so the info button centers on the heading's text. */
+.deck-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 2rem 0 0.75rem;
+}
+
+.deck-title h2 {
+  margin: 0;
+}
+
+/* The keyboard shortcuts button; its list shows on hover or keyboard focus. */
+.hotkey-info {
+  position: relative;
+  display: inline-flex;
+}
+
+.hotkey-info-button {
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-style: italic;
+  font-family: Georgia, serif;
+  line-height: 1;
+}
+
+.hotkey-info:hover .hotkey-info-button,
+.hotkey-info-button:focus-visible {
+  color: var(--text-h);
+  border-color: var(--text);
+}
+
+.hotkey-tooltip {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  /* Above the pile cards, whose z-index is their place in the stack. */
+  z-index: 1000;
+  width: max-content;
+  max-width: 22rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  font-size: 0.85rem;
+}
+
+.hotkey-info:hover .hotkey-tooltip,
+.hotkey-info:focus-within .hotkey-tooltip {
+  display: block;
+}
+
+.hotkey-tooltip dl {
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.hotkey-tooltip dt {
+  color: var(--text-h);
+}
+
+.hotkey-tooltip dd {
+  margin: 0;
+}
+
 .deck-count {
   font-size: 0.9rem;
   color: var(--text);
@@ -365,9 +438,16 @@ button:disabled {
   padding-bottom: 1.5rem;
 }
 
-.pool-pane h2 {
+.pool-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin: 0.75rem 0 0.5rem;
   flex: none;
+}
+
+.pool-pane-header h2 {
+  margin: 0;
 }
 
 .pile-row {

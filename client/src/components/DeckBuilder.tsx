@@ -10,6 +10,7 @@ import {
 import { buildDeckStateKey, buildDraftPilesKey, storeDeckState } from "../pileStorage.js";
 import { CardPile } from "./CardPile.js";
 import { DecklistExport } from "./DecklistExport.js";
+import { HotkeyInfo } from "./HotkeyInfo.js";
 
 interface DeckBuilderProps {
   pool: Card[];
@@ -169,7 +170,10 @@ export function DeckBuilder({ pool, basicLands, playerName, sessionId, myPlayerI
       <div className="deckbuilder">
         <div className="deckbuilder-header">
           <div className="deck-pane-header">
-            <h2>Deck</h2>
+            <div className="deck-title">
+              <h2>Deck</h2>
+              <HotkeyInfo />
+            </div>
             <span className={`deck-count ${mainCards.length < DECK_TARGET ? "deck-count-warning" : ""}`}>
               {mainCards.length} / {DECK_TARGET} cards
             </span>
