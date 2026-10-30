@@ -65,7 +65,7 @@ export function ManagementApp() {
               <InvitePanel state={state} />
             </div>
             <div className="manage-column">
-              <DraftPanel lobby={state.lobby} />
+              <DraftPanel lobby={state.lobby} serverRunning={state.server.status === "running"} />
               <PlayersPanel lobby={state.lobby} playerConnections={state.playerConnections} />
             </div>
           </div>

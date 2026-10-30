@@ -236,6 +236,11 @@ export async function startManagementServer(options: ManagementServerOptions): P
 
     socket.on("manage:startDraft", (callback) => {
       try {
+        // A stopped server keeps the draft, but players can't connect to get their packs.
+        if (getDraftServerState().status !== "running") {
+          callback({ ok: false, error: "Start the server first, so players can pick." });
+          return;
+        }
         callback(startDraft());
       } catch (err) {
         callback({ ok: false, error: errorMessage(err) });

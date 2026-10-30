@@ -7,6 +7,7 @@ import { CreateDraftModal } from "./CreateDraftModal.js";
 
 interface DraftPanelProps {
   lobby: LobbyStateView;
+  serverRunning: boolean;
 }
 
 const STATUS_LABELS: Record<LobbyStateView["status"], string> = {
@@ -16,7 +17,7 @@ const STATUS_LABELS: Record<LobbyStateView["status"], string> = {
   complete: "Finished. Players are building their decks.",
 };
 
-export function DraftPanel({ lobby }: DraftPanelProps) {
+export function DraftPanel({ lobby, serverRunning }: DraftPanelProps) {
   const { settings, status } = lobby;
   const unresolved = lobby.unresolvedCardNames?.length ?? 0;
   const [creating, setCreating] = useState(false);
@@ -34,6 +35,10 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
     <section className="panel" aria-labelledby="draft-heading">
       <h2 id="draft-heading">Current draft</h2>
       <p>{STATUS_LABELS[status]}</p>
+      {/* Stopping the server keeps the draft, so say why nobody can reach it. */}
+      {status !== "empty" && !serverRunning && (
+        <p className="muted">Paused: the server is stopped. Players get their seats back once you start it.</p>
+      )}
       {settings && (
         <dl className="details">
           <dt>Format</dt>
@@ -96,7 +101,7 @@ export function DraftPanel({ lobby }: DraftPanelProps) {
           />
         )}
         {status === "lobby" && settings && (
-          <button type="button" disabled={!enoughPlayers || pending} onClick={start}>
+          <button type="button" disabled={!enoughPlayers || !serverRunning || pending} onClick={start}>
             {enoughPlayers
               ? "Start picking"
               : `Waiting for players (${seated} of ${isWinston ? "" : "at least "}${neededPlayers})`}

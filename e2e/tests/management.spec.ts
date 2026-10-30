@@ -95,9 +95,11 @@ test("a stopped server keeps the draft, and players get their seat back once it 
   await expect(server).toContainText("Stopped. Players can't connect");
   await expect(host.getByText("Connecting to server...")).toBeVisible();
   await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Disconnected/]);
+  await expect(panel(management, "Current draft")).toContainText("Paused: the server is stopped.");
 
   await server.getByRole("button", { name: "Start server" }).click();
   await expect(server).toContainText("Running on port");
+  await expect(panel(management, "Current draft")).not.toContainText("Paused");
   await expect(host.getByRole("heading", { name: CUBE_NAME })).toBeVisible({ timeout: RECONNECT_TIMEOUT });
   await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Connected/]);
 });

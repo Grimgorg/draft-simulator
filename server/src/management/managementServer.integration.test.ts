@@ -273,6 +273,28 @@ test("the host starts and cancels the draft from the management UI, and players 
   assert.deepEqual(await emitAction(socket, "manage:cancelDraft"), { ok: false, error: "No draft in progress to cancel" });
 });
 
+test("picking can't start while the server is stopped, and the draft waits for it", async (t) => {
+  const { management } = await setUp(t);
+  const { socket } = await connect(management.url);
+  t.after(() => socket.close());
+  assert.deepEqual(await emitAction(socket, "manage:startServer"), { ok: true });
+  lobbyManager.createLobbyFromResolvedCube("Test Cube", ["c1", "c2", "c3", "c4"].map(testCard), [], {
+    cubeId: "test-cube",
+    packCount: 1,
+    packSize: 2,
+    alternatingDraft: true,
+  });
+  lobbyManager.addPlayer("Alice");
+  lobbyManager.addPlayer("Bob");
+  assert.deepEqual(await emitAction(socket, "manage:stopServer"), { ok: true });
+
+  assert.deepEqual(await emitAction(socket, "manage:startDraft"), {
+    ok: false,
+    error: "Start the server first, so players can pick.",
+  });
+  assert.equal(lobbyManager.getSession()?.status, "lobby");
+});
+
 test("saved settings go to the .env file, and a restart applies them", async (t) => {
   const { management, envFilePath } = await setUp(t);
   const { socket } = await connect(management.url);
