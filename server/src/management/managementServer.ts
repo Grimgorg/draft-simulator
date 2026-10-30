@@ -15,7 +15,7 @@ import {
 import { countCards, getLastImportedAt } from "../cardData/cardRepository.js";
 import { serveEmbeddedClient } from "../packaged/embeddedClient.js";
 import { isPackaged, resolveClientDist } from "../packaged/seaRuntime.js";
-import { closeDraft } from "../realtime/socketHandlers.js";
+import { closeDraft, releaseSeatAsHost } from "../realtime/socketHandlers.js";
 import * as lobbyManager from "../session/lobbyManager.js";
 import { buildDraftSummaries } from "../session/lobbyStateView.js";
 import {
@@ -210,6 +210,14 @@ export async function startManagementServer(options: ManagementServerOptions): P
     socket.on("manage:closeDraft", (draftId, callback) => {
       try {
         callback(closeDraft(String(draftId)));
+      } catch (err) {
+        callback({ ok: false, error: errorMessage(err) });
+      }
+    });
+
+    socket.on("manage:releaseSeat", (payload, callback) => {
+      try {
+        callback(releaseSeatAsHost(String(payload?.draftId), String(payload?.playerId)));
       } catch (err) {
         callback({ ok: false, error: errorMessage(err) });
       }

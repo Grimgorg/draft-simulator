@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { MIN_PLAYERS, WINSTON_PLAYERS, type Card, type LobbyStateView } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
-import { CloseDraftButton, LeaveDraftButton } from "./DraftControls.js";
+import { CloseDraftButton, LeaveDraftButton, ReleaseSeatMenu } from "./DraftControls.js";
 import { CubePreviewModal } from "./CubePreviewModal.js";
 import { SamplePackModal } from "./SamplePackModal.js";
 import { UnresolvedCardsWarning } from "./UnresolvedCardsWarning.js";
@@ -126,6 +126,7 @@ export function WaitingRoom({ lobbyState, myPlayerId, onLeft }: WaitingRoomProps
               : `Waiting for players (${seated} of ${isWinston ? "" : "at least "}${neededPlayers})`}
           </button>
           <CloseDraftButton status={lobbyState.status} onClosed={onLeft} />
+          <ReleaseSeatMenu players={lobbyState.players} myPlayerId={myPlayerId} />
         </div>
       ) : (
         <>

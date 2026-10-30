@@ -6,6 +6,7 @@ import {
   NO_DRAFT_MESSAGE,
   RECONNECT_TIMEOUT,
   createDraft,
+  draftListItem,
   expectPoolSize,
   joinDraft,
   openNewDraftDialog,
@@ -74,6 +75,38 @@ test("a new lobby password applies after a restart, and players are asked for it
   await player.getByLabel("Password").fill("hunter2");
   await player.getByRole("button", { name: "Connect" }).click();
   await expect(player.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
+});
+
+test("another browser can't take a seat until the draft's creator or the host releases it", async ({
+  openManagement,
+  openPlayer,
+}) => {
+  const { host, guest } = await startTwoPlayerDraft(openPlayer);
+  await expectPoolSize(guest, 0);
+
+  // Bob on a second device: his seat is held by his first browser.
+  const bobsPhone = await openPlayer();
+  await draftListItem(bobsPhone).getByRole("button", { name: "Rejoin" }).click();
+  const bob = bobsPhone.getByRole("button", { name: /Bob/ });
+  await expect(bob).toBeDisabled();
+  await expect(bobsPhone.getByText(/held by another browser/).first()).toBeVisible();
+
+  // The creator releases it from the draft board; then any browser can take it, and the first one is signed out.
+  await host.getByText("Release a seat…").click();
+  await host.getByRole("button", { name: "Release Bob's seat" }).click();
+  await host.getByRole("button", { name: "Release", exact: true }).click();
+  await expect(host.getByText("released: picking it in the rejoin list takes it")).toBeVisible();
+  await expect(bob).toBeEnabled();
+  await bob.click();
+  await expect(guest.getByText(/claimed from another browser/)).toBeVisible();
+  await expectPoolSize(bobsPhone, 0);
+
+  // The host can release any seat from the management UI, the creator's too.
+  const management = await openManagement();
+  const alice = panel(management, "Drafts").getByRole("listitem").filter({ hasText: /^Alice/ });
+  await alice.getByRole("button", { name: "Release seat" }).click();
+  await alice.getByRole("button", { name: "Release", exact: true }).click();
+  await expect(alice).toContainText("Released");
 });
 
 test("after 10 wrong lobby passwords a player is told to wait, until the host restarts the server", async ({

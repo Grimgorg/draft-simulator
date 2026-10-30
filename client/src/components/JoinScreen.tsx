@@ -22,7 +22,7 @@ export function JoinScreen({ draft, onJoined }: JoinScreenProps) {
     socket.emit("lobby:join", { draftId: draft.draftId, playerName }, (result) => {
       setSubmitting(false);
       if (result.ok) {
-        onJoined({ draftId: draft.draftId, playerId: result.playerId });
+        onJoined({ draftId: draft.draftId, playerId: result.playerId, seatToken: result.seatToken });
       } else {
         setError(result.error);
       }

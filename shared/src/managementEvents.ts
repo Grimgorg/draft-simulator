@@ -77,6 +77,8 @@ export interface ManagementClientToServerEvents {
    * gone. Players create, start and close their own drafts from the player page.
    */
   "manage:closeDraft": (draftId: string, callback: (result: ActionResult) => void) => void;
+  /** Frees a player's seat, like a draft's creator can: for a player who lost the browser that held it. */
+  "manage:releaseSeat": (payload: { draftId: string; playerId: string }, callback: (result: ActionResult) => void) => void;
 }
 
 /** Events the server emits to the management UI. */

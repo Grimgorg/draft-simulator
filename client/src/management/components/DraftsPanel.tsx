@@ -25,6 +25,8 @@ function DraftRow({ draft }: DraftRowProps) {
   const isWinston = settings.format === "winston";
   const finished = draft.status === "complete";
   const close = () => run((callback) => managementSocket.emit("manage:closeDraft", draft.draftId, callback));
+  const releaseSeat = (playerId: string) =>
+    run((callback) => managementSocket.emit("manage:releaseSeat", { draftId: draft.draftId, playerId }, callback));
 
   return (
     <li className="manage-draft">
@@ -46,6 +48,21 @@ function DraftRow({ draft }: DraftRowProps) {
               <span className="player-name">{player.name}</span>
               <span className="muted">{player.connected ? "Connected" : "Disconnected"}</span>
               {player.id === draft.creatorPlayerId && <span className="tag">Creator</span>}
+              {player.claimable ? (
+                <span className="tag">Released</span>
+              ) : (
+                <ConfirmButton
+                  label="Release seat"
+                  className="secondary-button"
+                  confirmMessage={
+                    `Release ${player.name}'s seat? Whoever picks ${player.name} in the draft's rejoin list next ` +
+                    "takes it, on any device."
+                  }
+                  confirmLabel="Release"
+                  disabled={pending}
+                  onConfirm={() => releaseSeat(player.id)}
+                />
+              )}
             </li>
           ))}
         </ul>

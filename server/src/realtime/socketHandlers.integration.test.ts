@@ -19,7 +19,7 @@ import type {
 import { testCard } from "../draftEngine/testHelpers.js";
 import * as lobbyManager from "../session/lobbyManager.js";
 import { requireLobbyPassword } from "./lobbyPassword.js";
-import { closeDraft, registerSocketHandlers } from "./socketHandlers.js";
+import { closeDraft, registerSocketHandlers, releaseSeatAsHost } from "./socketHandlers.js";
 
 /**
  * End-to-end tests of the real socket wiring. The first three need internet
@@ -200,7 +200,15 @@ async function seatHostAndGuest(server: TestServer, cardIds: string[], settings:
   assert.ok(hostJoin.ok, JSON.stringify(hostJoin));
   const guestJoin = await guestSocket.emitWithAck("lobby:join", { draftId, playerName: "Bob" });
   assert.ok(guestJoin.ok, JSON.stringify(guestJoin));
-  return { draftId, hostSocket, guestSocket, hostId: hostJoin.playerId, guestId: guestJoin.playerId };
+  return {
+    draftId,
+    hostSocket,
+    guestSocket,
+    hostId: hostJoin.playerId,
+    guestId: guestJoin.playerId,
+    hostToken: hostJoin.seatToken,
+    guestToken: guestJoin.seatToken,
+  };
 }
 
 /** The first card in a player's current pack, read from the server's own state. */
@@ -221,7 +229,7 @@ async function createRealCubeDraft(creator: DraftClientSocket, guest: DraftClien
   assert.ok(lobbyManager.getCubeMeta(created.draftId)!.cardCount > 0);
   const joined = await guest.emitWithAck("lobby:join", { draftId: created.draftId, playerName: "Bob" });
   assert.ok(joined.ok, JSON.stringify(joined));
-  return { draftId: created.draftId, hostId: created.playerId, guestId: joined.playerId };
+  return { draftId: created.draftId, hostId: created.playerId, guestId: joined.playerId, guestToken: joined.seatToken };
 }
 
 test(
@@ -317,7 +325,7 @@ test(
     let guestSocket = await connect(server.url);
 
     try {
-      const { draftId, guestId } = await createRealCubeDraft(hostSocket, guestSocket, 2);
+      const { draftId, guestId, guestToken } = await createRealCubeDraft(hostSocket, guestSocket, 2);
 
       const hostStatePromise = waitForMyState(hostSocket);
       const guestStatePromise = waitForMyState(guestSocket);
@@ -342,7 +350,7 @@ test(
 
       guestSocket = await connect(server.url);
       const reconnectStatePromise = waitForMyState(guestSocket);
-      const reconnectResult = await guestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId });
+      const reconnectResult = await guestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId, seatToken: guestToken });
       assert.equal(reconnectResult.ok, true, JSON.stringify(reconnectResult));
 
       const resumedState = await reconnectStatePromise;
@@ -367,7 +375,7 @@ test(
 );
 
 test(
-  "rejoin mid-draft: picking a still-connected player from another tab evicts the old session",
+  "rejoin mid-draft: the same seat taken from another tab, with its token, evicts the old session",
   { timeout: 30_000 },
   async () => {
     lobbyManager.resetForTests(freshSnapshotPath());
@@ -378,7 +386,7 @@ test(
     let secondGuestSocket: DraftClientSocket | undefined;
 
     try {
-      const { draftId, guestId } = await createRealCubeDraft(hostSocket, guestSocket, 2);
+      const { draftId, guestId, guestToken } = await createRealCubeDraft(hostSocket, guestSocket, 2);
 
       const hostStatePromise = waitForMyState(hostSocket);
       const guestStatePromise = waitForMyState(guestSocket);
@@ -393,7 +401,11 @@ test(
 
       secondGuestSocket = await connect(server.url);
       const rejoinStatePromise = waitForMyState(secondGuestSocket);
-      const rejoinResult = await secondGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId });
+      const rejoinResult = await secondGuestSocket.emitWithAck("lobby:reconnect", {
+        draftId,
+        playerId: guestId,
+        seatToken: guestToken,
+      });
       assert.equal(rejoinResult.ok, true, JSON.stringify(rejoinResult));
 
       await evictionPromise;
@@ -775,7 +787,7 @@ test(
   async (t) => {
     lobbyManager.resetForTests(freshSnapshotPath());
     const server = await startServerFor(t);
-    const { draftId, hostSocket, guestSocket, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
+    const { draftId, hostSocket, guestSocket, guestId, guestToken } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
     const guestConnected = (state: LobbyStateView) => state.players.find((p) => p.id === guestId)?.connected;
 
     const dropped = waitForLobbyStateWhere(hostSocket, (s) => guestConnected(s) === false);
@@ -793,7 +805,10 @@ test(
       "a player can only reconnect to their own draft"
     );
     const back = waitForLobbyStateWhere(hostSocket, (s) => guestConnected(s) === true);
-    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId }), { ok: true });
+    assert.deepEqual(
+      await newGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId, seatToken: guestToken }),
+      { ok: true, seatToken: guestToken }
+    );
     await back;
   }
 );
@@ -894,7 +909,7 @@ test(
   async (t) => {
     lobbyManager.resetForTests(freshSnapshotPath());
     const server = await startServerFor(t);
-    const { draftId, hostSocket, guestSocket, hostId, guestId } = await seatHostAndGuest(
+    const { draftId, hostSocket, guestSocket, hostId, guestId, guestToken } = await seatHostAndGuest(
       server,
       ["c1", "c2", "c3", "c4"],
       { packCount: 2, packSize: 1 }
@@ -921,9 +936,10 @@ test(
     const newGuestSocket = await server.connect();
     const myState = waitForMyState(newGuestSocket);
     const deckExport = waitForDeckExport(newGuestSocket);
-    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId }), {
-      ok: true,
-    });
+    assert.deepEqual(
+      await newGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId, seatToken: guestToken }),
+      { ok: true, seatToken: guestToken }
+    );
 
     assert.deepEqual(await myState, { pack: null, pool: session.pools[guestId] });
     const deck = await deckExport;
@@ -1040,3 +1056,68 @@ test("an event without an acknowledgement callback is dropped instead of crashin
   // Still up, and still answering events that do carry a callback.
   assert.deepEqual(await socket.emitWithAck("lobby:leave"), { ok: false, error: "Not joined to this draft" });
 });
+
+test(
+  "another browser can't take a seat by its public id, nor sign its player out, until the creator or the host releases it",
+  { timeout: 10_000 },
+  async (t) => {
+    lobbyManager.resetForTests(freshSnapshotPath());
+    const server = await startServerFor(t);
+    const { draftId, hostSocket, guestSocket, hostId, guestId, guestToken } = await seatHostAndGuest(server, [
+      "c1",
+      "c2",
+      "c3",
+      "c4",
+    ]);
+    assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
+    let guestEvicted = false;
+    guestSocket.on("identity:evicted", () => (guestEvicted = true));
+
+    const intruder = await server.connect();
+    const held = { ok: false, error: "This seat is held by another browser. Ask the draft's creator or the host to release it." };
+    assert.deepEqual(await intruder.emitWithAck("lobby:reconnect", { draftId, playerId: guestId }), held);
+    assert.deepEqual(await intruder.emitWithAck("lobby:reconnect", { draftId, playerId: guestId, seatToken: "guess" }), held);
+    assert.deepEqual(await intruder.emitWithAck("draft:pick", { scryfallId: firstCardInPack(draftId, guestId) }), {
+      ok: false,
+      error: "Not joined to this draft",
+    });
+    assert.equal(guestEvicted, false, "a refused claim doesn't touch the player holding the seat");
+    assert.equal(lobbyManager.getSession(draftId)!.players.find((p) => p.id === guestId)!.connected, true);
+
+    // Only the creator releases seats, and not their own.
+    assert.deepEqual(await guestSocket.emitWithAck("lobby:releaseSeat", { playerId: hostId }), {
+      ok: false,
+      error: "Only the player who created this draft can do that",
+    });
+    assert.deepEqual(await hostSocket.emitWithAck("lobby:releaseSeat", { playerId: hostId }), {
+      ok: false,
+      error: "You can't release your own seat",
+    });
+    assert.deepEqual(await intruder.emitWithAck("lobby:releaseSeat", { playerId: guestId }), {
+      ok: false,
+      error: "Not joined to this draft",
+    });
+
+    const released = waitForLobbyStateWhere(hostSocket, (s) => s.players.find((p) => p.id === guestId)?.claimable === true);
+    assert.deepEqual(await hostSocket.emitWithAck("lobby:releaseSeat", { playerId: guestId }), { ok: true });
+    await released;
+
+    // Whoever claims it now gets it, with a new token; the old browser is signed out and its token is void.
+    const evicted = waitForEviction(guestSocket);
+    const claimed = await intruder.emitWithAck("lobby:reconnect", { draftId, playerId: guestId });
+    assert.ok(claimed.ok, JSON.stringify(claimed));
+    assert.notEqual(claimed.seatToken, guestToken);
+    await evicted;
+    const oldBrowser = await server.connect();
+    assert.deepEqual(
+      await oldBrowser.emitWithAck("lobby:reconnect", { draftId, playerId: guestId, seatToken: guestToken }),
+      held
+    );
+
+    // The host can release any seat from the management UI, the creator's included.
+    assert.deepEqual(releaseSeatAsHost(draftId, hostId), { ok: true });
+    assert.equal(lobbyManager.isSeatClaimable(draftId, hostId), true);
+    assert.deepEqual(releaseSeatAsHost(draftId, "nobody"), { ok: false, error: "No matching player found for this draft" });
+    assert.deepEqual(releaseSeatAsHost("no-draft", hostId), { ok: false, error: "This draft doesn't exist anymore" });
+  }
+);

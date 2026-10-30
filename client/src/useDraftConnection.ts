@@ -108,7 +108,10 @@ export function useDraftConnection(): DraftConnection {
       socket.emit("lobby:reconnect", stored, (result) => {
         setReconnecting(false);
         if (result.ok) {
-          applySeat(stored);
+          // A seat stored before seats had tokens gets one now.
+          const seat = { ...stored, seatToken: result.seatToken };
+          storeSeat(seat);
+          applySeat(seat);
         } else {
           clearStoredSeat();
           applySeat(null);

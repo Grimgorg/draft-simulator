@@ -6,7 +6,7 @@ import { withOccurrenceKeys } from "../occurrenceKeys.js";
 import { buildDraftPilesKey, getStoredDraftPiles, storeDraftPiles } from "../pileStorage.js";
 import { CardImage } from "./CardImage.js";
 import { CardPile } from "./CardPile.js";
-import { CloseDraftButton } from "./DraftControls.js";
+import { CloseDraftButton, ReleaseSeatMenu } from "./DraftControls.js";
 import { HotkeyInfo } from "./HotkeyInfo.js";
 import { WinstonTable } from "./WinstonTable.js";
 
@@ -222,6 +222,7 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPile, myPool, onC
           <HotkeyInfo />
           {lobbyState.creatorPlayerId === myPlayerId && (
             <div className="pool-pane-actions">
+              <ReleaseSeatMenu players={lobbyState.players} myPlayerId={myPlayerId} />
               <CloseDraftButton status={lobbyState.status} onClosed={onClosed} />
             </div>
           )}

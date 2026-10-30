@@ -13,17 +13,31 @@ export type NewDraftSettings = { cubeIdOrUrl?: string; setCode?: string } & Omit
 
 /** Events the client emits to the server. */
 export interface ClientToServerEvents {
-  /** Opens a new draft and seats its creator in it, as `playerName`. Only the creator can start or close it. */
+  /**
+   * Opens a new draft and seats its creator in it, as `playerName`. Only the creator can start or close it. Like
+   * lobby:join, it answers with the seat's token: the browser keeps it to take the seat back later.
+   */
   "draft:create": (
     payload: NewDraftSettings & { playerName: string },
-    callback: (result: ActionResultWithData<{ draftId: string; playerId: string }>) => void
+    callback: (result: ActionResultWithData<{ draftId: string; playerId: string; seatToken: string }>) => void
   ) => void;
   "lobby:join": (
     payload: { draftId: string; playerName: string },
-    callback: (result: ActionResultWithData<{ playerId: string }>) => void
+    callback: (result: ActionResultWithData<{ playerId: string; seatToken: string }>) => void
   ) => void;
-  /** Re-attaches this socket to an existing player id, e.g. after a page refresh or a network blip. */
-  "lobby:reconnect": (payload: { draftId: string; playerId: string }, callback: (result: ActionResult) => void) => void;
+  /**
+   * Re-attaches this socket to an existing player, e.g. after a page refresh or a network blip. Needs the seat's
+   * token, unless the seat is claimable; taking a claimable one issues a new token, which the answer carries.
+   */
+  "lobby:reconnect": (
+    payload: { draftId: string; playerId: string; seatToken?: string },
+    callback: (result: ActionResultWithData<{ seatToken: string }>) => void
+  ) => void;
+  /**
+   * The creator frees another player's seat, for a player who lost the browser that held it: whoever picks it in
+   * the rejoin list next takes it, on any device.
+   */
+  "lobby:releaseSeat": (payload: { playerId: string }, callback: (result: ActionResult) => void) => void;
   /**
    * Gives up this browser's seat. Before the draft starts it removes the player, which its creator can't do (they
    * close it instead); once it's complete the player stays in it, with their pool. Refused while it's drafted.
