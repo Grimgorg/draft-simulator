@@ -21,16 +21,6 @@ export function ResultsScreen({ lobbyState, myPlayerId, myPool }: ResultsScreenP
         sessionId={lobbyState.sessionId}
         myPlayerId={myPlayerId}
       />
-
-      <h2>Players</h2>
-      <ul className="player-list">
-        {lobbyState.players.map((player) => (
-          <li key={player.id}>
-            {player.name}
-            {player.id === myPlayerId && <span className="tag">you</span>}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
