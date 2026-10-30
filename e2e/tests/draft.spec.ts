@@ -133,3 +133,30 @@ test("a player stacks pool cards and takes one out of the middle with Ctrl+drag"
   await host.getByRole("button", { name: "Keyboard shortcuts" }).hover();
   await expect(host.getByRole("tooltip")).toContainText("Ctrl (⌘ on Mac) + drag");
 });
+
+test("the pool wraps into rows instead of scrolling sideways, and a wide window keeps the preview off the cards", async ({
+  openManagement,
+  openPlayer,
+}) => {
+  const { host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
+  // Room for two piles a row.
+  await host.setViewportSize({ width: 450, height: 900 });
+  for (let pick = 1; pick <= 3; pick++) {
+    await pickFirstCard(host);
+    await expectPoolSize(host, pick);
+    await pickFirstCard(guest);
+    await expectPoolSize(guest, pick);
+  }
+  const pileTops = await host.locator(".pool-pane .pile").evaluateAll((piles) => piles.map((p) => p.getBoundingClientRect().top));
+  expect(pileTops[2]).toBeGreaterThan(pileTops[0]!);
+  const row = host.locator(".pool-pane .pile-row");
+  expect(await row.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+
+  await host.setViewportSize({ width: 1600, height: 900 });
+  await packCards(host).first().hover();
+  const preview = await host.locator(".card-preview-overlay").boundingBox();
+  const pack = await host.locator(".pack-pane").boundingBox();
+  const pool = await host.locator(".pool-pane").boundingBox();
+  expect(preview!.x).toBeGreaterThanOrEqual(pack!.x + pack!.width);
+  expect(preview!.x).toBeGreaterThanOrEqual(pool!.x + pool!.width);
+});
