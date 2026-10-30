@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { DraftSummary } from "@draft-simulator/shared";
+import { MAX_PLAYER_NAME_LENGTH, type DraftSummary } from "@draft-simulator/shared";
 import type { StoredSeat } from "../playerIdentity.js";
 import { socket } from "../socket.js";
 
@@ -38,7 +38,13 @@ export function JoinScreen({ draft, onJoined }: JoinScreenProps) {
       <form className="form" onSubmit={handleSubmit}>
         <label>
           Your name
-          <input value={playerName} onChange={(e) => setPlayerName(e.target.value)} required autoFocus />
+          <input
+            value={playerName}
+            onChange={(e) => setPlayerName(e.target.value)}
+            maxLength={MAX_PLAYER_NAME_LENGTH}
+            required
+            autoFocus
+          />
         </label>
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={submitting}>

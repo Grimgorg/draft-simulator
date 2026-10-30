@@ -441,6 +441,14 @@ test("draft:create refuses a blank name or bad settings, and opens no draft", { 
     ok: false,
     error: "Player name is required",
   });
+  assert.deepEqual(await socket.emitWithAck("draft:create", { ...cube, playerName: "x".repeat(41) }), {
+    ok: false,
+    error: "Player names can be at most 40 characters",
+  });
+  assert.deepEqual(await socket.emitWithAck("draft:create", { ...cube, playerName: "Alice", packCount: 1e9 }), {
+    ok: false,
+    error: "A draft can have at most 10 packs per player",
+  });
   assert.deepEqual(await socket.emitWithAck("draft:create", { ...cube, playerName: "Alice", cubeIdOrUrl: " " }), {
     ok: false,
     error: "Cube URL or ID is required",
@@ -1015,3 +1023,20 @@ test(
     }
   }
 );
+
+test("an event without an acknowledgement callback is dropped instead of crashing the server", { timeout: 10_000 }, async (t) => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const server = await startServerFor(t);
+  const socket = await server.connect();
+  // Untyped, so it can send what the real client never would.
+  const raw = socket as unknown as ClientSocket;
+
+  raw.emit("lobby:leave");
+  raw.emit("draft:pick", { scryfallId: "x" });
+  raw.emit("lobby:cubeCards", { notA: "callback" });
+  raw.emit("draft:create", { playerName: "Mallory", cubeIdOrUrl: " ", packCount: 3, packSize: 15 });
+  raw.emit("winston:take", { pileIndex: 0 });
+
+  // Still up, and still answering events that do carry a callback.
+  assert.deepEqual(await socket.emitWithAck("lobby:leave"), { ok: false, error: "Not joined to this draft" });
+});

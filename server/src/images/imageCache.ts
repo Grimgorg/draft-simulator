@@ -19,13 +19,28 @@ export function setImageDirForTests(isolatedImageDir: string): void {
 }
 
 /**
+ * The cache file for `cacheKey`, or undefined unless it lies directly inside the image dir. A second barrier behind
+ * the routes' UUID check, so loosening that check can't bring back the path traversal it fixed.
+ */
+export function resolveCachedImagePath(cacheKey: string): string | undefined {
+  const root = path.resolve(imageDir) + path.sep;
+  const cachedPath = path.resolve(root, `${cacheKey}.jpg`);
+  if (!cachedPath.startsWith(root) || path.dirname(cachedPath) + path.sep !== root) return undefined;
+  return cachedPath;
+}
+
+/**
  * Serves one card image from the local cache (keyed by `cacheKey`),
  * downloading and caching it from `sourceUri` on first request. Keeps the
  * client from ever talking to Scryfall directly and keeps the draft usable
  * if the host's internet drops mid-session.
  */
 async function serveImage(res: Response, lookupSourceUri: () => string | undefined, cacheKey: string): Promise<void> {
-  const cachedPath = path.join(imageDir, `${cacheKey}.jpg`);
+  const cachedPath = resolveCachedImagePath(cacheKey);
+  if (!cachedPath) {
+    res.status(404).json({ error: "Unknown card" });
+    return;
+  }
 
   if (fs.existsSync(cachedPath)) {
     res.sendFile(cachedPath);

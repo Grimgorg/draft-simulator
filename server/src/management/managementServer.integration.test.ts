@@ -146,6 +146,16 @@ test("a web page from elsewhere, or a rebound host name, is turned away", async 
   assert.equal(await getStatus(pollingUrl, { origin: "http://localhost:5173" }), 200);
 });
 
+test("no other site can show the management page in a frame", async (t) => {
+  const { management } = await setUp(t);
+
+  const res = await fetch(new URL("manage.html", management.url));
+  assert.equal(res.headers.get("content-security-policy"), "frame-ancestors 'none'");
+  assert.equal(res.headers.get("x-frame-options"), "DENY");
+  assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(res.headers.get("x-powered-by"), null);
+});
+
 test("the management UI gets the logs so far, then each new line", async (t) => {
   const { management } = await setUp(t);
   recordLog("info", "logged before connecting");

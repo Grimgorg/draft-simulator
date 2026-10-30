@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import type { DraftSettings } from "@draft-simulator/shared";
+import { MAX_PLAYERS, type DraftSettings } from "@draft-simulator/shared";
 import { getSourceImageUri } from "../cardData/cardRepository.js";
 import { getDb } from "../db/database.js";
 import { testCard } from "../draftEngine/testHelpers.js";
@@ -241,6 +241,9 @@ test("createLobby rejects bad settings before contacting CubeCobra", async (t) =
     [["   ", 3, 15, true], /Cube URL or ID is required/],
     [["cube", 0, 15, true], /at least 1 pack/],
     [["cube", 3, 0, true], /at least 1 card/],
+    [["cube", 1_000_000_000, 15, true], /at most 10 packs/],
+    [["cube", 3, 31, true], /at most 30 cards/],
+    [["cube", Number.NaN, 15, true], /at least 1 pack/],
   ];
   for (const [args, error] of cases) {
     await assert.rejects(lobbyManager.createLobby(...args), error, JSON.stringify(args));
@@ -272,13 +275,16 @@ test("a server holds at most MAX_OPEN_DRAFTS open drafts; finished ones don't co
   assert.equal(lobbyManager.listDrafts().length, lobbyManager.MAX_OPEN_DRAFTS + 1);
 });
 
-test("trims player names and rejects blank ones", () => {
+test("trims player names and rejects blank or overlong ones", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
   assert.throws(() => lobbyManager.addPlayer("no-such-draft", "Bob"), /doesn't exist anymore/);
   const draftId = createLobby();
   lobbyManager.addPlayer(draftId, "  Alice ");
 
   assert.throws(() => lobbyManager.addPlayer(draftId, "   "), /Player name is required/);
+  assert.throws(() => lobbyManager.addPlayer(draftId, "x".repeat(41)), /at most 40 characters/);
+  // The limit counts the stored, trimmed name.
+  assert.equal(lobbyManager.validatePlayerName(`  ${"x".repeat(40)}  `), "x".repeat(40));
   assert.equal(lobbyManager.addPlayer(draftId, "  Bob  ").name, "Bob");
   assert.deepEqual(
     lobbyManager.getSession(draftId)!.players.map((p) => p.name),
@@ -298,7 +304,7 @@ test("starting with fewer than two players fails and leaves the lobby open to jo
   assert.equal(lobbyManager.beginDraft(draftId).status, "drafting");
 });
 
-test("the lobby has no seat limit: the draft deals to everyone seated when it starts", () => {
+test("the draft deals to everyone seated when it starts", () => {
   lobbyManager.resetForTests(freshSnapshotPath());
   const sixCards = ["c1", "c2", "c3", "c4", "c5", "c6"].map(testCard);
   const draftId = createLobby({ packCount: 1, packSize: 2 }, sixCards);
@@ -308,6 +314,15 @@ test("the lobby has no seat limit: the draft deals to everyone seated when it st
   assert.deepEqual(session.waitingOn, seated.map((player) => player.id));
   for (const player of seated) assert.equal(session.currentPacks[player.id]!.cards.length, 2);
   assert.throws(() => lobbyManager.addPlayer(draftId, "Dave"), /already started/);
+});
+
+test("a lobby seats at most MAX_PLAYERS", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const draftId = createLobby();
+  for (let seat = 0; seat < MAX_PLAYERS; seat++) lobbyManager.addPlayer(draftId, `Player ${seat + 1}`);
+
+  assert.throws(() => lobbyManager.addPlayer(draftId, "One too many"), /already has 24 players/);
+  assert.equal(lobbyManager.getSession(draftId)!.players.length, MAX_PLAYERS);
 });
 
 test("a cube too small for everyone seated is reported when the draft starts, and the lobby stays open", () => {

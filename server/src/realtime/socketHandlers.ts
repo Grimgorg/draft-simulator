@@ -179,6 +179,12 @@ export function registerSocketHandlers(io: IoServer): void {
   currentIo = io;
   io.on("connection", (socket: IoSocket) => {
     console.log(`Client connected: ${socket.id}`);
+    // Every client event ends with an acknowledgement callback, which the handlers report through. An event sent
+    // by hand without one made `callback(...)` throw outside any try, and that uncaught error stopped the server,
+    // ending every draft. The client never sends one, so it's dropped before it reaches a handler.
+    socket.use((packet, next) => {
+      if (typeof packet[packet.length - 1] === "function") next();
+    });
     try {
       removeExpiredDrafts(io);
       socket.emit("drafts:list", buildDraftSummaries());
@@ -188,9 +194,8 @@ export function registerSocketHandlers(io: IoServer): void {
 
     socket.on("draft:create", async (payload, callback) => {
       try {
-        const playerName = String(payload?.playerName ?? "").trim();
         // Checked before the cube import, so a draft is never left without its creator.
-        if (!playerName) throw new Error("Player name is required");
+        const playerName = lobbyManager.validatePlayerName(String(payload?.playerName ?? ""));
         const draftId = await createLobby(payload);
         const player = lobbyManager.addPlayer(draftId, playerName);
         bindSocketToPlayer(io, socket, draftId, player.id);
@@ -297,7 +302,7 @@ export function registerSocketHandlers(io: IoServer): void {
     socket.on("draft:pick", (payload, callback) => {
       try {
         const seat = requireSeat(socket);
-        const outcome = lobbyManager.pick(seat.draftId, seat.playerId, payload.scryfallId);
+        const outcome = lobbyManager.pick(seat.draftId, seat.playerId, String(payload?.scryfallId));
         callback({ ok: true });
 
         if (outcome !== "waitingOnOthers") {

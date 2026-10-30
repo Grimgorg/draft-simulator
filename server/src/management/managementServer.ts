@@ -28,6 +28,8 @@ import {
 import { getLogHistory, onLog } from "./logBuffer.js";
 import { buildManagementStateView, listLanAddresses } from "./managementStateView.js";
 import { openInBrowser } from "./openInBrowser.js";
+import { isLoopbackUrl } from "./requestOrigin.js";
+import { MANAGEMENT_PAGE_POLICY, securityHeaders } from "./securityHeaders.js";
 import { validateSettings, writeSettings } from "./settingsFile.js";
 
 type ManagementIoServer = Server<ManagementClientToServerEvents, ManagementServerToClientEvents>;
@@ -51,16 +53,6 @@ export interface ManagementServer {
   /** Sends the current state to the management UI, for changes it isn't told about otherwise. */
   broadcastState: () => void;
   close: () => Promise<void>;
-}
-
-const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-function isLoopbackUrl(url: string): boolean {
-  try {
-    return LOOPBACK_HOSTNAMES.has(new URL(url).hostname);
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -94,6 +86,8 @@ export async function startManagementServer(options: ManagementServerOptions): P
   }
 
   const app = express();
+  app.disable("x-powered-by");
+  app.use(securityHeaders(MANAGEMENT_PAGE_POLICY));
   app.use((req, res, next) => {
     if (isAllowedManagementRequest(req.headers)) next();
     else res.sendStatus(403);
