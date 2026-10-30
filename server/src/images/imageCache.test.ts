@@ -74,6 +74,22 @@ test("an unknown card is a 404, without asking Scryfall", async (t) => {
   assert.deepEqual(server.scryfallRequests, []);
 });
 
+test("an id that climbs out of the image dir is a 404, not a file from elsewhere on disk", async (t) => {
+  const parentDir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-simulator-images-parent-"));
+  const imageDir = path.join(parentDir, "images");
+  fs.mkdirSync(imageDir);
+  fs.writeFileSync(path.join(parentDir, "secret.jpg"), "not a card image");
+  fs.writeFileSync(path.join(parentDir, "secret_back.jpg"), "not a card image");
+  const server = await startImageServer(t, undefined, imageDir);
+
+  for (const imagePath of ["/images/..%2Fsecret", "/images/..%2Fsecret/back", "/images/..%5Csecret"]) {
+    const res = await server.get(imagePath);
+    assert.equal(res.status, 404, imagePath);
+    assert.notEqual(res.body, "not a card image", imagePath);
+  }
+  assert.deepEqual(server.scryfallRequests, []);
+});
+
 test("an image is downloaded from Scryfall once, then served from the cache", needsCardCache, async (t) => {
   const server = await startImageServer(t);
   const boltId = cachedCardId("Lightning Bolt");
