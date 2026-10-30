@@ -18,6 +18,15 @@ function cardNamesIn(page: Page, selector: string): Promise<string[]> {
   return page.locator(selector).getByRole("img").evaluateAll((imgs) => imgs.map((img) => img.getAttribute("alt")!));
 }
 
+/** The card names in each of the player's pool piles, bottom to top. */
+function poolPiles(page: Page): Promise<string[][]> {
+  return page
+    .locator(".pool-pane .pile")
+    .evaluateAll((piles) =>
+      piles.map((pile) => Array.from(pile.querySelectorAll("img"), (img) => img.getAttribute("alt")!))
+    );
+}
+
 test("a player waiting for the draft to start looks through the cube's cards", async ({
   openManagement,
   openPlayer,
@@ -85,4 +94,42 @@ test("a player who refreshes mid-draft gets back the same pack and pool and keep
   await pickFirstCard(host);
   await expect(guest.getByRole("heading", { name: `Pack 2 of ${PACKS}, pick 1` })).toBeVisible();
   await expect(host.getByRole("heading", { name: `Pack 2 of ${PACKS}, pick 1` })).toBeVisible();
+});
+
+test("a player stacks pool cards and takes one out of the middle with Ctrl+drag", async ({
+  openManagement,
+  openPlayer,
+}) => {
+  const { host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
+  for (let pick = 1; pick <= 3; pick++) {
+    await pickFirstCard(host);
+    await expectPoolSize(host, pick);
+    await pickFirstCard(guest);
+    await expectPoolSize(guest, pick);
+  }
+  const [[a], [b], [c]] = await poolPiles(host);
+  const piles = host.locator(".pool-pane .pile");
+
+  // A plain drag moves a pile's card onto another pile.
+  await piles.nth(1).locator(".pile-card").dragTo(piles.nth(0));
+  await expect.poll(() => poolPiles(host)).toEqual([[a, b], [c]]);
+  await piles.nth(1).locator(".pile-card").dragTo(piles.nth(0));
+  await expect.poll(() => poolPiles(host)).toEqual([[a, b, c]]);
+
+  // Ctrl+drag grabs the middle card by its visible top band and takes only it to a new pile, not the card on top too.
+  // ⌘ on macOS, where Ctrl+mousedown opens the context menu instead of starting the drag.
+  await host.keyboard.down("ControlOrMeta");
+  await piles
+    .nth(0)
+    .locator(".pile-card")
+    .nth(1)
+    .dragTo(host.locator(".pool-pane .pile-row"), {
+      sourcePosition: { x: 75, y: 10 },
+      targetPosition: { x: 600, y: 20 },
+    });
+  await host.keyboard.up("ControlOrMeta");
+  await expect.poll(() => poolPiles(host)).toEqual([[a, c], [b]]);
+
+  await host.getByRole("button", { name: "Keyboard shortcuts" }).hover();
+  await expect(host.getByRole("tooltip")).toContainText("Ctrl (⌘ on Mac) + drag");
 });

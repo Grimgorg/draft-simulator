@@ -9,7 +9,8 @@ interface PiledCard {
 interface CardPileProps {
   cards: PiledCard[];
   /** Called with the dragged card's id plus every id stacked on top of it,
-   * bottom to top — dragging a card always brings its whole "run" along. */
+   * bottom to top — dragging a card brings its whole "run" along, unless the
+   * drag started with Ctrl or ⌘ held, which takes just that card. */
   onDropCard: (ids: string[]) => void;
 }
 
@@ -26,8 +27,10 @@ export function CardPile({ cards, onDropCard }: CardPileProps) {
 
   function handleDragStart(e: React.DragEvent, index: number) {
     // Everything stacked above the dragged card (higher index, per the
-    // z-index convention below) comes along as one rigid run.
-    const movingIds = cards.slice(index).map((c) => c.id);
+    // z-index convention below) comes along as one rigid run. Ctrl takes
+    // the card out on its own; ⌘ too, since on a Mac Ctrl+click opens the
+    // context menu and the drag never starts.
+    const movingIds = e.ctrlKey || e.metaKey ? [cards[index]!.id] : cards.slice(index).map((c) => c.id);
     e.dataTransfer.setData("text/plain", movingIds.join(","));
     e.dataTransfer.effectAllowed = "move";
   }
