@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import type { Socket } from "socket.io";
 import type { ClientToServerEvents, ServerToClientEvents } from "@draft-simulator/shared";
 import { clientAddress } from "../limits/clientAddress.js";
@@ -11,16 +11,22 @@ import { createWindowCounter } from "../limits/windowCounter.js";
 const MAX_WRONG_PASSWORDS = 10;
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 
-function sha256(text: string): Buffer {
-  return createHash("sha256").update(text).digest();
-}
-
 /**
- * Compared as hashes: timingSafeEqual needs inputs of equal length, and comparing the strings themselves with ===
- * stops at the first differing character, which in principle tells a patient attacker how much of a guess was right.
+ * Compared in constant time: === stops at the first differing character, which in principle tells a patient
+ * attacker how much of a guess was right. timingSafeEqual needs inputs of equal length, so both are padded to the
+ * longer one, and the lengths compared after. (Hashing them to equal length instead made CodeQL report the password
+ * as stored with a weak hash, though nothing is stored.)
  */
 function isRightPassword(given: unknown, password: string): boolean {
-  return typeof given === "string" && timingSafeEqual(sha256(given), sha256(password));
+  if (typeof given !== "string") return false;
+  const givenBytes = Buffer.from(given);
+  const passwordBytes = Buffer.from(password);
+  const length = Math.max(givenBytes.length, passwordBytes.length);
+  const paddedGiven = Buffer.alloc(length);
+  const paddedPassword = Buffer.alloc(length);
+  givenBytes.copy(paddedGiven);
+  passwordBytes.copy(paddedPassword);
+  return timingSafeEqual(paddedGiven, paddedPassword) && givenBytes.length === passwordBytes.length;
 }
 
 /**

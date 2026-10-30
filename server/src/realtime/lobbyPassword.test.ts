@@ -19,6 +19,9 @@ test("only the right password gets in, and a wrong one, or none, is invalid_pass
   assert.equal(attempt(middleware, "hunter2"), undefined);
   assert.equal(attempt(middleware, "hunter"), "invalid_password");
   assert.equal(attempt(middleware, "hunter22"), "invalid_password");
+  // Padding to equal length mustn't make a trailing zero byte match the padding.
+  assert.equal(attempt(middleware, "hunter2\0"), "invalid_password");
+  assert.equal(attempt(requireLobbyPassword("pässwörd"), "pässwörd"), undefined);
   assert.equal(attempt(middleware, ""), "invalid_password");
   assert.equal(attempt(middleware, undefined), "invalid_password");
   assert.equal(attempt(middleware, ["hunter2"]), "invalid_password");
