@@ -1,7 +1,8 @@
 name: CI
 
 # A pull request into main, and every new push to it, runs the tests, lints
-# the desktop app's Rust code, checks that the version in the root
+# the desktop app's Rust code, checks the dependencies for known
+# vulnerabilities, checks that the version in the root
 # package.json is higher than the latest GitHub Release, and builds and
 # smoke-tests the desktop app for every platform without releasing it. A push
 # to main (a merged pull request) runs the same, then publishes the
@@ -19,8 +20,8 @@ name: CI
 #
 # These checks only block a merge because main's and dev's rulesets
 # ("protect" and "protect-dev", under Settings → Rules) require test, desktop,
-# version and the four package checks. A job renamed here must be renamed
-# there too, or no pull request can
+# audit, version and the four package checks, plus codeql.yml's checks. A job
+# renamed here must be renamed there too, or no pull request can
 # be merged. The jobs that write ask for contents: write. The package jobs
 # also need the repo secrets TAURI_SIGNING_PRIVATE_KEY and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: they sign the updates installed apps
@@ -62,6 +63,8 @@ env:
   # Collects the Rust crates' licenses for THIRD_PARTY_NOTICES.txt. Pinned, so
   # a new release can't change what the build accepts.
   CARGO_ABOUT_VERSION: "0.9.2"
+  # Checks the Rust crates against the RustSec advisory database.
+  CARGO_AUDIT_VERSION: "0.22.2"
 
 jobs:
   test:
@@ -69,10 +72,10 @@ jobs:
     outputs:
       card-cache-key: ${{ steps.card-cache-key.outputs.key }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Test the Claude Code hook that guards main
         run: .claude/hooks/guard-main.test.sh
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -88,7 +91,7 @@ jobs:
         run: echo "key=cards-v3-$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
       - name: Restore card cache
         id: card-cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: server/data/cards.sqlite3
           key: ${{ steps.card-cache-key.outputs.key }}
@@ -123,7 +126,7 @@ jobs:
       - name: Upload browser test report
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-report
           path: |
@@ -138,8 +141,8 @@ jobs:
   desktop:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -147,7 +150,7 @@ jobs:
       - run: npm run typecheck --workspace desktop
       - name: Install the Linux libraries Tauri builds against
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: desktop/src-tauri
       - run: cargo clippy --manifest-path desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
@@ -161,6 +164,33 @@ jobs:
         working-directory: desktop/src-tauri
         run: cargo about generate --fail --locked --config about.toml --manifest-path Cargo.toml about.hbs > /dev/null
 
+  # Fails on known vulnerabilities in the lockfiles, so a pull request can't
+  # bring one in and a newly published advisory blocks merging until it's
+  # fixed (Dependabot opens the update into dev). What reaches hosts and
+  # players (the server, the client, the desktop app's crates) fails on any
+  # advisory; build and test tools only on high or critical ones. cargo audit
+  # fails on vulnerabilities only: its "unmaintained" warnings are mostly
+  # Tauri's Linux GTK crates, which no update here can replace.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Audit the npm packages hosts and players run
+        run: npm audit --omit=dev --audit-level=moderate
+      - name: Audit the npm build and test tools
+        run: npm audit --audit-level=high
+      # Only to keep the cargo-audit binary in ~/.cargo/bin between runs.
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: desktop/src-tauri
+      - run: cargo install --locked "cargo-audit@${{ env.CARGO_AUDIT_VERSION }}"
+      - name: Audit the Rust crates
+        working-directory: desktop/src-tauri
+        run: cargo audit
+
   # Compares against the highest published release, not the previous commit:
   # a merge that forgot the bump must fail even if an older commit had one.
   # Stable versions are plain X.Y.Z, betas X.Y.Z-beta.N. sort -V only compares
@@ -173,7 +203,7 @@ jobs:
     outputs:
       tag: ${{ steps.check.outputs.tag }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check the version was increased
         id: check
         shell: bash
@@ -231,7 +261,7 @@ jobs:
   # the tag on the merged commit. A beta is a prerelease, which GitHub never
   # makes the latest release, so stable apps can't update to it.
   create-release:
-    needs: [test, desktop, version]
+    needs: [test, desktop, audit, version]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     permissions:
@@ -291,8 +321,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -301,7 +331,7 @@ jobs:
 
       - name: Restore card cache
         id: card-cache
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: server/data/cards.sqlite3
           key: ${{ needs.test.outputs.card-cache-key }}
@@ -321,7 +351,7 @@ jobs:
       - name: Install the Linux libraries Tauri builds against
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: desktop/src-tauri
       - run: cargo install --locked --features cli "cargo-about@${{ env.CARGO_ABOUT_VERSION }}"

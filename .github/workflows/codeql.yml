@@ -1,0 +1,52 @@
+name: CodeQL
+
+# Static analysis for security bugs (path traversal, injection and the like)
+# in the TypeScript, the desktop app's Rust and these workflows. A pull request
+# into main or dev is analyzed, and the rulesets "protect" and "protect-dev"
+# require these checks and block merging one that adds an alert of high
+# severity or above (the "code scanning results" rule). Pushes to main and
+# dev give pull requests a baseline to compare against; the weekly run finds
+# what new queries catch in code that hasn't changed. Results are under
+# Security → Code scanning. ci.yml's release doesn't wait for it: a push to
+# main or dev comes from a pull request whose analysis already passed.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Like ci.yml: a new push cancels an older run on a pull request, never on
+# main or dev, whose analyses are the baseline pull requests compare against.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+jobs:
+  codeql:
+    # Fixed names, because the rulesets require these checks by name.
+    name: codeql (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, rust]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # build-mode none reads the source without building it, so the Rust
+      # analysis needs neither the Tauri libraries nor the server executable.
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:${{ matrix.language }}

@@ -92,8 +92,10 @@ desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, s
                           splash/ (page shown while it starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
 release/                  built executables, gitignored (as are desktop/src-tauri/{target,gen,binaries})
-.github/workflows/ci.yml  on pull requests into main: tests, clippy, version check, and building and smoke-testing the installers;
-                          pushes to main also release them. main's "protect" ruleset requires these checks by job name
+.github/workflows/ci.yml  on pull requests into main and dev: tests, clippy, dependency audit, version check, and building and
+                          smoke-testing the installers; pushes to main and dev also release them. The rulesets require these
+                          checks by job name, and codeql.yml's
+.github/dependabot.yml    weekly update PRs into dev; they need a version bump pushed to their branch before they can pass
 ```
 
 ## Conventions
