@@ -33,6 +33,17 @@ export type DraftStatus = "lobby" | "drafting" | "complete";
 /** The table is whoever has taken a seat when the draft's creator starts picking, at least this many. */
 export const MIN_PLAYERS = 2;
 
+/**
+ * Upper limits on what a player can ask for, far above any real draft. A set draft opens its boosters when it starts,
+ * so a draft:create asking for a billion packs would have run the server out of memory; every seat gets every
+ * lobby:state; and names go to everyone connected, in drafts:list. The server enforces them, the client's inputs
+ * stop there too.
+ */
+export const MAX_PACK_COUNT = 10;
+export const MAX_PACK_SIZE = 30;
+export const MAX_PLAYERS = 24;
+export const MAX_PLAYER_NAME_LENGTH = 40;
+
 /** A Winston draft is for exactly this many players. */
 export const WINSTON_PLAYERS = 2;
 /** The piles a Winston draft's players choose from. */

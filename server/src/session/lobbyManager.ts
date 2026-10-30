@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type { Card, DraftSettings, Player } from "@draft-simulator/shared";
-import { WINSTON_PLAYERS } from "@draft-simulator/shared";
+import {
+  MAX_PACK_COUNT,
+  MAX_PACK_SIZE,
+  MAX_PLAYER_NAME_LENGTH,
+  MAX_PLAYERS,
+  WINSTON_PLAYERS,
+} from "@draft-simulator/shared";
 import { findSetPrintings } from "../cardData/cardRepository.js";
 import { importCubeFromCubeCobra } from "../cubeImport/cubeCobraImporter.js";
 import {
@@ -174,7 +180,19 @@ function checkOpenDraftLimit(): void {
 function validateNewLobbyInputs(packCount: number, packSize: number): void {
   checkOpenDraftLimit();
   if (!Number.isInteger(packCount) || packCount < 1) throw new Error("Need at least 1 pack");
+  if (packCount > MAX_PACK_COUNT) throw new Error(`A draft can have at most ${MAX_PACK_COUNT} packs per player`);
   if (!Number.isInteger(packSize) || packSize < 1) throw new Error("Packs need at least 1 card");
+  if (packSize > MAX_PACK_SIZE) throw new Error(`Packs can have at most ${MAX_PACK_SIZE} cards`);
+}
+
+/** Returns the name as it's stored, trimmed. Throws for a blank or overlong one. */
+export function validatePlayerName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Player name is required");
+  if (trimmed.length > MAX_PLAYER_NAME_LENGTH) {
+    throw new Error(`Player names can be at most ${MAX_PLAYER_NAME_LENGTH} characters`);
+  }
+  return trimmed;
 }
 
 /** Only a Winston draft records its format, so a normal draft's settings stay as they were before Winston. */
@@ -249,12 +267,13 @@ export function createSetLobby(
 export function addPlayer(draftId: string, name: string): Player {
   const { session } = getEntry(draftId);
   if (session.status !== "lobby") throw new Error("Cannot join: the draft has already started");
-  if (!name.trim()) throw new Error("Player name is required");
+  const playerName = validatePlayerName(name);
   if (session.settings.format === "winston" && session.players.length >= WINSTON_PLAYERS) {
     throw new Error(`Cannot join: this Winston draft already has its ${WINSTON_PLAYERS} players`);
   }
+  if (session.players.length >= MAX_PLAYERS) throw new Error(`Cannot join: this draft already has ${MAX_PLAYERS} players`);
 
-  const player: Player = { id: randomUUID(), name: name.trim(), connected: true };
+  const player: Player = { id: randomUUID(), name: playerName, connected: true };
   session.players.push(player);
   session.pools[player.id] = [];
   persist();

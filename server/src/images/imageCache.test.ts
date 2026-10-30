@@ -6,7 +6,7 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import express from "express";
 import { countCards, findCardsByNames, getBackImageUri, getSourceImageUri } from "../cardData/cardRepository.js";
-import { serveCardBackImage, serveCardImage, setImageDirForTests } from "./imageCache.js";
+import { resolveCachedImagePath, serveCardBackImage, serveCardImage, setImageDirForTests } from "./imageCache.js";
 
 const realFetch = globalThis.fetch;
 const needsCardCache = {
@@ -88,6 +88,21 @@ test("an id that climbs out of the image dir is a 404, not a file from elsewhere
     assert.notEqual(res.body, "not a card image", imagePath);
   }
   assert.deepEqual(server.scryfallRequests, []);
+});
+
+test("behind the UUID check, a cache key can only name a file directly inside the image dir", () => {
+  const imageDir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-simulator-images-"));
+  setImageDirForTests(imageDir);
+
+  assert.equal(resolveCachedImagePath("abc_back"), path.join(imageDir, "abc_back.jpg"));
+  for (const cacheKey of ["../secret", "..\\secret", "sub/abc", "sub\\abc", "/etc/passwd", "C:\\secret", ""]) {
+    const resolved = resolveCachedImagePath(cacheKey);
+    // "sub\\abc" and "C:\\secret" are plain file names on Linux and macOS, where a backslash isn't a separator.
+    if (resolved !== undefined) assert.equal(path.dirname(resolved), path.resolve(imageDir), cacheKey);
+  }
+  assert.equal(resolveCachedImagePath("../secret"), undefined);
+  assert.equal(resolveCachedImagePath("sub/abc"), undefined);
+  assert.equal(resolveCachedImagePath("/etc/passwd"), undefined);
 });
 
 test("an image is downloaded from Scryfall once, then served from the cache", needsCardCache, async (t) => {

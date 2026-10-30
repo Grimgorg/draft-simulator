@@ -1,5 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { DRAFTABLE_SETS, WINSTON_PLAYERS, type NewDraftSettings } from "@draft-simulator/shared";
+import {
+  DRAFTABLE_SETS,
+  MAX_PACK_COUNT,
+  MAX_PACK_SIZE,
+  MAX_PLAYER_NAME_LENGTH,
+  WINSTON_PLAYERS,
+  type NewDraftSettings,
+} from "@draft-simulator/shared";
 import type { StoredSeat } from "../playerIdentity.js";
 import { socket } from "../socket.js";
 import { CardStackImage, CubeImage, NormalDraftImage, WinstonDraftImage } from "./DraftTypeImages.js";
@@ -161,6 +168,7 @@ export function CreateDraftModal({ onCreated, onClose }: CreateDraftModalProps) 
               <input
                 value={form.playerName}
                 onChange={(e) => update({ playerName: e.target.value })}
+                maxLength={MAX_PLAYER_NAME_LENGTH}
                 required
                 autoFocus
               />
@@ -193,6 +201,7 @@ export function CreateDraftModal({ onCreated, onClose }: CreateDraftModalProps) 
                 <input
                   type="number"
                   min={1}
+                  max={MAX_PACK_COUNT}
                   value={form.packCount}
                   onChange={(e) => update({ packCount: Number(e.target.value) })}
                   required
@@ -204,6 +213,7 @@ export function CreateDraftModal({ onCreated, onClose }: CreateDraftModalProps) 
                   <input
                     type="number"
                     min={1}
+                    max={MAX_PACK_SIZE}
                     value={form.packSize}
                     onChange={(e) => update({ packSize: Number(e.target.value) })}
                     required

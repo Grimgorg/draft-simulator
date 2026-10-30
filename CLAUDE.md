@@ -117,8 +117,10 @@ release/                  built executables, gitignored (as are desktop/src-taur
 
 **Management security.** The management server listens on 127.0.0.1 and refuses any request whose `Host` or `Origin` isn't loopback (`isAllowedManagementRequest`), so websites the host visits can't drive it. Keep both when adding routes.
 
+**Player server security.** Only the player page itself may open a player socket (`isAllowedPlayerRequest` in `management/requestOrigin.ts`, as `allowRequest`): its `Origin` must match `Host` or `X-Forwarded-Host`, or be Vite's dev port on loopback when run from source. Both servers send `securityHeaders` (`management/securityHeaders.ts`); the player page's CSP allows only its own origin, so it must load nothing from elsewhere (card images go through `/images`). The draft server has no `cors()` and no body parser. Limits on what players ask for (`MAX_PACK_COUNT`, `MAX_PACK_SIZE`, `MAX_PLAYERS`, `MAX_PLAYER_NAME_LENGTH` in `shared`) are checked in `lobbyManager`.
+
 **Errors.**
-- Socket handlers report failures through the ack callback (`ActionResult`: `{ok:true,...}` or `{ok:false,error}`). They must never throw, including `disconnect`: one uncaught error ends every player's draft. The same goes for `manage:*` handlers.
+- Socket handlers report failures through the ack callback (`ActionResult`: `{ok:true,...}` or `{ok:false,error}`). They must never throw, including `disconnect`: one uncaught error ends every player's draft. The same goes for `manage:*` handlers. Every client event must take an ack callback: `socket.use` in `registerSocketHandlers` drops packets without one, because calling a missing callback threw and stopped the server.
 - `startDraftServer` and `stopDraftServer` return an `ActionResult` and never throw: a busy port is shown in the management UI, not a reason to exit.
 - `lobbyManager` and `logBuffer` listeners run inside picks and console calls, so their errors are caught and logged.
 - `saveSnapshot()` never throws: the in-memory state is the source of truth, and a failed write retries in the background.
