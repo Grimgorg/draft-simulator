@@ -330,15 +330,32 @@ jobs:
       # build:exe already put the executable where the desktop app bundles it.
       # tauri.updater.conf.json adds the signed update bundles; only CI has the key.
       # tauri.beta.conf.json makes it Draft Simulator Beta.
+      # On macOS, hdiutil sometimes can't eject the dmg it just built
+      # ("couldn't eject disk2 - Resource busy"), which failed the job and left
+      # v0.3.17 a draft until someone re-ran it. A re-run passes, so macOS
+      # retries, first detaching any dmg the failed attempt left mounted.
       - name: Build the desktop app
+        shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: >-
-          npm run build --workspace desktop --
-          --config src-tauri/tauri.bundle.conf.json --config src-tauri/tauri.updater.conf.json
-          ${{ env.CHANNEL == 'beta' && '--config src-tauri/tauri.beta.conf.json' || '' }}
-          --bundles ${{ matrix.bundles }}
+        run: |
+          attempts=1
+          if [ "$RUNNER_OS" = "macOS" ]; then attempts=3; fi
+          for attempt in $(seq "$attempts"); do
+            if npm run build --workspace desktop -- \
+              --config src-tauri/tauri.bundle.conf.json --config src-tauri/tauri.updater.conf.json \
+              ${{ env.CHANNEL == 'beta' && '--config src-tauri/tauri.beta.conf.json' || '' }} \
+              --bundles ${{ matrix.bundles }}; then
+              exit 0
+            fi
+            if [ "$attempt" -eq "$attempts" ]; then exit 1; fi
+            echo "::warning::Building the desktop app failed (attempt $attempt of $attempts), trying again."
+            for volume in /Volumes/dmg.*; do
+              if [ -d "$volume" ]; then hdiutil detach "$volume" -force || true; fi
+            done
+            sleep 10
+          done
 
       # Tauri signs the server again when it bundles it. Signed with the
       # hardened runtime, V8 couldn't reserve memory and the server crashed
