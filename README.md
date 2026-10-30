@@ -35,6 +35,10 @@ The management UI saves the port and password in `.env`. For the other settings,
 
 At each start, before the server starts, the app checks this repository's latest release. If it's newer, the window asks whether to update. **Update now** downloads it, installs it and restarts the app. **Later** starts the app as usual and asks again at the next start. If the check fails or takes more than 10 seconds, for example while offline, the app starts without it. This works for the Windows installer, the macOS app and the AppImage. With the `.deb`, or with version 0.3.3 or older, install the new version from the Releases page by hand.
 
+### Beta versions
+
+Releases marked **Pre-release** (versions like `0.4.0-beta.2`) are betas: new features that are still being tried out. The normal app never updates to a beta. A beta installs as a separate app, **Draft Simulator Beta**, next to the normal one, and keeps its own drafts, card database and settings, in a folder ending in `.beta` instead of the one under [Where your data is stored](#where-your-data-is-stored). It checks for newer betas at each start, the same way the normal app checks for releases, and never switches back to the normal app by itself. Both apps use port 4000 by default, so run only one server at a time, or give the beta another port in its management UI.
+
 ### First-start warnings
 
 The app isn't code-signed, so the system warns you the first time:

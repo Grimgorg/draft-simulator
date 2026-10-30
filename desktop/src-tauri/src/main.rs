@@ -89,8 +89,9 @@ fn main() {
 }
 
 fn window_builder(app: &AppHandle, url: WebviewUrl) -> WebviewWindowBuilder<'_, Wry, AppHandle> {
+    // The product name, so a beta's window says "Draft Simulator Beta".
     WebviewWindowBuilder::new(app, "main", url)
-        .title("Draft Simulator")
+        .title(&app.package_info().name)
         .inner_size(1200.0, 900.0)
         .min_inner_size(420.0, 500.0)
         .theme(Some(tauri::Theme::Dark))

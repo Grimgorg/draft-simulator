@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Draft Simulator Beta",
+  "identifier": "io.github.grimgorg.draft-simulator.beta",
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Grimgorg/draft-simulator/releases/download/beta-channel/latest.json"
+      ]
+    }
+  }
+}
