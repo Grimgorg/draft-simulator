@@ -135,11 +135,16 @@ export function useDraftConnection(): DraftConnection {
       }
     }
     function onConnectError(err: Error) {
-      if (err.message !== "invalid_password") return;
+      if (err.message !== "invalid_password" && err.message !== "too_many_attempts") return;
       setPasswordRequired(true);
-      // A first-time visitor never sent a password at all — only show an
-      // "incorrect" error when one was actually tried and rejected.
-      setPasswordError(getStoredPassword() ? "Incorrect password." : null);
+      if (err.message === "too_many_attempts") {
+        // The server refuses this address for a while, even with the right password.
+        setPasswordError("Too many wrong passwords. Try again in a few minutes.");
+      } else {
+        // A first-time visitor never sent a password at all — only show an
+        // "incorrect" error when one was actually tried and rejected.
+        setPasswordError(getStoredPassword() ? "Incorrect password." : null);
+      }
       // Without this, socket.io's default reconnection logic would keep
       // retrying with the same known-bad credentials in a loop.
       socket.disconnect();

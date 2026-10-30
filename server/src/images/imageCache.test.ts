@@ -6,7 +6,13 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import express from "express";
 import { countCards, findCardsByNames, getBackImageUri, getSourceImageUri } from "../cardData/cardRepository.js";
-import { resolveCachedImagePath, serveCardBackImage, serveCardImage, setImageDirForTests } from "./imageCache.js";
+import {
+  resolveCachedImagePath,
+  serveCardBackImage,
+  serveCardImage,
+  setImageDirForTests,
+  setImageDownloadLimitForTests,
+} from "./imageCache.js";
 
 const realFetch = globalThis.fetch;
 const needsCardCache = {
@@ -161,6 +167,28 @@ test("when Scryfall can't be reached at all, the request is a 502 instead of a c
   });
 
   assert.equal((await server.get(`/images/${cachedCardId("Lightning Bolt")}`)).status, 502);
+});
+
+test("an address can only make the server download so many new images an hour; cached ones are always served", needsCardCache, async (t) => {
+  let time = 0;
+  setImageDownloadLimitForTests(2, () => time);
+  t.after(() => setImageDownloadLimitForTests());
+  const server = await startImageServer(t);
+  const [boltId, delverId, counterspellId] = ["Lightning Bolt", "Delver of Secrets", "Counterspell"].map(cachedCardId);
+
+  assert.equal((await server.get(`/images/${boltId}`)).status, 200);
+  assert.equal((await server.get(`/images/${delverId}`)).status, 200);
+  await waitForCachedFiles(server.imageDir, [`${boltId}.jpg`, `${delverId}.jpg`]);
+
+  const refused = await server.get(`/images/${counterspellId}`);
+  assert.equal(refused.status, 429);
+  assert.equal(server.scryfallRequests.length, 2, "the refused image never reaches Scryfall");
+  assert.equal((await server.get(`/images/${boltId}`)).status, 200, "cached images don't count");
+  // Unknown cards are a 404 as before, not a 429.
+  assert.equal((await server.get("/images/00000000-0000-0000-0000-000000000000")).status, 404);
+
+  time = 60 * 60 * 1000;
+  assert.equal((await server.get(`/images/${counterspellId}`)).status, 200);
 });
 
 test("an image that can't be written to the cache is still served", needsCardCache, async (t) => {
