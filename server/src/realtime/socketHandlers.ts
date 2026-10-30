@@ -175,6 +175,20 @@ export function closeDraft(draftId: string): ActionResult {
   }
 }
 
+/** The host's way to free a seat from the management UI, like a draft's creator can. Never throws. */
+export function releaseSeatAsHost(draftId: string, playerId: string): ActionResult {
+  try {
+    lobbyManager.releaseSeat(draftId, playerId);
+    if (currentIo) {
+      broadcastLobbyState(currentIo, draftId);
+      broadcastDraftList(currentIo);
+    }
+    return { ok: true };
+  } catch (err) {
+    return errorResult(err);
+  }
+}
+
 export function registerSocketHandlers(io: IoServer): void {
   currentIo = io;
   io.on("connection", (socket: IoSocket) => {
@@ -197,11 +211,11 @@ export function registerSocketHandlers(io: IoServer): void {
         // Checked before the cube import, so a draft is never left without its creator.
         const playerName = lobbyManager.validatePlayerName(String(payload?.playerName ?? ""));
         const draftId = await createLobby(payload);
-        const player = lobbyManager.addPlayer(draftId, playerName);
+        const { player, seatToken } = lobbyManager.joinDraft(draftId, playerName);
         bindSocketToPlayer(io, socket, draftId, player.id);
         // A browser that closed while the cube was imported has a seat no one is in.
         if (!socket.connected) releaseSeat(socket);
-        callback({ ok: true, draftId, playerId: player.id });
+        callback({ ok: true, draftId, playerId: player.id, seatToken });
         broadcastLobbyState(io, draftId);
         broadcastDraftList(io);
       } catch (err) {
@@ -228,9 +242,9 @@ export function registerSocketHandlers(io: IoServer): void {
     socket.on("lobby:join", (payload, callback) => {
       try {
         const draftId = String(payload?.draftId);
-        const player = lobbyManager.addPlayer(draftId, String(payload?.playerName ?? ""));
+        const { player, seatToken } = lobbyManager.joinDraft(draftId, String(payload?.playerName ?? ""));
         bindSocketToPlayer(io, socket, draftId, player.id);
-        callback({ ok: true, playerId: player.id });
+        callback({ ok: true, playerId: player.id, seatToken });
         broadcastLobbyState(io, draftId);
         broadcastDraftList(io);
       } catch (err) {
@@ -243,10 +257,12 @@ export function registerSocketHandlers(io: IoServer): void {
         const draftId = String(payload?.draftId);
         const player = lobbyManager.getSession(draftId)?.players.find((p) => p.id === payload?.playerId);
         if (!player) throw new Error("No matching player found for this draft");
+        // Before binding: a socket without the seat's token mustn't even evict the one that has it.
+        const seatToken = lobbyManager.claimSeat(draftId, player.id, payload?.seatToken);
 
         bindSocketToPlayer(io, socket, draftId, player.id);
         lobbyManager.setPlayerConnected(draftId, player.id, true);
-        callback({ ok: true });
+        callback({ ok: true, seatToken });
         // Pack before lobby state, as in draft:pick.
         sendDraftStateTo(io, socket.id, { draftId, playerId: player.id });
         broadcastLobbyState(io, draftId);
@@ -293,6 +309,21 @@ export function registerSocketHandlers(io: IoServer): void {
         lobbyManager.closeDraft(seat.draftId);
         callback({ ok: true });
         releaseClosedDraft(io, seat.draftId);
+        broadcastDraftList(io);
+      } catch (err) {
+        callback(errorResult(err));
+      }
+    });
+
+    socket.on("lobby:releaseSeat", (payload, callback) => {
+      try {
+        const seat = requireSeat(socket);
+        requireCreator(seat);
+        const playerId = String(payload?.playerId);
+        if (playerId === seat.playerId) throw new Error("You can't release your own seat");
+        lobbyManager.releaseSeat(seat.draftId, playerId);
+        callback({ ok: true });
+        broadcastLobbyState(io, seat.draftId);
         broadcastDraftList(io);
       } catch (err) {
         callback(errorResult(err));

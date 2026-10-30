@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { DraftStatus } from "@draft-simulator/shared";
+import type { DraftStatus, SeatView } from "@draft-simulator/shared";
 import { socket } from "../socket.js";
 import { ConfirmButton } from "./ConfirmButton.js";
 
@@ -40,6 +40,62 @@ export function LeaveDraftButton({ label, onLeft }: LeaveDraftButtonProps) {
       </button>
       {error && <p className="error">{error}</p>}
     </>
+  );
+}
+
+interface ReleaseSeatMenuProps {
+  players: SeatView[];
+  myPlayerId: string;
+}
+
+/**
+ * The creator's way to free another player's seat, for a player who lost the browser that held it: whoever picks
+ * the name in the draft's rejoin list next takes the seat, on any device.
+ */
+export function ReleaseSeatMenu({ players, myPlayerId }: ReleaseSeatMenuProps) {
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const others = players.filter((player) => player.id !== myPlayerId);
+  if (others.length === 0) return null;
+
+  function release(playerId: string) {
+    setPendingId(playerId);
+    setError(null);
+    socket.timeout(ACK_TIMEOUT_MS).emit("lobby:releaseSeat", { playerId }, (err, result) => {
+      setPendingId(null);
+      if (err) return setError(NO_RESPONSE);
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  return (
+    <details className="release-seats">
+      <summary className="secondary-button">Release a seat…</summary>
+      <ul className="player-list">
+        {others.map((player) =>
+          player.claimable ? (
+            <li key={player.id}>
+              {player.name} <span className="muted">released: picking it in the rejoin list takes it</span>
+            </li>
+          ) : (
+            <li key={player.id}>
+              <ConfirmButton
+                label={`Release ${player.name}'s seat`}
+                className="secondary-button"
+                confirmMessage={
+                  `Release ${player.name}'s seat? Whoever picks ${player.name} in this draft's rejoin list next ` +
+                  "takes it, on any device."
+                }
+                confirmLabel="Release"
+                disabled={pendingId !== null}
+                onConfirm={() => release(player.id)}
+              />
+            </li>
+          )
+        )}
+      </ul>
+      {error && <p className="error">{error}</p>}
+    </details>
   );
 }
 

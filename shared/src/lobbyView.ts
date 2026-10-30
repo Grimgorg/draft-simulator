@@ -1,6 +1,15 @@
 import type { Card } from "./card.js";
 import type { DraftSettings, DraftStatus, Player } from "./draft.js";
 
+/** A player as the views show them. */
+export interface SeatView extends Player {
+  /**
+   * No browser holds this seat: its creator or the host released it, or it was taken before seats had tokens.
+   * Picking it in the draft's rejoin list takes it; any other seat needs the browser that holds its token.
+   */
+  claimable: boolean;
+}
+
 /**
  * Public snapshot of one draft, sent to everyone seated in it. Deliberately excludes anything private: pack
  * contents and other players' picks travel only over the private draft:myState / draft:complete events.
@@ -17,7 +26,7 @@ export interface LobbyStateView {
   cubeName?: string;
   cardCount?: number;
   unresolvedCardNames?: string[];
-  players: Player[];
+  players: SeatView[];
   currentPackNumber?: number;
   currentPickNumber?: number;
   waitingOn?: string[];
@@ -29,7 +38,8 @@ export interface LobbyStateView {
 
 /**
  * One draft as the draft list shows it, to everyone connected, seated or not. Like LobbyStateView it never
- * carries packs or pools. Its players' ids are public on purpose: picking one rejoins the draft as that player.
+ * carries packs or pools. Its players' ids are public, as names are: taking a seat back needs its seat token, which
+ * only the browser holding the seat has, unless the seat is claimable.
  */
 export interface DraftSummary {
   draftId: string;
@@ -37,7 +47,7 @@ export interface DraftSummary {
   settings: DraftSettings;
   cubeName: string;
   cardCount: number;
-  players: Player[];
+  players: SeatView[];
   /** The player who created the draft. Unset while no one is seated. */
   creatorPlayerId?: string;
   /** Milliseconds since the epoch. */

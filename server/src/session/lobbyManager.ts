@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Card, DraftSettings, Player } from "@draft-simulator/shared";
 import {
   MAX_PACK_COUNT,
@@ -45,6 +45,11 @@ export interface DraftEntry {
   createdAt: number;
   /** When the last pick finished the draft; FINISHED_DRAFT_TTL_MS later it's removed. */
   completedAt?: number;
+  /**
+   * Player id -> SHA-256 of their seat token, hex. A player without one has a claimable seat. Missing in snapshots
+   * from before seats had tokens, whose seats are all claimable until their players take them back.
+   */
+  seatTokenHashes?: Record<string, string>;
 }
 
 interface LobbyManagerState {
@@ -264,7 +269,25 @@ export function createSetLobby(
   );
 }
 
+/**
+ * Seats a new player and returns the seat's token, which only this caller ever sees. What players join through:
+ * addPlayer alone leaves the seat claimable by anyone.
+ */
+export function joinDraft(draftId: string, name: string): { player: Player; seatToken: string } {
+  const player = seatPlayer(draftId, name);
+  const seatToken = issueSeatToken(getEntry(draftId), player.id);
+  persist();
+  return { player, seatToken };
+}
+
+/** Seats a new player whose seat anyone can claim, as seats were before they had tokens. */
 export function addPlayer(draftId: string, name: string): Player {
+  const player = seatPlayer(draftId, name);
+  persist();
+  return player;
+}
+
+function seatPlayer(draftId: string, name: string): Player {
   const { session } = getEntry(draftId);
   if (session.status !== "lobby") throw new Error("Cannot join: the draft has already started");
   const playerName = validatePlayerName(name);
@@ -276,19 +299,74 @@ export function addPlayer(draftId: string, name: string): Player {
   const player: Player = { id: randomUUID(), name: playerName, connected: true };
   session.players.push(player);
   session.pools[player.id] = [];
-  persist();
   return player;
+}
+
+/**
+ * Seat tokens. Player ids are public (every drafts:list carries them), and taking a seat back used to need only
+ * the id: anyone connected could take any seat, and see its pack and pool. Now it needs the token the browser that
+ * took the seat was given. Only its hash is kept, so the snapshot file can't be used to take a seat either.
+ */
+function hashSeatToken(seatToken: string): Buffer {
+  return createHash("sha256").update(seatToken).digest();
+}
+
+function issueSeatToken(entry: DraftEntry, playerId: string): string {
+  const seatToken = randomBytes(32).toString("base64url");
+  (entry.seatTokenHashes ??= {})[playerId] = hashSeatToken(seatToken).toString("hex");
+  return seatToken;
+}
+
+function findPlayer(entry: DraftEntry, playerId: string): Player {
+  const player = entry.session.players.find((p) => p.id === playerId);
+  if (!player) throw new Error("No matching player found for this draft");
+  return player;
+}
+
+/** Whether no browser holds the seat (see SeatView.claimable). */
+export function isSeatClaimable(draftId: string, playerId: string): boolean {
+  return findEntry(draftId)?.seatTokenHashes?.[playerId] === undefined;
+}
+
+/**
+ * Takes a seat back with its token, or claims a claimable one, which issues a new token. Returns the token the
+ * browser should keep. A seat someone else holds is refused, whatever token comes with it.
+ */
+export function claimSeat(draftId: string, playerId: string, seatToken: unknown): string {
+  const entry = getEntry(draftId);
+  findPlayer(entry, playerId);
+  const storedHash = entry.seatTokenHashes?.[playerId];
+  if (storedHash === undefined) {
+    const issued = issueSeatToken(entry, playerId);
+    persist();
+    return issued;
+  }
+  // Both are SHA-256 digests, so of equal length, as timingSafeEqual needs.
+  if (typeof seatToken === "string" && timingSafeEqual(hashSeatToken(seatToken), Buffer.from(storedHash, "hex"))) {
+    return seatToken;
+  }
+  throw new Error("This seat is held by another browser. Ask the draft's creator or the host to release it.");
+}
+
+/** Makes a seat claimable again: for a player who lost the browser that held it. */
+export function releaseSeat(draftId: string, playerId: string): void {
+  const entry = getEntry(draftId);
+  findPlayer(entry, playerId);
+  if (entry.seatTokenHashes) delete entry.seatTokenHashes[playerId];
+  persist();
 }
 
 /** Takes a player out of a draft that hasn't started. Its creator closes it instead. */
 export function removePlayer(draftId: string, playerId: string): void {
-  const { session } = getEntry(draftId);
+  const entry = getEntry(draftId);
+  const { session } = entry;
   if (session.status !== "lobby") throw new Error("Only a draft that hasn't started can be left");
   if (playerId === getCreatorPlayerId(draftId)) throw new Error("You created this draft: close it instead");
   const index = session.players.findIndex((p) => p.id === playerId);
   if (index === -1) throw new Error("No matching player found for this draft");
   session.players.splice(index, 1);
   delete session.pools[playerId];
+  if (entry.seatTokenHashes) delete entry.seatTokenHashes[playerId];
   persist();
 }
 

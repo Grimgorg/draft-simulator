@@ -538,3 +538,63 @@ test("a normal draft's settings have no format", () => {
   const draftId = createLobby();
   assert.equal("format" in lobbyManager.getSession(draftId)!.settings, false);
 });
+
+test("a joined seat is taken back only with its token; the snapshot keeps only a hash, and both survive a restart", () => {
+  const snapshotPath = freshSnapshotPath();
+  lobbyManager.resetForTests(snapshotPath);
+  const draftId = createLobby();
+  const { player, seatToken } = lobbyManager.joinDraft(draftId, "Alice");
+
+  assert.equal(lobbyManager.isSeatClaimable(draftId, player.id), false);
+  assert.throws(() => lobbyManager.claimSeat(draftId, player.id, undefined), /held by another browser/);
+  assert.throws(() => lobbyManager.claimSeat(draftId, player.id, "not-the-token"), /held by another browser/);
+  assert.throws(() => lobbyManager.claimSeat(draftId, player.id, 42), /held by another browser/);
+  assert.equal(lobbyManager.claimSeat(draftId, player.id, seatToken), seatToken);
+  assert.throws(() => lobbyManager.claimSeat(draftId, "nobody", seatToken), /No matching player/);
+  assert.ok(!fs.readFileSync(snapshotPath, "utf8").includes(seatToken), "the token itself is never saved");
+
+  lobbyManager.reloadFromSnapshotForTests();
+  assert.throws(() => lobbyManager.claimSeat(draftId, player.id, "not-the-token"), /held by another browser/);
+  assert.equal(lobbyManager.claimSeat(draftId, player.id, seatToken), seatToken);
+});
+
+test("a released seat goes to whoever claims it next, with a new token; the old one stops working", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const draftId = createLobby();
+  const { player, seatToken: lostToken } = lobbyManager.joinDraft(draftId, "Alice");
+  assert.throws(() => lobbyManager.releaseSeat(draftId, "nobody"), /No matching player/);
+
+  lobbyManager.releaseSeat(draftId, player.id);
+  assert.equal(lobbyManager.isSeatClaimable(draftId, player.id), true);
+  const newToken = lobbyManager.claimSeat(draftId, player.id, undefined);
+  assert.notEqual(newToken, lostToken);
+  assert.equal(lobbyManager.isSeatClaimable(draftId, player.id), false);
+  assert.throws(() => lobbyManager.claimSeat(draftId, player.id, lostToken), /held by another browser/);
+  assert.equal(lobbyManager.claimSeat(draftId, player.id, newToken), newToken);
+});
+
+test("seats saved before they had tokens can each be claimed once, then need the new token", () => {
+  const snapshotPath = freshSnapshotPath();
+  lobbyManager.resetForTests(snapshotPath);
+  const draftId = createLobby();
+  const alice = lobbyManager.addPlayer(draftId, "Alice");
+  // What an older server saved: no seatTokenHashes at all.
+  const saved = JSON.parse(fs.readFileSync(snapshotPath, "utf8")) as { drafts: Record<string, unknown>[] };
+  for (const entry of saved.drafts) delete entry.seatTokenHashes;
+  fs.writeFileSync(snapshotPath, JSON.stringify(saved));
+  lobbyManager.reloadFromSnapshotForTests();
+
+  assert.equal(lobbyManager.isSeatClaimable(draftId, alice.id), true);
+  const seatToken = lobbyManager.claimSeat(draftId, alice.id, "whatever an old browser had");
+  assert.throws(() => lobbyManager.claimSeat(draftId, alice.id, undefined), /held by another browser/);
+  assert.equal(lobbyManager.claimSeat(draftId, alice.id, seatToken), seatToken);
+});
+
+test("a player who leaves a lobby takes their seat token with them", () => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const draftId = createLobby();
+  lobbyManager.joinDraft(draftId, "Alice");
+  const { player: bob } = lobbyManager.joinDraft(draftId, "Bob");
+  lobbyManager.removePlayer(draftId, bob.id);
+  assert.equal(lobbyManager.listDrafts()[0]!.seatTokenHashes?.[bob.id], undefined);
+});

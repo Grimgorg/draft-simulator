@@ -266,6 +266,46 @@ button:disabled {
 
 .pool-pane-actions {
   margin-left: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+/* The creator's "Release a seat…": its summary looks like a secondary button, and its list opens over the page
+   below it rather than pushing the pool or the deck builder down. */
+.release-seats {
+  position: relative;
+}
+
+.release-seats > summary {
+  list-style: none;
+  padding: 0.6rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-h);
+  cursor: pointer;
+  width: fit-content;
+}
+
+.release-seats > summary::-webkit-details-marker {
+  display: none;
+}
+
+.release-seats[open] > summary,
+.release-seats > summary:hover {
+  border-color: var(--text);
+}
+
+.release-seats > .player-list {
+  position: absolute;
+  right: 0;
+  z-index: 20;
+  min-width: 18rem;
+  margin: 0.4rem 0 0;
+  padding: 0.6rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 /* "Not in deck" is a single pile, so its column only needs room for one (150px, see .pile) and the pane's padding;

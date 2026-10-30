@@ -1,5 +1,5 @@
 import type { Card, LobbyStateView } from "@draft-simulator/shared";
-import { CloseDraftButton, LeaveDraftButton } from "./DraftControls.js";
+import { CloseDraftButton, LeaveDraftButton, ReleaseSeatMenu } from "./DraftControls.js";
 import { DeckBuilder } from "./DeckBuilder.js";
 
 interface ResultsScreenProps {
@@ -21,7 +21,10 @@ export function ResultsScreen({ lobbyState, myPlayerId, myPool, onLeft }: Result
           {/* The seat stays in the draft: the deck can be picked up again from the list. */}
           <LeaveDraftButton label="All drafts" onLeft={onLeft} />
           {lobbyState.creatorPlayerId === myPlayerId && (
-            <CloseDraftButton status={lobbyState.status} onClosed={onLeft} />
+            <>
+              <ReleaseSeatMenu players={lobbyState.players} myPlayerId={myPlayerId} />
+              <CloseDraftButton status={lobbyState.status} onClosed={onLeft} />
+            </>
           )}
         </div>
       </div>

@@ -81,15 +81,13 @@ test("stopping keeps the draft: the player is marked disconnected but keeps thei
     packSize: 1,
     alternatingDraft: true,
   });
-  const host = lobbyManager.addPlayer(draftId, "Alice");
+  const { player: host, seatToken } = lobbyManager.joinDraft(draftId, "Alice");
   const port = await freePort();
   await startDraftServer({ port, lobbyPassword: "" });
 
   const { socket } = await connect(port);
-  const rejoined = await new Promise<ActionResult>((resolve) =>
-    socket.emit("lobby:reconnect", { draftId, playerId: host.id }, resolve),
-  );
-  assert.deepEqual(rejoined, { ok: true });
+  const rejoined = await socket.emitWithAck("lobby:reconnect", { draftId, playerId: host.id, seatToken });
+  assert.deepEqual(rejoined, { ok: true, seatToken });
 
   await stopDraftServer();
   socket.close();

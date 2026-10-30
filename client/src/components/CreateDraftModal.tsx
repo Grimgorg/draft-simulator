@@ -157,8 +157,11 @@ export function CreateDraftModal({ onCreated, onClose }: CreateDraftModalProps) 
               // No timeout: importing a big cube can take a while, and the server always answers.
               socket.emit("draft:create", { ...toNewDraftSettings(format, type, form), playerName: form.playerName }, (result) => {
                 setPending(false);
-                if (result.ok) onCreated({ draftId: result.draftId, playerId: result.playerId });
-                else setError(result.error);
+                if (result.ok) {
+                  onCreated({ draftId: result.draftId, playerId: result.playerId, seatToken: result.seatToken });
+                } else {
+                  setError(result.error);
+                }
               });
             }}
           >
