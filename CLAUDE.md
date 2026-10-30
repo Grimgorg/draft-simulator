@@ -72,7 +72,9 @@ server/src/
   draftEngine/            draft rules: deal, pick, pass packs, advance rounds; winstonDraft (two-player Winston draft,
                           from docs/winston-draft.md)
   session/                lobbyManager (owns every draft), snapshotStore (saves them), outgoing views
-  realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware
+  realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware (10 wrong passwords lock
+                          an address out for 15 minutes)
+  limits/                 windowCounter and clientAddress, for the rate limits (X-Forwarded-For only from loopback)
   cardData/, db/          SQLite cache of Scryfall card data, downloaded on startup: one printing per card (`cards`), and
                           every printing of the sets set drafts open (`set_printings`)
   setBoosters/            set drafts' packs: one booster per set, built from docs/sets/<set>.md (realityFracture)

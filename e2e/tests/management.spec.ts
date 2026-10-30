@@ -76,6 +76,40 @@ test("a new lobby password applies after a restart, and players are asked for it
   await expect(player.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
 });
 
+test("after 10 wrong lobby passwords a player is told to wait, until the host restarts the server", async ({
+  openManagement,
+  openPlayer,
+}) => {
+  const management = await openManagement();
+  await openTab(management, "Settings");
+  const settings = panel(management, "Settings");
+  await settings.getByLabel("Lobby password").fill("hunter2");
+  await settings.getByRole("button", { name: "Save settings" }).click();
+  await settings.getByRole("button", { name: "Restart now" }).click();
+  await expect(settings).not.toContainText("restart it to use the new ones");
+
+  const player = await openPlayer();
+  await expect(player.getByText("This server requires a password to connect.")).toBeVisible({
+    timeout: RECONNECT_TIMEOUT,
+  });
+  for (let guess = 1; guess <= 10; guess++) {
+    await player.getByLabel("Password").fill(`guess-${guess}`);
+    await player.getByRole("button", { name: "Connect" }).click();
+    await expect(player.getByText("Incorrect password.")).toBeVisible();
+  }
+  await player.getByLabel("Password").fill("hunter2");
+  await player.getByRole("button", { name: "Connect" }).click();
+  await expect(player.getByText("Too many wrong passwords. Try again in a few minutes.")).toBeVisible();
+
+  // A restart starts counting afresh. Its log line (the third start: at launch, after saving, now) shows it's done.
+  await openTab(management, "Draft");
+  await panel(management, "Server").getByRole("button", { name: "Restart server" }).click();
+  await openTab(management, "Logs");
+  await expect(management.getByRole("log").getByText(/Draft server is running on port/)).toHaveCount(3);
+  await player.getByRole("button", { name: "Connect" }).click();
+  await expect(player.getByText(NO_DRAFT_MESSAGE)).toBeVisible({ timeout: RECONNECT_TIMEOUT });
+});
+
 test("a stopped server keeps the draft, and players get their seat back once it starts", async ({
   openManagement,
   openPlayer,
