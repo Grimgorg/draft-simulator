@@ -5,10 +5,12 @@ paths:
 
 # Rules for editing CI
 
-- The jobs `test`, `desktop`, `version` and the four `package (<target>)` jobs are required checks in the rulesets
-  `protect` (main) and `protect-dev` (dev) under Settings → Rules. Renaming one, or adding a job that must pass,
-  means updating both rules too, or no PR can be merged. Give matrix jobs fixed names (`package (<target>)`) so the required check names
-  stay stable.
+- The jobs `test`, `desktop`, `audit`, `version` and the four `package (<target>)` jobs in `ci.yml`, and the three
+  `codeql (<language>)` jobs in `codeql.yml`, are required checks in the rulesets `protect` (main) and `protect-dev`
+  (dev) under Settings → Rules. Renaming one, or adding a job that must pass, means updating both rules too, or no PR
+  can be merged. Give matrix jobs fixed names (`package (<target>)`) so the required check names stay stable.
+- Pin every action to a full commit SHA with its version as a comment (`uses: owner/action@<sha> # v1.2.3`), so a
+  moved tag can't change what runs next to the signing key. Dependabot keeps the pins current.
 - Never cancel a run on `main` or `dev`: it could leave a release half-published.
 - Nothing is released unless every required job passed. Releases are created as drafts and published only when
   every file is attached. Packaging jobs upload with `gh release upload "$TAG" <files> --clobber`, so a re-run
