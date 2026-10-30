@@ -195,6 +195,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 | `.env` lines the management UI writes (`PORT`, `LOBBY_PASSWORD` double-quoted) | settings hosts saved in the UI |
 | The `Management UI: <url>` line `index.ts` prints | the desktop app, which reads it to find the UI (`UI_LINE_PREFIX` in `main.rs`) |
 | Release asset names, `latest.json` and its URL, the updater `pubkey` | updating installed apps: they'd find no update, or refuse it |
+| `tauri.beta.conf.json` (beta `identifier`, `beta-channel/latest.json` URL); `beta-channel` staying a prerelease | installed betas' data and updates; as the latest release it would send betas to stable apps |
 | `localStorage` keys (`pileStorage.ts`, `playerIdentity.ts`, `lobbyPassword.ts`) | players' saved identity (their seat), piles, deck state and lobby password |
 
 To reset a stuck draft, delete `server/data/draft-session.json`.
@@ -234,6 +235,10 @@ To reset a stuck draft, delete `server/data/draft-session.json`.
 - Commit messages and PR titles follow Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `test:`, `refactor:`).
 - Every branch bumps the root `package.json` version (`npm version patch --no-git-tag-version`): each merge into main
   publishes it as a release, and CI fails a version that isn't higher than the latest release.
+- `dev` is the beta channel: branches for it start from `dev`, PR into `dev`, and bump with
+  `npm version prerelease --preid beta --no-git-tag-version` (the first beta after a release: `preminor`). Each merge
+  publishes a prerelease of "Draft Simulator Beta" (`tauri.beta.conf.json`). DEVELOPMENT.md › *Betas from `dev`* has
+  the release flow, including bringing `main` back into `dev` with a merge commit.
 - PR descriptions follow `.github/pull_request_template.md`.
 - Merge pull requests with a squash commit (`gh pr merge --squash`), the only method main's ruleset allows. The commit
   takes the PR's title and description.
