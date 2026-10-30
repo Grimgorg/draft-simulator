@@ -11,6 +11,7 @@ import type {
   ClientToServerEvents,
   DeckExport,
   DraftSettings,
+  DraftSummary,
   LobbyStateView,
   Pack,
   ServerToClientEvents,
@@ -18,7 +19,7 @@ import type {
 import { testCard } from "../draftEngine/testHelpers.js";
 import * as lobbyManager from "../session/lobbyManager.js";
 import { requireLobbyPassword } from "./lobbyPassword.js";
-import { cancelDraft, createDraft, registerSocketHandlers, startDraft } from "./socketHandlers.js";
+import { closeDraft, registerSocketHandlers } from "./socketHandlers.js";
 
 /**
  * End-to-end tests of the real socket wiring. The first three need internet
@@ -29,6 +30,8 @@ import { cancelDraft, createDraft, registerSocketHandlers, startDraft } from "./
 
 type DraftClientSocket = ClientSocket<ServerToClientEvents, ClientToServerEvents>;
 type MyState = { pack: Pack | null; pool: Card[] };
+
+const REAL_CUBE = "https://cubecobra.com/cube/overview/practical";
 
 function freshSnapshotPath(): string {
   return path.join(os.tmpdir(), `draft-simulator-itest-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
@@ -125,6 +128,20 @@ function waitForLobbyStateWhere(
   });
 }
 
+function waitForDraftListWhere(
+  socket: DraftClientSocket,
+  predicate: (drafts: DraftSummary[]) => boolean
+): Promise<DraftSummary[]> {
+  return new Promise((resolve) => {
+    function onList(drafts: DraftSummary[]) {
+      if (!predicate(drafts)) return;
+      socket.off("drafts:list", onList);
+      resolve(drafts);
+    }
+    socket.on("drafts:list", onList);
+  });
+}
+
 /** Resolves with the reason the server refused this connection; fails the test if it was accepted. */
 function connectionRefusal(url: string, auth?: { password: string }): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -158,31 +175,53 @@ async function startServerFor(t: TestContext, options: { lobbyPassword?: string 
   };
 }
 
-/** Network-free setup: a lobby built from local test cards, which the host and a guest join over real sockets. */
-async function seatHostAndGuest(
-  server: Awaited<ReturnType<typeof startServerFor>>,
-  cardIds: string[],
-  settings: Partial<DraftSettings> = {}
-) {
-  lobbyManager.createLobbyFromResolvedCube("Test Cube", cardIds.map(testCard), [], {
+type TestServer = Awaited<ReturnType<typeof startServerFor>>;
+
+/** A lobby built from local test cards, without the network. Returns its id. */
+function createTestLobby(cardIds: string[], settings: Partial<DraftSettings> = {}, cubeName = "Test Cube"): string {
+  return lobbyManager.createLobbyFromResolvedCube(cubeName, cardIds.map(testCard), [], {
     cubeId: "test",
     packCount: 1,
     packSize: 2,
     alternatingDraft: true,
     ...settings,
-  });
+  }).draftId;
+}
+
+/**
+ * Network-free setup: a lobby built from local test cards, which the host and a guest join over real sockets. The
+ * host joins first, so they're its creator.
+ */
+async function seatHostAndGuest(server: TestServer, cardIds: string[], settings: Partial<DraftSettings> = {}) {
+  const draftId = createTestLobby(cardIds, settings);
   const hostSocket = await server.connect();
   const guestSocket = await server.connect();
-  const hostJoin = await hostSocket.emitWithAck("lobby:join", { playerName: "Alice" });
+  const hostJoin = await hostSocket.emitWithAck("lobby:join", { draftId, playerName: "Alice" });
   assert.ok(hostJoin.ok, JSON.stringify(hostJoin));
-  const guestJoin = await guestSocket.emitWithAck("lobby:join", { playerName: "Bob" });
+  const guestJoin = await guestSocket.emitWithAck("lobby:join", { draftId, playerName: "Bob" });
   assert.ok(guestJoin.ok, JSON.stringify(guestJoin));
-  return { hostSocket, guestSocket, hostId: hostJoin.playerId, guestId: guestJoin.playerId };
+  return { draftId, hostSocket, guestSocket, hostId: hostJoin.playerId, guestId: guestJoin.playerId };
 }
 
 /** The first card in a player's current pack, read from the server's own state. */
-function firstCardInPack(playerId: string): string {
-  return lobbyManager.getSession()!.currentPacks[playerId]!.cards[0]!.scryfallId;
+function firstCardInPack(draftId: string, playerId: string): string {
+  return lobbyManager.getSession(draftId)!.currentPacks[playerId]!.cards[0]!.scryfallId;
+}
+
+/** A real cube's draft, created over the socket by `creator`, and a guest seated in it. */
+async function createRealCubeDraft(creator: DraftClientSocket, guest: DraftClientSocket, packSize: number) {
+  const created = await creator.emitWithAck("draft:create", {
+    playerName: "Alice",
+    cubeIdOrUrl: REAL_CUBE,
+    packCount: 1,
+    packSize,
+    alternatingDraft: true,
+  });
+  assert.ok(created.ok, JSON.stringify(created));
+  assert.ok(lobbyManager.getCubeMeta(created.draftId)!.cardCount > 0);
+  const joined = await guest.emitWithAck("lobby:join", { draftId: created.draftId, playerName: "Bob" });
+  assert.ok(joined.ok, JSON.stringify(joined));
+  return { draftId: created.draftId, hostId: created.playerId, guestId: joined.playerId };
 }
 
 test(
@@ -196,32 +235,14 @@ test(
     const guestSocket = await connect(server.url);
 
     try {
-      const guestSeesLobby = waitForLobbyStateWhere(guestSocket, (s) => s.status === "lobby");
-      const createResult = await createDraft({
-        cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
-        packCount: 1,
-        packSize: 3,
-        alternatingDraft: true,
-      });
-      assert.equal(createResult.ok, true, JSON.stringify(createResult));
-      assert.ok(lobbyManager.getCubeMeta()!.cardCount > 0);
-      await guestSeesLobby;
-
-      const hostJoin = await hostSocket.emitWithAck("lobby:join", { playerName: "Alice" });
-      assert.ok(hostJoin.ok, JSON.stringify(hostJoin));
-      const hostId = hostJoin.playerId;
-
-      const joinResult = await new Promise<any>((resolve) =>
-        guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve)
-      );
-      assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
-      const guestId: string = joinResult.playerId;
+      const guestSeesDraft = waitForDraftListWhere(guestSocket, (drafts) => drafts.length === 1);
+      const { hostId, guestId } = await createRealCubeDraft(hostSocket, guestSocket, 3);
+      assert.equal((await guestSeesDraft)[0]!.status, "lobby");
 
       const hostStatePromise = waitForMyState(hostSocket);
       const guestStatePromise = waitForMyState(guestSocket);
 
-      const startResult = startDraft();
-      assert.equal(startResult.ok, true, JSON.stringify(startResult));
+      assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
 
       let hostState = await hostStatePromise;
       let guestState = await guestStatePromise;
@@ -246,12 +267,12 @@ test(
         const nextHostState = isLastRound ? undefined : waitForRoundState(hostSocket, round + 2);
         const nextGuestState = isLastRound ? undefined : waitForRoundState(guestSocket, round + 2);
 
-        const hostPick = hostState.pack!.cards[0]!.scryfallId;
-        const guestPick = guestState.pack!.cards[0]!.scryfallId;
+        const hostPick: string = hostState.pack!.cards[0]!.scryfallId;
+        const guestPick: string = guestState.pack!.cards[0]!.scryfallId;
 
         const [hostPickResult, guestPickResult] = await Promise.all([
-          new Promise<any>((resolve) => hostSocket.emit("draft:pick", { scryfallId: hostPick }, resolve)),
-          new Promise<any>((resolve) => guestSocket.emit("draft:pick", { scryfallId: guestPick }, resolve)),
+          hostSocket.emitWithAck("draft:pick", { scryfallId: hostPick }),
+          guestSocket.emitWithAck("draft:pick", { scryfallId: guestPick }),
         ]);
         assert.equal(hostPickResult.ok, true, JSON.stringify(hostPickResult));
         assert.equal(guestPickResult.ok, true, JSON.stringify(guestPickResult));
@@ -296,26 +317,11 @@ test(
     let guestSocket = await connect(server.url);
 
     try {
-      const createResult = await createDraft({
-        cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
-        packCount: 1,
-        packSize: 2,
-        alternatingDraft: true,
-      });
-      assert.equal(createResult.ok, true, JSON.stringify(createResult));
-      const hostJoin = await hostSocket.emitWithAck("lobby:join", { playerName: "Alice" });
-      assert.equal(hostJoin.ok, true, JSON.stringify(hostJoin));
-
-      const joinResult = await new Promise<any>((resolve) =>
-        guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve)
-      );
-      assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
-      const guestId: string = joinResult.playerId;
+      const { draftId, guestId } = await createRealCubeDraft(hostSocket, guestSocket, 2);
 
       const hostStatePromise = waitForMyState(hostSocket);
       const guestStatePromise = waitForMyState(guestSocket);
-      const startResult = startDraft();
-      assert.equal(startResult.ok, true, JSON.stringify(startResult));
+      assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
       const hostStateBeforeDrop = await hostStatePromise;
       const guestStateBeforeDrop = await guestStatePromise;
       assert.equal(guestStateBeforeDrop.pack?.cards.length, 2);
@@ -324,9 +330,9 @@ test(
       // Host picks from their own pack; guest hasn't picked yet, so the round
       // hasn't advanced — guest's pack/pool should still be exactly what they
       // started with.
-      const hostPickResult = await new Promise<any>((resolve) =>
-        hostSocket.emit("draft:pick", { scryfallId: hostStateBeforeDrop.pack!.cards[0]!.scryfallId }, resolve)
-      );
+      const hostPickResult = await hostSocket.emitWithAck("draft:pick", {
+        scryfallId: hostStateBeforeDrop.pack!.cards[0]!.scryfallId,
+      });
       assert.equal(hostPickResult.ok, true, JSON.stringify(hostPickResult));
 
       // Simulate the guest's browser dropping and reconnecting: close the old
@@ -336,9 +342,7 @@ test(
 
       guestSocket = await connect(server.url);
       const reconnectStatePromise = waitForMyState(guestSocket);
-      const reconnectResult = await new Promise<any>((resolve) =>
-        guestSocket.emit("lobby:reconnect", { playerId: guestId }, resolve)
-      );
+      const reconnectResult = await guestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId });
       assert.equal(reconnectResult.ok, true, JSON.stringify(reconnectResult));
 
       const resumedState = await reconnectStatePromise;
@@ -350,9 +354,9 @@ test(
       );
 
       // And the reconnected socket should be fully functional, not just read-only.
-      const guestPickResult = await new Promise<any>((resolve) =>
-        guestSocket.emit("draft:pick", { scryfallId: resumedState.pack!.cards[0]!.scryfallId }, resolve)
-      );
+      const guestPickResult = await guestSocket.emitWithAck("draft:pick", {
+        scryfallId: resumedState.pack!.cards[0]!.scryfallId,
+      });
       assert.equal(guestPickResult.ok, true, JSON.stringify(guestPickResult));
     } finally {
       hostSocket.close();
@@ -374,26 +378,11 @@ test(
     let secondGuestSocket: DraftClientSocket | undefined;
 
     try {
-      const createResult = await createDraft({
-        cubeIdOrUrl: "https://cubecobra.com/cube/overview/practical",
-        packCount: 1,
-        packSize: 2,
-        alternatingDraft: true,
-      });
-      assert.equal(createResult.ok, true, JSON.stringify(createResult));
-      const hostJoin = await hostSocket.emitWithAck("lobby:join", { playerName: "Alice" });
-      assert.equal(hostJoin.ok, true, JSON.stringify(hostJoin));
-
-      const joinResult = await new Promise<any>((resolve) =>
-        guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve)
-      );
-      assert.equal(joinResult.ok, true, JSON.stringify(joinResult));
-      const guestId: string = joinResult.playerId;
+      const { draftId, guestId } = await createRealCubeDraft(hostSocket, guestSocket, 2);
 
       const hostStatePromise = waitForMyState(hostSocket);
       const guestStatePromise = waitForMyState(guestSocket);
-      const startResult = startDraft();
-      assert.equal(startResult.ok, true, JSON.stringify(startResult));
+      assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
       await hostStatePromise;
       const guestStateBeforeRejoin = await guestStatePromise;
 
@@ -404,9 +393,7 @@ test(
 
       secondGuestSocket = await connect(server.url);
       const rejoinStatePromise = waitForMyState(secondGuestSocket);
-      const rejoinResult = await new Promise<any>((resolve) =>
-        secondGuestSocket!.emit("lobby:reconnect", { playerId: guestId }, resolve)
-      );
+      const rejoinResult = await secondGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId });
       assert.equal(rejoinResult.ok, true, JSON.stringify(rejoinResult));
 
       await evictionPromise;
@@ -422,9 +409,9 @@ test(
       // lobby:state should still show Bob as connected (via the new socket),
       // never dropped to disconnected by the stale socket's disconnect handler.
       const lobbyStatePromise = waitForLobbyState(hostSocket);
-      const secondPickResult = await new Promise<any>((resolve) =>
-        secondGuestSocket!.emit("draft:pick", { scryfallId: rejoinState.pack!.cards[0]!.scryfallId }, resolve)
-      );
+      const secondPickResult = await secondGuestSocket.emitWithAck("draft:pick", {
+        scryfallId: rejoinState.pack!.cards[0]!.scryfallId,
+      });
       assert.equal(secondPickResult.ok, true, JSON.stringify(secondPickResult));
       const lobbyState = await lobbyStatePromise;
       assert.equal(
@@ -441,6 +428,39 @@ test(
   }
 );
 
+test("draft:create refuses a blank name or bad settings, and opens no draft", { timeout: 10_000 }, async (t) => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const fetchMock = t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("unexpected network call");
+  });
+  const server = await startServerFor(t);
+  const socket = await server.connect();
+  const cube = { cubeIdOrUrl: "some-cube", packCount: 3, packSize: 15, alternatingDraft: true };
+
+  assert.deepEqual(await socket.emitWithAck("draft:create", { ...cube, playerName: "   " }), {
+    ok: false,
+    error: "Player name is required",
+  });
+  assert.deepEqual(await socket.emitWithAck("draft:create", { ...cube, playerName: "Alice", cubeIdOrUrl: " " }), {
+    ok: false,
+    error: "Cube URL or ID is required",
+  });
+  assert.deepEqual(await socket.emitWithAck("draft:create", { ...cube, playerName: "Alice", packCount: 0 }), {
+    ok: false,
+    error: "Need at least 1 pack",
+  });
+  assert.deepEqual(
+    await socket.emitWithAck("draft:create", { ...cube, playerName: "Alice", format: "chaos" as never }),
+    { ok: false, error: 'Unknown draft format "chaos"' }
+  );
+  assert.deepEqual(await socket.emitWithAck("draft:create", { ...cube, playerName: "Alice", setCode: "fra" }), {
+    ok: false,
+    error: "Choose a cube or a set, not both",
+  });
+  assert.equal(fetchMock.mock.callCount(), 0);
+  assert.deepEqual(lobbyManager.listDrafts(), []);
+});
+
 test(
   "round advance: each player's new pack arrives before the lobby state that makes it their turn",
   { timeout: 30_000 },
@@ -448,27 +468,22 @@ test(
     // Network-free: the lobby is built from local test cards, then both
     // players attach over real sockets.
     lobbyManager.resetForTests(freshSnapshotPath());
-    lobbyManager.createLobbyFromResolvedCube("Test Cube", ["c1", "c2", "c3", "c4"].map(testCard), [], {
-      cubeId: "test",
-      packCount: 1,
-      packSize: 2,
-      alternatingDraft: true,
-    });
-    const host = lobbyManager.addPlayer("Alice");
+    const draftId = createTestLobby(["c1", "c2", "c3", "c4"]);
+    const host = lobbyManager.addPlayer(draftId, "Alice");
 
     const server = await startTestServer();
     const hostSocket = await connect(server.url);
     const guestSocket = await connect(server.url);
 
     try {
-      const rejoin = await new Promise<any>((resolve) => hostSocket.emit("lobby:reconnect", { playerId: host.id }, resolve));
+      const rejoin = await hostSocket.emitWithAck("lobby:reconnect", { draftId, playerId: host.id });
       assert.equal(rejoin.ok, true, JSON.stringify(rejoin));
-      const join = await new Promise<any>((resolve) => guestSocket.emit("lobby:join", { playerName: "Bob" }, resolve));
-      assert.equal(join.ok, true, JSON.stringify(join));
+      const join = await guestSocket.emitWithAck("lobby:join", { draftId, playerName: "Bob" });
+      assert.ok(join.ok, JSON.stringify(join));
 
       const hostStart = waitForMyState(hostSocket);
       const guestStart = waitForMyState(guestSocket);
-      assert.deepEqual(startDraft(), { ok: true });
+      assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
       const hostPack = (await hostStart).pack!;
       const guestPack = (await guestStart).pack!;
 
@@ -489,8 +504,8 @@ test(
       watch(hostSocket, host.id, "host", hostPack.id);
       watch(guestSocket, join.playerId, "guest", guestPack.id);
 
-      await new Promise<any>((resolve) => hostSocket.emit("draft:pick", { scryfallId: hostPack.cards[0]!.scryfallId }, resolve));
-      await new Promise<any>((resolve) => guestSocket.emit("draft:pick", { scryfallId: guestPack.cards[0]!.scryfallId }, resolve));
+      await hostSocket.emitWithAck("draft:pick", { scryfallId: hostPack.cards[0]!.scryfallId });
+      await guestSocket.emitWithAck("draft:pick", { scryfallId: guestPack.cards[0]!.scryfallId });
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       assert.deepEqual(turnsSeen, { host: 1, guest: 1 }, "both players got their pick-2 turn");
@@ -525,106 +540,210 @@ test(
       [hostSocket, guestSocket].map((s) => waitForLobbyStateWhere(s, (v) => v.status === "drafting"))
     );
 
-    assert.deepEqual(startDraft(), { ok: true });
+    assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
     await bothDrafting;
     for (const events of logs) assert.deepEqual(events, ["draft:myState", "lobby:state drafting"]);
   }
 );
 
 test(
-  "the host can start only a lobby with two players, and cancel only a lobby or a draft under way",
+  "only the draft's creator can start it, once two players are seated, or close it",
   { timeout: 10_000 },
   async (t) => {
     lobbyManager.resetForTests(freshSnapshotPath());
     const server = await startServerFor(t);
-    assert.deepEqual(startDraft(), { ok: false, error: "No lobby has been created yet" });
-    assert.deepEqual(cancelDraft(), { ok: false, error: "No draft in progress to cancel" });
-
-    lobbyManager.createLobbyFromResolvedCube("Test Cube", ["c1", "c2"].map(testCard), [], {
-      cubeId: "test",
-      packCount: 1,
-      packSize: 1,
-      alternatingDraft: true,
-    });
+    const draftId = createTestLobby(["c1", "c2"], { packSize: 1 });
     const hostSocket = await server.connect();
-    const hostJoin = await hostSocket.emitWithAck("lobby:join", { playerName: "Alice" });
+    const spectatorSocket = await server.connect();
+    assert.deepEqual(await spectatorSocket.emitWithAck("draft:start"), { ok: false, error: "Not joined to this draft" });
+    assert.deepEqual(await spectatorSocket.emitWithAck("draft:close"), { ok: false, error: "Not joined to this draft" });
+
+    const hostJoin = await hostSocket.emitWithAck("lobby:join", { draftId, playerName: "Alice" });
     assert.ok(hostJoin.ok, JSON.stringify(hostJoin));
-    assert.deepEqual(startDraft(), { ok: false, error: "Need at least 2 players to start" });
-    assert.equal(lobbyManager.getSession()!.status, "lobby");
+    assert.deepEqual(await hostSocket.emitWithAck("draft:start"), {
+      ok: false,
+      error: "Need at least 2 players to start",
+    });
+    assert.equal(lobbyManager.getSession(draftId)!.status, "lobby");
 
     const guestSocket = await server.connect();
-    const guestJoin = await guestSocket.emitWithAck("lobby:join", { playerName: "Bob" });
+    const guestJoin = await guestSocket.emitWithAck("lobby:join", { draftId, playerName: "Bob" });
     assert.ok(guestJoin.ok, JSON.stringify(guestJoin));
-    assert.deepEqual(startDraft(), { ok: true });
-    await hostSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(hostJoin.playerId) });
-    await guestSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(guestJoin.playerId) });
-    assert.equal(lobbyManager.getSession()!.status, "complete");
+    const notCreator = { ok: false, error: "Only the player who created this draft can do that" };
+    assert.deepEqual(await guestSocket.emitWithAck("draft:start"), notCreator);
+    assert.deepEqual(await guestSocket.emitWithAck("draft:close"), notCreator);
+    assert.equal(lobbyManager.getSession(draftId)!.status, "lobby");
 
-    // A finished draft stays for deck building until the host creates the next one.
-    assert.deepEqual(cancelDraft(), { ok: false, error: "No draft in progress to cancel" });
-    assert.equal(lobbyManager.getSession()!.status, "complete");
+    assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
+    await hostSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(draftId, hostJoin.playerId) });
+    await guestSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(draftId, guestJoin.playerId) });
+    assert.equal(lobbyManager.getSession(draftId)!.status, "complete");
+
+    // A finished draft stays for deck building until its creator closes it.
+    assert.deepEqual(await guestSocket.emitWithAck("draft:close"), notCreator);
+    assert.deepEqual(await hostSocket.emitWithAck("draft:close"), { ok: true });
+    assert.equal(lobbyManager.getSession(draftId), undefined);
   }
 );
 
 test(
-  "privacy over a whole draft: each player only receives their own pool and deck, and a spectator neither",
+  "two drafts at once: each one's lobby state, packs and picks reach only its own players",
   { timeout: 10_000 },
   async (t) => {
     lobbyManager.resetForTests(freshSnapshotPath());
     const server = await startServerFor(t);
-    const cardIds = Array.from({ length: 8 }, (_, i) => `secret-${i}`);
-    const { hostSocket, guestSocket, hostId, guestId } = await seatHostAndGuest(server, cardIds, { packCount: 2 });
-    const spectatorSocket = await server.connect();
+    const first = await seatHostAndGuest(server, ["a1", "a2", "a3", "a4"].map((id) => `secret-first-${id}`));
+    const second = await seatHostAndGuest(server, ["b1", "b2", "b3", "b4"].map((id) => `secret-second-${id}`));
+    const onlookerSocket = await server.connect();
 
     function record(socket: DraftClientSocket) {
-      const log = { myStates: [] as MyState[], deckExports: [] as DeckExport[], lobbyStates: [] as string[] };
-      socket.on("draft:myState", (state) => log.myStates.push(state));
-      socket.on("draft:complete", (deckExport) => log.deckExports.push(deckExport));
-      socket.on("lobby:state", (state) => log.lobbyStates.push(JSON.stringify(state)));
+      const log = { wires: [] as string[], lobbyStates: [] as LobbyStateView[] };
+      for (const event of ["lobby:state", "draft:myState", "draft:complete"] as const) {
+        socket.on(event, (payload: unknown) => {
+          log.wires.push(JSON.stringify(payload));
+          if (event === "lobby:state") log.lobbyStates.push(payload as LobbyStateView);
+        });
+      }
       return log;
     }
-    const hostLog = record(hostSocket);
-    const guestLog = record(guestSocket);
-    const spectatorLog = record(spectatorSocket);
-    // Each socket's events arrive in order, and the final lobby:state is the
-    // last thing every socket is sent, so once it lands nothing else is coming.
-    const allComplete = Promise.all(
-      [hostSocket, guestSocket, spectatorSocket].map((s) => waitForLobbyStateWhere(s, (v) => v.status === "complete"))
+    const firstLogs = [record(first.hostSocket), record(first.guestSocket)];
+    const secondLogs = [record(second.hostSocket), record(second.guestSocket)];
+    const onlookerLog = record(onlookerSocket);
+
+    const firstComplete = Promise.all(
+      [first.hostSocket, first.guestSocket].map((s) => waitForLobbyStateWhere(s, (v) => v.status === "complete"))
     );
-
-    assert.deepEqual(startDraft(), { ok: true });
-    while (lobbyManager.getSession()!.status === "drafting") {
-      for (const [socket, playerId] of [[hostSocket, hostId], [guestSocket, guestId]] as const) {
-        assert.deepEqual(await socket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(playerId) }), { ok: true });
+    const secondDrafting = Promise.all(
+      [second.hostSocket, second.guestSocket].map((s) => waitForLobbyStateWhere(s, (v) => v.status === "drafting"))
+    );
+    assert.deepEqual(await first.hostSocket.emitWithAck("draft:start"), { ok: true });
+    assert.deepEqual(await second.hostSocket.emitWithAck("draft:start"), { ok: true });
+    await secondDrafting;
+    for (let round = 0; round < 2; round++) {
+      for (const [socket, playerId] of [[first.hostSocket, first.hostId], [first.guestSocket, first.guestId]] as const) {
+        const scryfallId = firstCardInPack(first.draftId, playerId);
+        assert.deepEqual(await socket.emitWithAck("draft:pick", { scryfallId }), { ok: true });
       }
     }
-    await allComplete;
+    await firstComplete;
 
-    const finalPools = lobbyManager.getSession()!.pools;
-    for (const [log, playerId] of [[hostLog, hostId], [guestLog, guestId]] as const) {
-      const finalPool = finalPools[playerId]!;
-      assert.equal(finalPool.length, 4);
-      for (const state of log.myStates) {
-        assert.deepEqual(state.pool, finalPool.slice(0, state.pool.length), "a pool update belonged to someone else");
-      }
-      // The final round's picks only reach the client through this last update.
-      assert.deepEqual(log.myStates.at(-1), { pack: null, pool: finalPool });
-      assert.deepEqual(log.deckExports.map((e) => e.playerId), [playerId]);
+    assert.equal(lobbyManager.getSession(second.draftId)!.status, "drafting", "the other draft is still going");
+    assert.deepEqual(lobbyManager.getSession(second.draftId)!.picks, []);
+    for (const log of firstLogs) {
+      assert.ok(log.lobbyStates.every((s) => s.sessionId === first.draftId));
+      assert.ok(log.wires.every((wire) => !wire.includes("secret-second")), "the first draft saw the second's cards");
     }
-    assert.deepEqual(spectatorLog.myStates, []);
-    assert.deepEqual(spectatorLog.deckExports, []);
-    for (const wire of [...hostLog.lobbyStates, ...guestLog.lobbyStates, ...spectatorLog.lobbyStates]) {
-      assert.ok(!wire.includes("secret-"), `lobby:state leaked card contents: ${wire}`);
+    for (const log of secondLogs) {
+      assert.ok(log.lobbyStates.every((s) => s.sessionId === second.draftId));
+      assert.ok(log.wires.every((wire) => !wire.includes("secret-first")), "the second draft saw the first's cards");
     }
+    assert.deepEqual(onlookerLog.wires, [], "a browser that isn't seated gets no draft's state");
   }
 );
+
+test("the draft list reaches every browser, seated or not, and follows each draft's status", { timeout: 10_000 }, async (t) => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const server = await startServerFor(t);
+  const older = createTestLobby(["c1", "c2", "c3", "c4"], { packSize: 1 }, "Older Cube");
+  createTestLobby(["d1", "d2"], {}, "Newer Cube");
+
+  // The list is sent the moment the socket connects, so the listener goes on before it does.
+  const onlookerSocket: DraftClientSocket = ioClient(server.url, { forceNew: true, autoConnect: false });
+  t.after(() => onlookerSocket.close());
+  const firstList = new Promise<DraftSummary[]>((resolve) => onlookerSocket.once("drafts:list", resolve));
+  onlookerSocket.connect();
+  const onConnect = await firstList;
+  assert.deepEqual(onConnect.map((d) => [d.cubeName, d.status, d.players.length]), [
+    ["Newer Cube", "lobby", 0],
+    ["Older Cube", "lobby", 0],
+  ]);
+
+  const hostSocket = await server.connect();
+  const guestSocket = await server.connect();
+  const seated = waitForDraftListWhere(onlookerSocket, (drafts) => drafts[1]!.players.length === 2);
+  const hostJoin = await hostSocket.emitWithAck("lobby:join", { draftId: older, playerName: "Alice" });
+  const guestJoin = await guestSocket.emitWithAck("lobby:join", { draftId: older, playerName: "Bob" });
+  assert.ok(hostJoin.ok && guestJoin.ok);
+  const afterJoins = await seated;
+  assert.deepEqual(afterJoins[1]!.players.map((p) => p.name), ["Alice", "Bob"]);
+  assert.equal(afterJoins[1]!.creatorPlayerId, hostJoin.playerId);
+
+  const drafting = waitForDraftListWhere(onlookerSocket, (drafts) => drafts[1]!.status === "drafting");
+  assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
+  await drafting;
+  const complete = waitForDraftListWhere(onlookerSocket, (drafts) => drafts[1]!.status === "complete");
+  await hostSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(older, hostJoin.playerId) });
+  await guestSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(older, guestJoin.playerId) });
+  await complete;
+
+  const dropped = waitForDraftListWhere(onlookerSocket, (drafts) => drafts[1]!.players[1]!.connected === false);
+  guestSocket.close();
+  await dropped;
+});
+
+test("privacy over a whole draft: each player only receives their own pool and deck, and a spectator neither", { timeout: 10_000 }, async (t) => {
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const server = await startServerFor(t);
+  const cardIds = Array.from({ length: 8 }, (_, i) => `secret-${i}`);
+  const { draftId, hostSocket, guestSocket, hostId, guestId } = await seatHostAndGuest(server, cardIds, {
+    packCount: 2,
+  });
+  const spectatorSocket = await server.connect();
+
+  function record(socket: DraftClientSocket) {
+    const log = { myStates: [] as MyState[], deckExports: [] as DeckExport[], wires: [] as string[] };
+    socket.on("draft:myState", (state) => log.myStates.push(state));
+    socket.on("draft:complete", (deckExport) => log.deckExports.push(deckExport));
+    socket.on("lobby:state", (state) => log.wires.push(JSON.stringify(state)));
+    socket.on("drafts:list", (drafts) => log.wires.push(JSON.stringify(drafts)));
+    return log;
+  }
+  const hostLog = record(hostSocket);
+  const guestLog = record(guestSocket);
+  const spectatorLog = record(spectatorSocket);
+  // Each socket's events arrive in order, and the final draft list is the last
+  // thing every socket is sent, so once it lands nothing else is coming.
+  const allComplete = Promise.all(
+    [hostSocket, guestSocket, spectatorSocket].map((s) =>
+      waitForDraftListWhere(s, (drafts) => drafts[0]?.status === "complete")
+    )
+  );
+
+  assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
+  while (lobbyManager.getSession(draftId)!.status === "drafting") {
+    for (const [socket, playerId] of [[hostSocket, hostId], [guestSocket, guestId]] as const) {
+      assert.deepEqual(
+        await socket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(draftId, playerId) }),
+        { ok: true }
+      );
+    }
+  }
+  await allComplete;
+
+  const finalPools = lobbyManager.getSession(draftId)!.pools;
+  for (const [log, playerId] of [[hostLog, hostId], [guestLog, guestId]] as const) {
+    const finalPool = finalPools[playerId]!;
+    assert.equal(finalPool.length, 4);
+    for (const state of log.myStates) {
+      assert.deepEqual(state.pool, finalPool.slice(0, state.pool.length), "a pool update belonged to someone else");
+    }
+    // The final round's picks only reach the client through this last update.
+    assert.deepEqual(log.myStates.at(-1), { pack: null, pool: finalPool });
+    assert.deepEqual(log.deckExports.map((e) => e.playerId), [playerId]);
+  }
+  assert.deepEqual(spectatorLog.myStates, []);
+  assert.deepEqual(spectatorLog.deckExports, []);
+  for (const wire of [...hostLog.wires, ...guestLog.wires, ...spectatorLog.wires]) {
+    assert.ok(!wire.includes("secret-"), `a public event leaked card contents: ${wire}`);
+  }
+});
 
 test("only a seated player can pick, and only from the pack they hold", { timeout: 10_000 }, async (t) => {
   lobbyManager.resetForTests(freshSnapshotPath());
   const server = await startServerFor(t);
-  const { hostSocket, guestSocket, hostId, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
-  assert.deepEqual(startDraft(), { ok: true });
-  const hostCard = firstCardInPack(hostId);
+  const { draftId, hostSocket, guestSocket, hostId, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
+  assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
+  const hostCard = firstCardInPack(draftId, hostId);
 
   const spectatorSocket = await server.connect();
   assert.deepEqual(await spectatorSocket.emitWithAck("draft:pick", { scryfallId: hostCard }), {
@@ -636,8 +755,8 @@ test("only a seated player can pick, and only from the pack they hold", { timeou
     error: `Card ${hostCard} is not in player ${guestId}'s current pack`,
   });
 
-  const session = lobbyManager.getSession()!;
-  assert.equal(firstCardInPack(hostId), hostCard, "the host still holds the card");
+  const session = lobbyManager.getSession(draftId)!;
+  assert.equal(firstCardInPack(draftId, hostId), hostCard, "the host still holds the card");
   assert.deepEqual(session.pools[guestId], []);
   assert.deepEqual(session.waitingOn.slice().sort(), [hostId, guestId].sort());
 });
@@ -648,22 +767,62 @@ test(
   async (t) => {
     lobbyManager.resetForTests(freshSnapshotPath());
     const server = await startServerFor(t);
-    const { hostSocket, guestSocket, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
+    const { draftId, hostSocket, guestSocket, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
     const guestConnected = (state: LobbyStateView) => state.players.find((p) => p.id === guestId)?.connected;
 
     const dropped = waitForLobbyStateWhere(hostSocket, (s) => guestConnected(s) === false);
     guestSocket.close();
     await dropped;
-    assert.equal(lobbyManager.getSession()!.players.length, 2, "the seat is kept for them");
+    assert.equal(lobbyManager.getSession(draftId)!.players.length, 2, "the seat is kept for them");
 
     const newGuestSocket = await server.connect();
-    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { playerId: "not-a-player" }), {
-      ok: false,
-      error: "No matching player found for this draft",
-    });
+    const noMatch = { ok: false, error: "No matching player found for this draft" };
+    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: "not-a-player" }), noMatch);
+    const otherDraft = createTestLobby(["d1", "d2"]);
+    assert.deepEqual(
+      await newGuestSocket.emitWithAck("lobby:reconnect", { draftId: otherDraft, playerId: guestId }),
+      noMatch,
+      "a player can only reconnect to their own draft"
+    );
     const back = waitForLobbyStateWhere(hostSocket, (s) => guestConnected(s) === true);
-    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { playerId: guestId }), { ok: true });
+    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId }), { ok: true });
     await back;
+  }
+);
+
+test(
+  "leaving: a guest can leave before the start or once it's over, never during it; the creator can't",
+  { timeout: 10_000 },
+  async (t) => {
+    lobbyManager.resetForTests(freshSnapshotPath());
+    const server = await startServerFor(t);
+    const { draftId, hostSocket, guestSocket, hostId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"], {
+      packSize: 1,
+    });
+
+    assert.deepEqual(await hostSocket.emitWithAck("lobby:leave"), {
+      ok: false,
+      error: "You created this draft: close it instead",
+    });
+    const guestGone = waitForLobbyStateWhere(hostSocket, (s) => s.players.length === 1);
+    assert.deepEqual(await guestSocket.emitWithAck("lobby:leave"), { ok: true });
+    await guestGone;
+    assert.deepEqual(await guestSocket.emitWithAck("lobby:cubeCards").then((r) => r.ok), false, "the seat is freed");
+
+    const rejoin = await guestSocket.emitWithAck("lobby:join", { draftId, playerName: "Bob" });
+    assert.ok(rejoin.ok, JSON.stringify(rejoin));
+    assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
+    assert.deepEqual(await guestSocket.emitWithAck("lobby:leave"), {
+      ok: false,
+      error: "You can't leave a draft that's under way",
+    });
+
+    await hostSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(draftId, hostId) });
+    await guestSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(draftId, rejoin.playerId) });
+    assert.deepEqual(await guestSocket.emitWithAck("lobby:leave"), { ok: true });
+    const session = lobbyManager.getSession(draftId)!;
+    assert.deepEqual(session.players.map((p) => [p.name, p.connected]), [["Alice", true], ["Bob", false]]);
+    assert.equal(session.pools[rejoin.playerId]!.length, 1, "a finished draft keeps their pool");
   }
 );
 
@@ -684,28 +843,42 @@ test("anyone waiting can look through the cube, but a cube draft opens no sample
   });
 });
 
-test("cancelling a draft in progress sends everyone back to an empty server", { timeout: 10_000 }, async (t) => {
-  lobbyManager.resetForTests(freshSnapshotPath());
-  const server = await startServerFor(t);
-  const { hostSocket, guestSocket, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
-  assert.deepEqual(startDraft(), { ok: true });
-  const guestCard = firstCardInPack(guestId);
+test(
+  "closing a draft in progress tells its players and frees their seats; the host can close one too",
+  { timeout: 10_000 },
+  async (t) => {
+    lobbyManager.resetForTests(freshSnapshotPath());
+    const server = await startServerFor(t);
+    const { draftId, hostSocket, guestSocket, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"]);
+    const other = await seatHostAndGuest(server, ["d1", "d2", "d3", "d4"]);
+    assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
+    const guestCard = firstCardInPack(draftId, guestId);
 
-  const everyoneEmpty = Promise.all(
-    [hostSocket, guestSocket].map((s) => waitForLobbyStateWhere(s, (v) => v.status === "empty"))
-  );
-  assert.deepEqual(cancelDraft(), { ok: true });
-  await everyoneEmpty;
+    const closedFor = (socket: DraftClientSocket) =>
+      new Promise<string>((resolve) => socket.once("draft:closed", resolve));
+    const everyoneTold = Promise.all([hostSocket, guestSocket].map(closedFor));
+    let otherTold = false;
+    other.hostSocket.on("draft:closed", () => (otherTold = true));
+    assert.deepEqual(await hostSocket.emitWithAck("draft:close"), { ok: true });
+    assert.deepEqual(await everyoneTold, [draftId, draftId]);
 
-  assert.deepEqual(await guestSocket.emitWithAck("draft:pick", { scryfallId: guestCard }), {
-    ok: false,
-    error: "No lobby has been created yet",
-  });
-  assert.deepEqual(await guestSocket.emitWithAck("lobby:reconnect", { playerId: guestId }), {
-    ok: false,
-    error: "No matching player found for this draft",
-  });
-});
+    assert.deepEqual(await guestSocket.emitWithAck("draft:pick", { scryfallId: guestCard }), {
+      ok: false,
+      error: "Not joined to this draft",
+    });
+    assert.deepEqual(await guestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId }), {
+      ok: false,
+      error: "No matching player found for this draft",
+    });
+
+    const otherClosed = Promise.all([other.hostSocket, other.guestSocket].map(closedFor));
+    assert.deepEqual(closeDraft(other.draftId), { ok: true });
+    assert.deepEqual(await otherClosed, [other.draftId, other.draftId]);
+    assert.equal(otherTold, true);
+    assert.deepEqual(closeDraft(other.draftId), { ok: false, error: "This draft doesn't exist anymore" });
+    assert.deepEqual(lobbyManager.listDrafts(), []);
+  }
+);
 
 test(
   "reconnecting after the draft finished brings back the full pool, last pick included, and the player's own deck",
@@ -713,20 +886,21 @@ test(
   async (t) => {
     lobbyManager.resetForTests(freshSnapshotPath());
     const server = await startServerFor(t);
-    const { hostSocket, guestSocket, hostId, guestId } = await seatHostAndGuest(server, ["c1", "c2", "c3", "c4"], {
-      packCount: 2,
-      packSize: 1,
-    });
-    assert.deepEqual(startDraft(), { ok: true });
+    const { draftId, hostSocket, guestSocket, hostId, guestId } = await seatHostAndGuest(
+      server,
+      ["c1", "c2", "c3", "c4"],
+      { packCount: 2, packSize: 1 }
+    );
+    assert.deepEqual(await hostSocket.emitWithAck("draft:start"), { ok: true });
     // Each player's draft:complete follows the final pick's ack; wait for them so they aren't mistaken for
     // what the reconnect sends.
     const completed = Promise.all([waitForDeckExport(hostSocket), waitForDeckExport(guestSocket)]);
     for (let round = 0; round < 2; round++) {
-      await hostSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(hostId) });
-      await guestSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(guestId) });
+      await hostSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(draftId, hostId) });
+      await guestSocket.emitWithAck("draft:pick", { scryfallId: firstCardInPack(draftId, guestId) });
     }
     await completed;
-    const session = lobbyManager.getSession()!;
+    const session = lobbyManager.getSession(draftId)!;
     assert.equal(session.status, "complete");
     const guestPool = session.pools[guestId]!.map((c) => c.scryfallId);
     assert.equal(guestPool.length, 2);
@@ -739,7 +913,9 @@ test(
     const newGuestSocket = await server.connect();
     const myState = waitForMyState(newGuestSocket);
     const deckExport = waitForDeckExport(newGuestSocket);
-    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { playerId: guestId }), { ok: true });
+    assert.deepEqual(await newGuestSocket.emitWithAck("lobby:reconnect", { draftId, playerId: guestId }), {
+      ok: true,
+    });
 
     assert.deepEqual(await myState, { pack: null, pool: session.pools[guestId] });
     const deck = await deckExport;
@@ -756,11 +932,11 @@ test("with a lobby password set, only connections presenting it get in", { timeo
   assert.equal(await connectionRefusal(server.url), "invalid_password");
   assert.equal(await connectionRefusal(server.url, { password: "wrong" }), "invalid_password");
 
-  // Admitted sockets reach the handlers: there's just no lobby to join yet.
+  // Admitted sockets reach the handlers: there's just no draft to join yet.
   const socket = await server.connect({ password: "hunter2" });
-  assert.deepEqual(await socket.emitWithAck("lobby:join", { playerName: "Bob" }), {
+  assert.deepEqual(await socket.emitWithAck("lobby:join", { draftId: "none", playerName: "Bob" }), {
     ok: false,
-    error: "No lobby has been created yet",
+    error: "This draft doesn't exist anymore",
   });
 });
 
@@ -769,9 +945,9 @@ test("without a lobby password, connections get in whatever they present", { tim
   const server = await startServerFor(t);
 
   const socket = await server.connect({ password: "anything" });
-  assert.deepEqual(await socket.emitWithAck("lobby:join", { playerName: "Bob" }), {
+  assert.deepEqual(await socket.emitWithAck("lobby:join", { draftId: "none", playerName: "Bob" }), {
     ok: false,
-    error: "No lobby has been created yet",
+    error: "This draft doesn't exist anymore",
   });
 });
 
@@ -783,6 +959,7 @@ test(
     const server = await startServerFor(t);
     const cardIds = Array.from({ length: 8 }, (_, i) => `secret-${i + 1}`);
     const players = await seatHostAndGuest(server, cardIds, { format: "winston", packCount: 2, alternatingDraft: false });
+    const { draftId } = players;
     const sockets = { [players.hostId]: players.hostSocket, [players.guestId]: players.guestSocket };
     const lobbyWires: string[] = [];
     const piles: Record<string, (Card[] | null | undefined)[]> = { [players.hostId]: [], [players.guestId]: [] };
@@ -801,7 +978,7 @@ test(
     }
 
     const started = Object.values(sockets).map((socket) => waitForLobbyState(socket));
-    assert.deepEqual(startDraft(), { ok: true });
+    assert.deepEqual(await players.hostSocket.emitWithAck("draft:start"), { ok: true });
     await Promise.all(started);
 
     assert.deepEqual(await players.guestSocket.emitWithAck("winston:take", { pileIndex: 0 }), {
@@ -813,8 +990,8 @@ test(
       error: "You're looking at pile 1, not pile 2",
     });
 
-    for (let action = 0; lobbyManager.getSession()!.status === "drafting"; action++) {
-      const session = lobbyManager.getSession()!;
+    for (let action = 0; lobbyManager.getSession(draftId)!.status === "drafting"; action++) {
+      const session = lobbyManager.getSession(draftId)!;
       const table = session.winston!;
       const active = session.players[table.activeSeat]!.id;
       const inactive = active === players.hostId ? players.guestId : players.hostId;
@@ -826,7 +1003,7 @@ test(
       assert.ok(action < 50, "the draft must end");
     }
 
-    const pools = lobbyManager.getSession()!.pools;
+    const pools = lobbyManager.getSession(draftId)!.pools;
     assert.deepEqual(
       [...pools[players.hostId]!, ...pools[players.guestId]!].map((c) => c.scryfallId).sort(),
       [...cardIds].sort()

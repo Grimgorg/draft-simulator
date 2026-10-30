@@ -59,7 +59,7 @@ A failed browser test leaves a trace: `npx playwright show-trace test-results/<t
 
 ## Layout
 
-One server process runs **one draft at a time**: a single in-memory `DraftSession`, no rooms, and every socket receives every `lobby:state` broadcast. The process runs two HTTP + Socket.IO servers: the **management server** (127.0.0.1 only, always up) and the **draft server** players use, which the management server starts and stops.
+One server process runs **many drafts at once** (at most `MAX_OPEN_DRAFTS` unfinished): `lobbyManager` keeps them in memory, keyed by draft id (the session's id). Each draft's seated sockets share a Socket.IO room, `draft:<id>`, and only they get its `lobby:state`; every socket gets `drafts:list`. A socket is seated in at most one draft. The process runs two HTTP + Socket.IO servers: the **management server** (127.0.0.1 only, always up) and the **draft server** players use, which the management server starts and stops.
 
 ```
 shared/src/               wire contract: socket event types (events.ts, managementEvents.ts), DraftState, LobbyStateView
@@ -71,7 +71,7 @@ server/src/
   packaged/               executable-only runtime: data dir and .env next to it, embedded client and SQLite addon
   draftEngine/            draft rules: deal, pick, pass packs, advance rounds; winstonDraft (two-player Winston draft,
                           from docs/winston-draft.md)
-  session/                lobbyManager (owns the state), snapshotStore (saves it), outgoing views
+  session/                lobbyManager (owns every draft), snapshotStore (saves them), outgoing views
   realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware
   cardData/, db/          SQLite cache of Scryfall card data, downloaded on startup: one printing per card (`cards`), and
                           every printing of the sets set drafts open (`set_printings`)
@@ -82,7 +82,7 @@ server/scripts/           buildExecutable.ts, smokeTestExecutable.ts (run with t
 client/src/
   socket.ts               the one socket connection
   useDraftConnection.ts   all server state + reconnect flow
-  App.tsx                 picks the screen: empty → lobby → drafting → complete
+  App.tsx                 picks the screen: draft list → join → lobby → drafting → complete
   components/             React components
   management/             the management UI (manage.html): its own socket, useManagementConnection, panels
 e2e/                      Playwright tests against the production build
@@ -106,12 +106,12 @@ release/                  built executables, gitignored (as are desktop/src-taur
 - `lobbyManager`: the only holder of session state and the only caller of engine mutators. Saves a snapshot after every change.
 - `socketHandlers`: the only code that emits player socket events. The server, not the client, decides who is picking.
 - `managementServer`: the only code that emits `manage:*` events, and the only caller of `startDraftServer`/`stopDraftServer`. It learns about changes from `lobbyManager.onStateChange`, `onDraftServerChange` and `onLog`.
-  Only the host creates, starts and cancels drafts, from the management UI, through `socketHandlers`' `createDraft`, `startDraft` and `cancelDraft`, which tell the players. Players have no host role: everyone joins with `lobby:join`.
+  Players create drafts (`draft:create`, which seats its creator) and join them (`lobby:join`). A draft's creator is its first player (`getCreatorPlayerId`), the only one who can `draft:start` and `draft:close` it; the server checks. The host can only close drafts, from the management UI, through `socketHandlers`' `closeDraft`, which tells their players.
 - `useDraftConnection`: the only client code that listens to player socket events. Components send through the `socket` singleton and get state as props.
 - `useManagementConnection`: the same for the management UI and its `managementSocket` singleton.
 - Dependencies: `server` and `client` use `shared` but **never each other**. `e2e` uses only the browser and HTTP.
 
-**Privacy.** `lobby:state` goes to everyone, so it must never carry packs or pools. `draft:myState` and `draft:complete` go only to the owning player's socket. `manage:state` carries no packs or pools either: the host is a player too.
+**Privacy.** `lobby:state` goes to everyone in a draft and `drafts:list` to everyone connected, so neither may carry packs or pools, and one draft's events never go to another draft's room. `draft:myState` and `draft:complete` go only to the owning player's socket. `manage:state` carries no packs or pools either: the host is a player too.
 
 **Management security.** The management server listens on 127.0.0.1 and refuses any request whose `Host` or `Origin` isn't loopback (`isAllowedManagementRequest`), so websites the host visits can't drive it. Keep both when adding routes.
 
@@ -162,7 +162,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 - When packaged, the data dir and `.env` are in `DRAFT_SIMULATOR_HOME` (the desktop app sets it to the OS app data folder), or next to the executable without it. Never in `server/`.
 
 **Desktop app**
-- The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app, and starts the draft server only to resume an open or running draft (`shouldStartDraftServerAtLaunch`): otherwise the host starts it. Run from source, it always starts.
+- The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app, and starts the draft server only to resume an open or running draft (`shouldStartDraftServerAtLaunch`, any of them): otherwise the host starts it. Run from source, it always starts.
 - `tauri.bundle.conf.json` holds the settings that need `build:exe` and `notices` to have run (the sidecar and `desktop/src-tauri/THIRD_PARTY_NOTICES.txt`, which `desktop/scripts/buildNotices.ts` builds from the server's notices plus cargo-about's list of Rust crates). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
 - macOS `hardenedRuntime` must stay `false`: Tauri re-signs the bundled server, and with the hardened runtime V8 can't reserve memory for its JIT, so the server crashes at start. CI smoke-tests the server inside the `.app` for this reason.
 - The window shows the bundled start page (`desktop/splash/`), then loads `http://127.0.0.1:<port>`. It has no capabilities:
@@ -187,7 +187,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 
 | What | Breaks if changed carelessly |
 |---|---|
-| Snapshot shape (`server/data/draft-session.json`, path set by `DRAFT_SNAPSHOT_PATH`) | resuming a running draft after a server restart |
+| Snapshot shape (`server/data/draft-session.json`, path set by `DRAFT_SNAPSHOT_PATH`): `{ drafts: [...] }`; `fromSnapshot` still reads the old single-draft shape | resuming running drafts after a server restart or an update |
 | Card DB schema (`server/data/cards.sqlite3`) | existing caches. Only additive migrations, in `getDb()` (`db/database.ts`): check `PRAGMA table_info`, then `ALTER TABLE`, or add a table. When existing caches lack the new data, mark them stale (delete `last_imported_at`), and bump CI's card cache key |
 | Socket events (`shared/src/events.ts`, `managementEvents.ts`) | server and client talking. Change both in the same commit |
 | Executable layout (`data/` and `.env` in `DRAFT_SIMULATOR_HOME` or next to the executable, asset names in `buildExecutable.ts`) | hosts' existing data and settings after updating |
@@ -198,7 +198,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 | `tauri.beta.conf.json` (beta `identifier`, `beta-channel/latest.json` URL); `beta-channel` staying a prerelease | installed betas' data and updates; as the latest release it would send betas to stable apps |
 | `localStorage` keys (`pileStorage.ts`, `playerIdentity.ts`, `lobbyPassword.ts`) | players' saved identity (their seat), piles, deck state and lobby password |
 
-To reset a stuck draft, delete `server/data/draft-session.json`.
+To reset every draft, delete `server/data/draft-session.json`; to end one, close it in the management UI.
 
 ## Principles
 

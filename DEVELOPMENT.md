@@ -34,7 +34,7 @@ The Scryfall card database (~38,000 cards, cached locally at `server/data/cards.
 npm start
 ```
 
-This builds `shared`, `server`, and `client`, then starts the server at **http://localhost:4000** and the management UI at **http://127.0.0.1:4001** (see [Download and run](README.md#download-and-run) for what it shows). Create the draft in the management UI, then open http://localhost:4000 to play; the host joins there like everyone else. Anyone else on the same network can join by opening `http://<your-computer's-LAN-IP>:4000` in their own browser.
+This builds `shared`, `server`, and `client`, then starts the server at **http://localhost:4000** and the management UI at **http://127.0.0.1:4001** (see [Download and run](README.md#download-and-run) for what it shows). Open http://localhost:4000 to create a draft and play; the host joins there like everyone else. Anyone else on the same network can join by opening `http://<your-computer's-LAN-IP>:4000` in their own browser.
 
 ### Development mode
 
@@ -68,7 +68,7 @@ One more setting only matters when running from source:
 
 - `MANAGEMENT_PORT` — defaults to `4001`. The management UI listens on this port on `127.0.0.1` only, so other computers can't open it. `0` picks any free port, which is what the desktop app uses.
 
-To reset a stuck draft, stop the server and delete `server/data/draft-session.json`.
+To reset every draft, stop the server and delete `server/data/draft-session.json`. A single stuck draft can be cancelled in the management UI's **Drafts** panel.
 
 ## Project structure
 
@@ -85,7 +85,7 @@ Server tests sit next to the code they test, as `*.test.ts` (for example `server
 ```bash
 npm test                                   # server unit and socket integration tests
 npx --workspace e2e playwright install chromium   # once, before the first browser test run
-npm run test:e2e                           # browser tests: a host and a guest draft in real Chromium, and the management UI
+npm run test:e2e                           # browser tests: players create and draft in real Chromium, and the management UI
 npm run test:e2e:ui                        # the same browser tests in Playwright's UI, to step through each one afterwards
 npm run test:e2e:slow                      # the same browser tests slowed down in visible windows, to watch live
 npm run test:all                           # server tests, then the browser tests if those pass

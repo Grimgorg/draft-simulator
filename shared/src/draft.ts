@@ -30,7 +30,7 @@ export interface DraftSettings {
 
 export type DraftStatus = "lobby" | "drafting" | "complete";
 
-/** The table is whoever has taken a seat when the host starts picking, at least this many. */
+/** The table is whoever has taken a seat when the draft's creator starts picking, at least this many. */
 export const MIN_PLAYERS = 2;
 
 /** A Winston draft is for exactly this many players. */

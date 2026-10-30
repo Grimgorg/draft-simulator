@@ -1,23 +1,21 @@
 import { once } from "node:events";
 import fs from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
-import { CUBE_CARDS, CUBE_ID, CUBE_NAME, UNRESOLVED_CUBE_ID, expect, test } from "../fixtures.js";
+import { CUBE_ID, CUBE_NAME, UNRESOLVED_CUBE_ID, expect, test } from "../fixtures.js";
 import {
-  CARDS_PER_PACK,
   NO_DRAFT_MESSAGE,
-  PACKS,
   RECONNECT_TIMEOUT,
   createDraft,
-  draftWholeCube,
   expectPoolSize,
   joinDraft,
+  openNewDraftDialog,
   openTab,
   panel,
   pickFirstCard,
   startTwoPlayerDraft,
 } from "../helpers.js";
 
-test("the host watches players join and the draft start", async ({ openManagement, openPlayer, draftServer }) => {
+test("the host watches players create, join and start drafts", async ({ openManagement, openPlayer, draftServer }) => {
   const management = await openManagement();
   const port = new URL(draftServer.url).port;
   await expect(panel(management, "Server")).toContainText(`Running on port ${port}`);
@@ -25,29 +23,27 @@ test("the host watches players join and the draft start", async ({ openManagemen
   await openTab(management, "Logs");
   await expect(management.getByRole("log")).toContainText(`Draft server is running on port ${port}.`);
   await openTab(management, "Draft");
+  const drafts = panel(management, "Drafts");
+  await expect(drafts).toContainText("No drafts yet.");
 
   const host = await openPlayer();
   await expect(host.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
-  await createDraft(management);
-  await expect(panel(management, "Current draft")).toContainText("Waiting for players to join.");
-  await expect(panel(management, "Current draft")).toContainText(`${CUBE_NAME} (8 cards)`);
-  await joinDraft(host, "Alice");
-  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Connected/]);
-  await expect(management.getByRole("button", { name: "Waiting for players (1 of at least 2)" })).toBeDisabled();
+  await createDraft(host, "Alice");
+  await expect(drafts).toContainText(CUBE_NAME);
+  await expect(drafts).toContainText("Waiting for players");
+  await expect(drafts.getByRole("listitem").filter({ hasText: /^Alice/ })).toHaveText(/Alice\s*Connected\s*Creator/);
+  await expect(host.getByRole("button", { name: "Waiting for players (1 of at least 2)" })).toBeDisabled();
 
   const guest = await openPlayer();
   await joinDraft(guest, "Bob");
-  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice/, /Bob\s*Connected/]);
-  await expect(panel(management, "Players")).toContainText("2 browsers connected");
+  await expect(drafts.getByRole("listitem").filter({ hasText: /^Bob/ })).toHaveText(/Bob\s*Connected/);
+  await expect(drafts).toContainText("2 browsers connected");
 
-  await management.getByRole("button", { name: "Start picking" }).click();
-  await expect(panel(management, "Current draft")).toContainText("Pack 1 of 2, pick 1 of 2");
-  await expect(panel(management, "Players").getByText("Picking")).toHaveCount(2);
+  await host.getByRole("button", { name: "Start picking" }).click();
+  await expect(drafts).toContainText("Drafting");
 
   await guest.close();
-  await expect(panel(management, "Players").getByRole("listitem").filter({ hasText: "Bob" })).toContainText(
-    "Disconnected",
-  );
+  await expect(drafts.getByRole("listitem").filter({ hasText: /^Bob/ })).toContainText("Disconnected");
 });
 
 test("a new lobby password applies after a restart, and players are asked for it", async ({
@@ -85,21 +81,22 @@ test("a stopped server keeps the draft, and players get their seat back once it 
   openPlayer,
 }) => {
   const management = await openManagement();
-  await createDraft(management);
   const host = await openPlayer();
-  await joinDraft(host, "Alice");
+  await createDraft(host, "Alice");
+  const alice = panel(management, "Drafts").getByRole("listitem").filter({ hasText: /^Alice/ });
 
   const server = panel(management, "Server");
   await server.getByRole("button", { name: "Stop server" }).click();
   await server.getByRole("button", { name: "Stop", exact: true }).click();
   await expect(server).toContainText("Stopped. Players can't connect");
   await expect(host.getByText("Connecting to server...")).toBeVisible();
-  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Disconnected/]);
+  await expect(alice).toContainText("Disconnected");
 
   await server.getByRole("button", { name: "Start server" }).click();
   await expect(server).toContainText("Running on port");
   await expect(host.getByRole("heading", { name: CUBE_NAME })).toBeVisible({ timeout: RECONNECT_TIMEOUT });
-  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Connected/]);
+  await expect(host.getByRole("button", { name: /^Waiting for players/ })).toBeVisible();
+  await expect(alice).toHaveText(/Alice\s*Connected/);
 });
 
 test("a busy port is reported in the management UI, and another port can be chosen", async ({
@@ -172,13 +169,12 @@ test("the tabs show one section at a time and flag what needs a look", async ({ 
   await expect(management.getByRole("contentinfo")).toContainText("https://github.com/Grimgorg/draft-simulator");
 });
 
-test("the create-draft dialog can be dismissed, and stays open to show a failed import", async ({ openManagement }) => {
-  const management = await openManagement();
-  const draft = panel(management, "Current draft");
-  const dialog = management.getByRole("dialog", { name: "New draft" });
+test("the create-draft dialog can be dismissed, and stays open to show a failed import", async ({ openPlayer }) => {
+  const player = await openPlayer();
+  const dialog = player.getByRole("dialog", { name: "New draft" });
 
   // First the format, then the type, as image buttons named by the label below them.
-  await draft.getByRole("button", { name: "Create draft" }).click();
+  await player.getByRole("button", { name: "Create draft" }).click();
   await expect(dialog.getByText("Normal draft")).toBeVisible();
   await expect(dialog.getByText("Winston draft")).toBeVisible();
   await dialog.getByRole("button", { name: "Normal draft" }).click();
@@ -189,9 +185,7 @@ test("the create-draft dialog can be dismissed, and stays open to show a failed 
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
 
-  await draft.getByRole("button", { name: "Create draft" }).click();
-  await dialog.getByRole("button", { name: "Normal draft" }).click();
-  await dialog.getByRole("button", { name: "Set draft" }).click();
+  await openNewDraftDialog(player, "Normal draft", "Set draft");
   await expect(dialog.getByLabel("Set")).toBeVisible();
   await expect(dialog.getByLabel("Cards per pack")).toBeHidden();
   await dialog.getByRole("button", { name: "Back" }).click();
@@ -203,81 +197,74 @@ test("the create-draft dialog can be dismissed, and stays open to show a failed 
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
 
-  await draft.getByRole("button", { name: "Create draft" }).click();
+  await player.getByRole("button", { name: "Create draft" }).click();
   await expect(dialog).toBeVisible();
-  await management.keyboard.press("Escape");
+  await player.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  await expect(draft).toContainText("No draft yet.");
+  await expect(player.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
 
-  await draft.getByRole("button", { name: "Create draft" }).click();
-  await dialog.getByRole("button", { name: "Normal draft" }).click();
-  await dialog.getByRole("button", { name: "Cube draft" }).click();
+  await openNewDraftDialog(player, "Normal draft", "Cube draft");
+  await dialog.getByLabel("Your name").fill("Alice");
   await dialog.getByLabel("CubeCobra cube URL or ID").fill("no-such-cube");
-  await dialog.getByRole("button", { name: "Start draft" }).click();
+  await dialog.getByRole("button", { name: "Create draft" }).click();
   await expect(dialog.getByRole("alert")).toContainText('Could not fetch cube "no-such-cube" from CubeCobra: 404');
   await expect(dialog).toBeVisible();
-  await expect(draft).toContainText("No draft yet.");
 
   await dialog.getByLabel("CubeCobra cube URL or ID").fill(CUBE_ID);
-  await dialog.getByRole("button", { name: "Start draft" }).click();
+  await dialog.getByRole("button", { name: "Create draft" }).click();
   await expect(dialog).toBeHidden();
-  await expect(draft).toContainText("Waiting for players to join.");
-  await expect(draft).toContainText(/Players\s*0/);
+  await expect(player.getByRole("heading", { name: CUBE_NAME })).toBeVisible();
+  await expect(player.getByRole("button", { name: "Waiting for players (1 of at least 2)" })).toBeVisible();
 });
 
-test("cancelling a draft needs a confirmation, and sends everyone back to the start", async ({
+test("the host can cancel any draft from the management UI, after a confirmation, and its players are told", async ({
   openManagement,
   openPlayer,
 }) => {
-  const { management, host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
-  const draft = panel(management, "Current draft");
-  const players = panel(management, "Players");
+  const management = await openManagement();
+  const { host, guest } = await startTwoPlayerDraft(openPlayer);
+  const drafts = panel(management, "Drafts");
   await pickFirstCard(host);
   await expectPoolSize(host, 1);
-  await expect(players.getByRole("listitem")).toHaveText([/Alice\s*Connected\s*Picked/, /Bob\s*Connected\s*Picking/]);
 
-  await draft.getByRole("button", { name: "Cancel draft" }).click();
-  await draft.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(draft.getByRole("button", { name: "Cancel draft" })).toBeVisible();
-  await expect(draft).toContainText("Drafting.");
+  await drafts.getByRole("button", { name: "Cancel draft" }).click();
+  await drafts.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(drafts.getByRole("button", { name: "Cancel draft" })).toBeVisible();
+  await expect(drafts).toContainText("Drafting");
 
-  await draft.getByRole("button", { name: "Cancel draft" }).click();
-  await draft.getByRole("button", { name: "Yes, cancel draft" }).click();
-  await expect(draft).toContainText("No draft yet.");
-  await expect(players).toContainText("No players yet.");
+  await drafts.getByRole("button", { name: "Cancel draft" }).click();
+  await drafts.getByRole("button", { name: "Yes, cancel draft" }).click();
+  await expect(drafts).toContainText("No drafts yet.");
+  for (const page of [host, guest]) {
+    await expect(page.getByText("Your draft was closed by its creator or the host.")).toBeVisible();
+    await page.getByRole("button", { name: "Back to the drafts" }).click();
+    await expect(page.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
+  }
+});
+
+test("a guest can leave a draft before it starts, and its creator can cancel it", async ({ openPlayer }) => {
+  const host = await openPlayer();
+  await createDraft(host, "Alice");
+  const guest = await openPlayer();
+  await joinDraft(guest, "Bob");
+  await expect(host.getByRole("button", { name: "Start picking" })).toBeEnabled();
+  await expect(guest.getByRole("button", { name: "Cancel draft" })).toHaveCount(0);
+
+  await guest.getByRole("button", { name: "Leave draft" }).click();
+  await expect(guest.getByRole("heading", { name: "Drafts" })).toBeVisible();
+  await expect(host.getByRole("button", { name: "Waiting for players (1 of at least 2)" })).toBeDisabled();
+  await joinDraft(guest, "Bob");
+
+  await host.getByRole("button", { name: "Cancel draft" }).click();
+  await host.getByRole("button", { name: "Yes, cancel draft" }).click();
   await expect(host.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
-  await expect(guest.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
+  await expect(guest.getByText("Your draft was closed by its creator or the host.")).toBeVisible();
 });
 
-test("after a finished draft, the next one starts from its settings", async ({ openManagement, openPlayer }) => {
-  const { management, host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
-  await draftWholeCube(host, guest);
-  const draft = panel(management, "Current draft");
-  await expect(draft).toContainText("Finished. Players are building their decks.");
-
-  // A new draft clears the finished one's pools and decks, so it needs a confirmation.
-  await draft.getByRole("button", { name: "Create draft" }).click();
-  await draft.getByRole("button", { name: "Create a new draft" }).click();
-  const dialog = management.getByRole("dialog", { name: "New draft" });
-  await dialog.getByRole("button", { name: "Normal draft" }).click();
-  await dialog.getByRole("button", { name: "Cube draft" }).click();
-  await expect(dialog.getByLabel("CubeCobra cube URL or ID")).toHaveValue(CUBE_ID);
-  await expect(dialog.getByLabel("Packs per player")).toHaveValue(String(PACKS));
-  await expect(dialog.getByLabel("Cards per pack")).toHaveValue(String(CARDS_PER_PACK));
-  await dialog.getByRole("button", { name: "Start draft" }).click();
-  await expect(dialog).toBeHidden();
-
-  await expect(draft).toContainText("Waiting for players to join.");
-  await expect(draft).toContainText(/Players\s*0/);
-  await expect(host.getByRole("button", { name: "Join draft" })).toBeVisible();
-});
-
-test("cards missing from the card database are reported", async ({ openManagement }) => {
-  const management = await openManagement();
-  await createDraft(management, UNRESOLVED_CUBE_ID);
-  const draft = panel(management, "Current draft");
-  await expect(draft).toContainText(`${CUBE_NAME} (${CUBE_CARDS.length} cards)`);
-  await expect(draft).toContainText("1 card in the cube wasn't found in the card database and is left out.");
+test("cards missing from the card database are reported", async ({ openPlayer }) => {
+  const player = await openPlayer();
+  await createDraft(player, "Alice", UNRESOLVED_CUBE_ID);
+  await expect(player.getByText("1 card(s) from this cube couldn't be found and were skipped: Not A Real Card")).toBeVisible();
 });
 
 test("invalid settings are refused with the reason", async ({ openManagement, draftServer }) => {
@@ -323,9 +310,8 @@ test("restarting during a draft needs a confirmation, and players keep their sea
   openPlayer,
 }) => {
   const management = await openManagement();
-  await createDraft(management);
   const host = await openPlayer();
-  await joinDraft(host, "Alice");
+  await createDraft(host, "Alice");
   const server = panel(management, "Server");
 
   await server.getByRole("button", { name: "Restart server" }).click();
@@ -337,8 +323,9 @@ test("restarting during a draft needs a confirmation, and players keep their sea
   await openTab(management, "Logs");
   await expect(management.getByRole("log").getByText(/Draft server is running on port/)).toHaveCount(2);
   await openTab(management, "Draft");
-  await expect(panel(management, "Players").getByRole("listitem")).toHaveText([/Alice\s*Connected/], {
-    timeout: RECONNECT_TIMEOUT,
-  });
-  await expect(host.getByText("Waiting for the host to start the draft...")).toBeVisible();
+  await expect(panel(management, "Drafts").getByRole("listitem").filter({ hasText: /^Alice/ })).toHaveText(
+    /Alice\s*Connected/,
+    { timeout: RECONNECT_TIMEOUT },
+  );
+  await expect(host.getByRole("button", { name: /^Waiting for players/ })).toBeVisible();
 });

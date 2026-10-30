@@ -6,6 +6,7 @@ import { withOccurrenceKeys } from "../occurrenceKeys.js";
 import { buildDraftPilesKey, getStoredDraftPiles, storeDraftPiles } from "../pileStorage.js";
 import { CardImage } from "./CardImage.js";
 import { CardPile } from "./CardPile.js";
+import { CloseDraftButton } from "./DraftControls.js";
 import { HotkeyInfo } from "./HotkeyInfo.js";
 import { WinstonTable } from "./WinstonTable.js";
 
@@ -16,6 +17,8 @@ interface DraftBoardProps {
   /** A Winston draft's pile, when it's my turn to look at one. */
   myPile: Card[] | null;
   myPool: Card[];
+  /** Called once the draft's creator has closed it from here. */
+  onClosed: () => void;
 }
 
 interface Pile {
@@ -31,7 +34,7 @@ const DEFAULT_POOL_PANE_HEIGHT = 280;
 /** How long to wait for the server to acknowledge a pick before letting the player retry. */
 const PICK_ACK_TIMEOUT_MS = 10_000;
 
-export function DraftBoard({ lobbyState, myPlayerId, myPack, myPile, myPool }: DraftBoardProps) {
+export function DraftBoard({ lobbyState, myPlayerId, myPack, myPile, myPool, onClosed }: DraftBoardProps) {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -217,6 +220,11 @@ export function DraftBoard({ lobbyState, myPlayerId, myPack, myPile, myPool }: D
         <div className="pool-pane-header">
           <h2>Your pool ({myPool.length})</h2>
           <HotkeyInfo />
+          {lobbyState.creatorPlayerId === myPlayerId && (
+            <div className="pool-pane-actions">
+              <CloseDraftButton status={lobbyState.status} onClosed={onClosed} />
+            </div>
+          )}
         </div>
         <div className="pile-row">
           {piles.map((pile) => (

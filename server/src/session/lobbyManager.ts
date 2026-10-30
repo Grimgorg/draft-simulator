@@ -16,15 +16,40 @@ import type { RandomSource } from "../setBoosters/boosterSheets.js";
 import { buildSetBooster, findDraftableSet, generateSetPacks, printingSetsFor } from "../setBoosters/setBoosters.js";
 import { loadSnapshot, resetSnapshotStoreForTests, saveSnapshot } from "./snapshotStore.js";
 
+/**
+ * How many drafts may wait for players or be drafted at once. Each one imports a cube, so a stray loop of
+ * create clicks can't keep a host's server importing forever. Finished drafts don't count.
+ */
+export const MAX_OPEN_DRAFTS = 10;
+/** How long a finished draft stays, for deck building, before it's removed. */
+export const FINISHED_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
+
 interface CubeMeta {
   cubeName: string;
   cardCount: number;
   unresolvedCardNames: string[];
 }
 
-interface LobbyManagerState {
-  session?: DraftSession;
+/** One draft on the server. Its id is `session.id`. */
+export interface DraftEntry {
+  session: DraftSession;
   cardPool: Card[];
+  cubeMeta: CubeMeta;
+  /** Milliseconds since the epoch. */
+  createdAt: number;
+  /** When the last pick finished the draft; FINISHED_DRAFT_TTL_MS later it's removed. */
+  completedAt?: number;
+}
+
+interface LobbyManagerState {
+  /** Oldest first. */
+  drafts: DraftEntry[];
+}
+
+/** The snapshot from before a server held more than one draft: one session, or none. */
+interface SingleDraftSnapshot {
+  session?: DraftSession;
+  cardPool?: Card[];
   cubeMeta?: CubeMeta;
 }
 
@@ -34,14 +59,39 @@ let state: LobbyManagerState | undefined;
 
 function getState(): LobbyManagerState {
   if (!state) {
-    state = (loadSnapshot() as LobbyManagerState | undefined) ?? { cardPool: [] };
+    state = fromSnapshot(loadSnapshot());
   }
   return state;
 }
 
+/**
+ * Reads either snapshot shape. A server updated in the middle of a draft saved the single-draft shape, and its
+ * players are waiting to reconnect to that draft.
+ */
+function fromSnapshot(saved: unknown): LobbyManagerState {
+  if (saved && typeof saved === "object" && Array.isArray((saved as LobbyManagerState).drafts)) {
+    return saved as LobbyManagerState;
+  }
+  const { session, cardPool, cubeMeta } = (saved ?? {}) as SingleDraftSnapshot;
+  if (!session || !cubeMeta) return { drafts: [] };
+  const now = Date.now();
+  return {
+    drafts: [
+      {
+        session,
+        cardPool: cardPool ?? [],
+        cubeMeta,
+        createdAt: now,
+        // Its real end isn't known: give its players the full time to finish their decks.
+        ...(session.status === "complete" ? { completedAt: now } : {}),
+      },
+    ],
+  };
+}
+
 const stateChangeListeners = new Set<() => void>();
 
-/** Calls `listener` after every change to the lobby or draft; returns a function that stops it. */
+/** Calls `listener` after every change to any draft; returns a function that stops it. */
 export function onStateChange(listener: () => void): () => void {
   stateChangeListeners.add(listener);
   return () => stateChangeListeners.delete(listener);
@@ -64,7 +114,7 @@ function persist(): void {
 /** Test-only: forces a clean in-memory state pointed at an isolated snapshot file. */
 export function resetForTests(isolatedSnapshotPath: string): void {
   resetSnapshotStoreForTests(isolatedSnapshotPath);
-  state = { cardPool: [] };
+  state = { drafts: [] };
 }
 
 /** Test-only: drops the in-memory state so the next access reloads the snapshot, as a server restart would. */
@@ -72,36 +122,57 @@ export function reloadFromSnapshotForTests(): void {
   state = undefined;
 }
 
-export function getSession(): DraftSession | undefined {
-  return getState().session;
+/** Every draft, oldest first. */
+export function listDrafts(): readonly DraftEntry[] {
+  return getState().drafts;
 }
 
-export function getCubeMeta(): CubeMeta | undefined {
-  return getState().cubeMeta;
+function findEntry(draftId: string): DraftEntry | undefined {
+  return getState().drafts.find((entry) => entry.session.id === draftId);
 }
 
-/** The current cube draft's cards, for players to look through while they wait. */
-export function getCubeCards(): { cubeName: string; cards: Card[]; unresolvedNames: string[] } {
-  const { session, cardPool, cubeMeta } = getState();
-  if (!session || !cubeMeta) throw new Error("No lobby has been created yet");
+function getEntry(draftId: string): DraftEntry {
+  const entry = findEntry(draftId);
+  if (!entry) throw new Error("This draft doesn't exist anymore");
+  return entry;
+}
+
+export function getSession(draftId: string): DraftSession | undefined {
+  return findEntry(draftId)?.session;
+}
+
+export function getCubeMeta(draftId: string): CubeMeta | undefined {
+  return findEntry(draftId)?.cubeMeta;
+}
+
+/** The player who created the draft: the first one seated, who can't leave it before it starts. */
+export function getCreatorPlayerId(draftId: string): string | undefined {
+  return findEntry(draftId)?.session.players[0]?.id;
+}
+
+/** The cube draft's cards, for players to look through while they wait. */
+export function getCubeCards(draftId: string): { cubeName: string; cards: Card[]; unresolvedNames: string[] } {
+  const { session, cardPool, cubeMeta } = getEntry(draftId);
   if (session.settings.setCode !== undefined) throw new Error("This draft deals from a set's boosters, not a cube");
   return { cubeName: cubeMeta.cubeName, cards: cardPool, unresolvedNames: cubeMeta.unresolvedCardNames };
 }
 
-/** Opens one booster of the current set draft's set, to show what its packs look like. Deals it to no one. */
-export function openSamplePack(random: RandomSource = Math.random): Card[] {
-  const session = getState().session;
-  if (!session) throw new Error("No lobby has been created yet");
-  const { setCode } = session.settings;
+/** Opens one booster of the set draft's set, to show what its packs look like. Deals it to no one. */
+export function openSamplePack(draftId: string, random: RandomSource = Math.random): Card[] {
+  const { setCode } = getEntry(draftId).session.settings;
   if (setCode === undefined) throw new Error("This draft deals from a cube, not a set draft's boosters");
   return buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode))).generatePack(random);
 }
 
-function validateNewLobbyInputs(packCount: number, packSize: number): void {
-  const current = getState().session;
-  if (current && current.status !== "complete") {
-    throw new Error("A draft is already in progress or waiting to start on this server");
+function checkOpenDraftLimit(): void {
+  const open = getState().drafts.filter((entry) => entry.session.status !== "complete").length;
+  if (open >= MAX_OPEN_DRAFTS) {
+    throw new Error(`This server already has ${MAX_OPEN_DRAFTS} drafts going. Wait for one to finish.`);
   }
+}
+
+function validateNewLobbyInputs(packCount: number, packSize: number): void {
+  checkOpenDraftLimit();
   if (!Number.isInteger(packCount) || packCount < 1) throw new Error("Need at least 1 pack");
   if (!Number.isInteger(packSize) || packSize < 1) throw new Error("Packs need at least 1 card");
 }
@@ -111,14 +182,23 @@ function formatSetting(format: DraftSettings["format"]): Pick<DraftSettings, "fo
   return format === "winston" ? { format } : {};
 }
 
-/** Opens a lobby with no players yet: everyone, the host included, joins it from the player page. */
+function addDraft(settings: DraftSettings, cardPool: Card[], cubeMeta: CubeMeta): { draftId: string; cubeMeta: CubeMeta } {
+  // Checked again here: other drafts may have been created while a cube was imported.
+  checkOpenDraftLimit();
+  const session = createDraftSession(randomUUID(), settings, []);
+  getState().drafts.push({ session, cardPool, cubeMeta, createdAt: Date.now() });
+  persist();
+  return { draftId: session.id, cubeMeta };
+}
+
+/** Opens a lobby with no players yet. Whoever joins it first is its creator. */
 export async function createLobby(
   cubeIdOrUrl: string,
   packCount: number,
   packSize: number,
   alternatingDraft: boolean,
   format?: DraftSettings["format"]
-): Promise<{ cubeMeta: CubeMeta }> {
+): Promise<{ draftId: string; cubeMeta: CubeMeta }> {
   validateNewLobbyInputs(packCount, packSize);
   if (!cubeIdOrUrl.trim()) throw new Error("Cube URL or ID is required");
   const imported = await importCubeFromCubeCobra(cubeIdOrUrl);
@@ -142,15 +222,8 @@ export function createLobbyFromResolvedCube(
   cards: Card[],
   unresolvedCardNames: string[],
   settings: DraftSettings
-): { cubeMeta: CubeMeta } {
-  const cubeMeta: CubeMeta = { cubeName, cardCount: cards.length, unresolvedCardNames };
-  state = {
-    session: createDraftSession(randomUUID(), settings, []),
-    cardPool: cards,
-    cubeMeta,
-  };
-  persist();
-  return { cubeMeta };
+): { draftId: string; cubeMeta: CubeMeta } {
+  return addDraft(settings, cards, { cubeName, cardCount: cards.length, unresolvedCardNames });
 }
 
 /**
@@ -162,28 +235,19 @@ export function createSetLobby(
   packCount: number,
   alternatingDraft: boolean,
   format?: DraftSettings["format"]
-): { cubeMeta: CubeMeta } {
+): { draftId: string; cubeMeta: CubeMeta } {
   const set = findDraftableSet(setCode);
   validateNewLobbyInputs(packCount, set.packSize);
   const booster = buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode)));
-
-  const cubeMeta: CubeMeta = { cubeName: set.name, cardCount: booster.cardCount, unresolvedCardNames: [] };
-  state = {
-    session: createDraftSession(
-      randomUUID(),
-      { ...formatSetting(format), setCode, packCount, packSize: set.packSize, alternatingDraft },
-      []
-    ),
-    cardPool: [],
-    cubeMeta,
-  };
-  persist();
-  return { cubeMeta };
+  return addDraft(
+    { ...formatSetting(format), setCode, packCount, packSize: set.packSize, alternatingDraft },
+    [],
+    { cubeName: set.name, cardCount: booster.cardCount, unresolvedCardNames: [] }
+  );
 }
 
-export function addPlayer(name: string): Player {
-  const session = getState().session;
-  if (!session) throw new Error("No lobby has been created yet");
+export function addPlayer(draftId: string, name: string): Player {
+  const { session } = getEntry(draftId);
   if (session.status !== "lobby") throw new Error("Cannot join: the draft has already started");
   if (!name.trim()) throw new Error("Player name is required");
   if (session.settings.format === "winston" && session.players.length >= WINSTON_PLAYERS) {
@@ -197,23 +261,33 @@ export function addPlayer(name: string): Player {
   return player;
 }
 
-export function setPlayerConnected(playerId: string, connected: boolean): void {
-  const session = getState().session;
-  const player = session?.players.find((p) => p.id === playerId);
+/** Takes a player out of a draft that hasn't started. Its creator closes it instead. */
+export function removePlayer(draftId: string, playerId: string): void {
+  const { session } = getEntry(draftId);
+  if (session.status !== "lobby") throw new Error("Only a draft that hasn't started can be left");
+  if (playerId === getCreatorPlayerId(draftId)) throw new Error("You created this draft: close it instead");
+  const index = session.players.findIndex((p) => p.id === playerId);
+  if (index === -1) throw new Error("No matching player found for this draft");
+  session.players.splice(index, 1);
+  delete session.pools[playerId];
+  persist();
+}
+
+export function setPlayerConnected(draftId: string, playerId: string, connected: boolean): void {
+  const player = findEntry(draftId)?.session.players.find((p) => p.id === playerId);
   if (player) {
     player.connected = connected;
     persist();
   }
 }
 
-export function beginDraft(): DraftSession {
-  const session = getState().session;
-  if (!session) throw new Error("No lobby has been created yet");
+export function beginDraft(draftId: string): DraftSession {
+  const { session, cardPool } = getEntry(draftId);
   const { setCode, packCount, format } = session.settings;
   // A Winston draft opens the same packs as a normal one, then shuffles them into its stack.
   const packQueue =
     setCode === undefined
-      ? generatePacks(getState().cardPool, session.settings, session.players.length)
+      ? generatePacks(cardPool, session.settings, session.players.length)
       : generateSetPacks(
           buildSetBooster(setCode, findSetPrintings(printingSetsFor(setCode))),
           packCount,
@@ -225,33 +299,44 @@ export function beginDraft(): DraftSession {
   return started;
 }
 
-export function cancelDraft(): void {
-  state = { cardPool: [] };
+/** Removes the draft for everyone, whatever its status. */
+export function closeDraft(draftId: string): void {
+  getEntry(draftId);
+  getState().drafts = getState().drafts.filter((entry) => entry.session.id !== draftId);
   persist();
 }
 
-export function pick(playerId: string, scryfallId: string): PickOutcome {
-  const session = getState().session;
-  if (!session) throw new Error("No lobby has been created yet");
-  const outcome = submitPick(session, playerId, scryfallId);
+/** Removes the drafts that finished FINISHED_DRAFT_TTL_MS or longer before `now`, and returns their ids. */
+export function removeExpiredDrafts(now: number = Date.now()): string[] {
+  const expired = getState()
+    .drafts.filter((entry) => entry.completedAt !== undefined && now - entry.completedAt >= FINISHED_DRAFT_TTL_MS)
+    .map((entry) => entry.session.id);
+  if (expired.length > 0) {
+    getState().drafts = getState().drafts.filter((entry) => !expired.includes(entry.session.id));
+    persist();
+  }
+  return expired;
+}
+
+/** Runs one player action on the draft, notes when it finished the draft, and saves. */
+function act<T>(draftId: string, action: (session: DraftSession) => T): T {
+  const entry = getEntry(draftId);
+  const outcome = action(entry.session);
+  if (entry.session.status === "complete" && entry.completedAt === undefined) entry.completedAt = Date.now();
   persist();
   return outcome;
+}
+
+export function pick(draftId: string, playerId: string, scryfallId: string): PickOutcome {
+  return act(draftId, (session) => submitPick(session, playerId, scryfallId));
 }
 
 /** The Winston draft's active player takes the pile they're looking at (`pileIndex`). */
-export function takeWinstonPile(playerId: string, pileIndex: number): WinstonOutcome {
-  const session = getState().session;
-  if (!session) throw new Error("No lobby has been created yet");
-  const outcome = takePile(session, playerId, pileIndex);
-  persist();
-  return outcome;
+export function takeWinstonPile(draftId: string, playerId: string, pileIndex: number): WinstonOutcome {
+  return act(draftId, (session) => takePile(session, playerId, pileIndex));
 }
 
 /** The Winston draft's active player passes the pile they're looking at (`pileIndex`). */
-export function passWinstonPile(playerId: string, pileIndex: number): WinstonOutcome {
-  const session = getState().session;
-  if (!session) throw new Error("No lobby has been created yet");
-  const outcome = passPile(session, playerId, pileIndex);
-  persist();
-  return outcome;
+export function passWinstonPile(draftId: string, playerId: string, pileIndex: number): WinstonOutcome {
+  return act(draftId, (session) => passPile(session, playerId, pileIndex));
 }

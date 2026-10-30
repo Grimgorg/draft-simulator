@@ -1,18 +1,38 @@
 import type { Card } from "./card.js";
-import type { DeckExport, Pack } from "./draft.js";
-import type { LobbyStateView } from "./lobbyView.js";
+import type { DeckExport, DraftSettings, Pack } from "./draft.js";
+import type { DraftSummary, LobbyStateView } from "./lobbyView.js";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 export type ActionResultWithData<T extends Record<string, unknown>> = ({ ok: true } & T) | { ok: false; error: string };
 
+/**
+ * What a player picks for a new draft: a cube, fetched from CubeCobra when the draft is created, or a set
+ * from DRAFTABLE_SETS. A set fixes the pack size, so `packSize` is ignored for one.
+ */
+export type NewDraftSettings = { cubeIdOrUrl?: string; setCode?: string } & Omit<DraftSettings, "cubeId" | "setCode">;
+
 /** Events the client emits to the server. */
 export interface ClientToServerEvents {
+  /** Opens a new draft and seats its creator in it, as `playerName`. Only the creator can start or close it. */
+  "draft:create": (
+    payload: NewDraftSettings & { playerName: string },
+    callback: (result: ActionResultWithData<{ draftId: string; playerId: string }>) => void
+  ) => void;
   "lobby:join": (
-    payload: { playerName: string },
+    payload: { draftId: string; playerName: string },
     callback: (result: ActionResultWithData<{ playerId: string }>) => void
   ) => void;
   /** Re-attaches this socket to an existing player id, e.g. after a page refresh or a network blip. */
-  "lobby:reconnect": (payload: { playerId: string }, callback: (result: ActionResult) => void) => void;
+  "lobby:reconnect": (payload: { draftId: string; playerId: string }, callback: (result: ActionResult) => void) => void;
+  /**
+   * Gives up this browser's seat. Before the draft starts it removes the player, which its creator can't do (they
+   * close it instead); once it's complete the player stays in it, with their pool. Refused while it's drafted.
+   */
+  "lobby:leave": (callback: (result: ActionResult) => void) => void;
+  /** The creator deals the first packs to everyone seated, once at least MIN_PLAYERS are. */
+  "draft:start": (callback: (result: ActionResult) => void) => void;
+  /** The creator ends the draft for everyone and removes it, whatever its status. */
+  "draft:close": (callback: (result: ActionResult) => void) => void;
   "draft:pick": (payload: { scryfallId: string }, callback: (result: ActionResult) => void) => void;
   /**
    * A Winston draft's active player takes the pile they're looking at, or passes it. `pileIndex` is the pile they
@@ -20,20 +40,27 @@ export interface ClientToServerEvents {
    */
   "winston:take": (payload: { pileIndex: number }, callback: (result: ActionResult) => void) => void;
   "winston:pass": (payload: { pileIndex: number }, callback: (result: ActionResult) => void) => void;
-  /** The current cube draft's cards, for players to look through while they wait. Fails for a set draft. */
+  /** The cards of the cube draft this socket is seated in, to look through while waiting. Fails for a set draft. */
   "lobby:cubeCards": (
     callback: (
       result: ActionResultWithData<{ cubeName: string; cards: Card[]; unresolvedNames: string[] }>
     ) => void
   ) => void;
-  /** Opens one booster of the current set draft's set, dealt to no one, to show what its packs look like. */
+  /** Opens one booster of this socket's set draft, dealt to no one, to show what its packs look like. */
   "lobby:samplePack": (callback: (result: ActionResultWithData<{ cards: Card[] }>) => void) => void;
 }
 
 /** Events the server emits to clients. */
 export interface ServerToClientEvents {
-  /** Broadcast to everyone on connect and after every state change. Never carries pack/pick contents. */
+  /** Every draft on the server, newest first. Broadcast to everyone on connect and after every change. */
+  "drafts:list": (drafts: DraftSummary[]) => void;
+  /**
+   * Sent to the players seated in a draft after every change to it, and to a socket once it takes a seat. Never
+   * carries pack/pick contents.
+   */
   "lobby:state": (state: LobbyStateView) => void;
+  /** Sent to the players seated in a draft just after it was closed, by its creator or the host. */
+  "draft:closed": (draftId: string) => void;
   /**
    * Sent privately: this player's current pack (null between rounds) and their pool so far. In a Winston draft,
    * `pile` is the pile the player is looking at, sent only to the active player; `pack` is always null.

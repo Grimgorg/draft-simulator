@@ -1,11 +1,8 @@
 /* The management UI is always dark: one palette, no light theme and no
    prefers-color-scheme query. Builds on the colours in index.css. */
 :root {
-  --panel-bg: #1d1f27;
-  --muted: #7d8590;
   --ok: #3fb27f;
   --busy: #d9a43b;
-  --bad: #e5534b;
   --idle: #6b7280;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 16px;
@@ -77,17 +74,6 @@
   align-items: flex-start;
   gap: 0.6rem;
   margin: 0.75rem 0;
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.danger-button {
-  background: transparent;
-  color: var(--bad);
-  border-color: var(--bad);
 }
 
 .manage-banner {
@@ -264,7 +250,33 @@ code {
   color: var(--text-h);
 }
 
-/* Players */
+/* Drafts and their players */
+
+.manage-drafts {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.manage-draft {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.manage-draft-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.manage-draft .panel-actions {
+  margin-bottom: 0;
+}
 
 .manage-players {
   list-style: none;
@@ -297,114 +309,6 @@ code {
 .tag-active {
   color: var(--busy);
   border-color: var(--busy);
-}
-
-/* New draft */
-
-.create-draft-modal {
-  max-width: 34rem;
-  overflow-y: auto;
-}
-
-.create-draft-modal .form {
-  max-width: none;
-  margin-top: 1rem;
-}
-
-.create-draft-modal h3 {
-  margin: 0;
-  font-size: 1rem;
-  color: var(--text-h);
-}
-
-.draft-type-choice {
-  display: flex;
-  justify-content: center;
-  gap: 1.5rem;
-  margin: 1.5rem 0 0.5rem;
-}
-
-.draft-type-option {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--text-h);
-}
-
-.draft-type-button {
-  display: grid;
-  place-items: center;
-  width: 10rem;
-  height: 10rem;
-  padding: 0;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.draft-type-button:hover,
-.draft-type-button:focus-visible {
-  border-color: var(--accent, #6a4cff);
-  outline: none;
-  box-shadow: 0 0 0 2px var(--accent, #6a4cff);
-}
-
-/* Runs to the dialog's edges: the negative margins undo .modal's 1.5rem padding. */
-.modal-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-  margin: 1.25rem -1.5rem -1.5rem;
-  padding: 0.85rem 1.5rem;
-  background: var(--panel-bg);
-  border-top: 1px solid var(--border);
-  border-radius: 0 0 10px 10px;
-}
-
-/* The form already spaces its children by 1rem. */
-.create-draft-modal .form .modal-footer {
-  margin-top: 0.25rem;
-}
-
-.modal-footer-end {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  margin-left: auto;
-}
-
-.modal-footer button {
-  padding: 0.45rem 0.95rem;
-}
-
-.secondary-button {
-  background: transparent;
-  color: var(--text-h);
-}
-
-.secondary-button:hover:not(:disabled),
-.secondary-button:focus-visible {
-  border-color: var(--text);
-  outline: none;
-}
-
-.draft-format-hint {
-  text-align: center;
-  margin: 0.5rem 0 0;
-}
-
-@media (max-width: 420px) {
-  .draft-type-button {
-    width: 8rem;
-    height: 8rem;
-  }
-
-  /* Room for Back, Cancel and Start draft on one line. */
-  .modal-footer {
-    padding-inline: 1rem;
-  }
 }
 
 /* Settings */

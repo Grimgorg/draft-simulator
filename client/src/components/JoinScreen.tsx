@@ -1,14 +1,15 @@
 import { useState } from "react";
-import type { LobbyStateView } from "@draft-simulator/shared";
+import type { DraftSummary } from "@draft-simulator/shared";
+import type { StoredSeat } from "../playerIdentity.js";
 import { socket } from "../socket.js";
 
 interface JoinScreenProps {
-  lobbyState: LobbyStateView;
-  onJoined: (playerId: string) => void;
+  draft: DraftSummary;
+  onJoined: (seat: StoredSeat) => void;
 }
 
 /** The "new player" form, embedded inside RejoinScreen whenever the lobby still has an open seat. */
-export function JoinScreen({ lobbyState, onJoined }: JoinScreenProps) {
+export function JoinScreen({ draft, onJoined }: JoinScreenProps) {
   const [playerName, setPlayerName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -18,10 +19,10 @@ export function JoinScreen({ lobbyState, onJoined }: JoinScreenProps) {
     setSubmitting(true);
     setError(null);
 
-    socket.emit("lobby:join", { playerName }, (result) => {
+    socket.emit("lobby:join", { draftId: draft.draftId, playerName }, (result) => {
       setSubmitting(false);
       if (result.ok) {
-        onJoined(result.playerId);
+        onJoined({ draftId: draft.draftId, playerId: result.playerId });
       } else {
         setError(result.error);
       }
@@ -32,7 +33,7 @@ export function JoinScreen({ lobbyState, onJoined }: JoinScreenProps) {
     <>
       <h2>Join as a new player</h2>
       <p className="subtitle">
-        {lobbyState.players.length} joined
+        {draft.players.length} joined
       </p>
       <form className="form" onSubmit={handleSubmit}>
         <label>
