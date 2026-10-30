@@ -68,13 +68,29 @@ async function serveImage(res: Response, lookupSourceUri: () => string | undefin
   }
 }
 
+// Scryfall ids are UUIDs. The id becomes part of a file path, and Express decodes "%2F" in route params, so
+// "/images/..%2F..%2Fphoto" once served any .jpg the server could read: only a UUID may reach the disk.
+const SCRYFALL_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isScryfallId(id: string | undefined): id is string {
+  return id !== undefined && SCRYFALL_ID_PATTERN.test(id);
+}
+
 export async function serveCardImage(req: Request, res: Response): Promise<void> {
   const { scryfallId } = req.params;
-  await serveImage(res, () => getSourceImageUri(scryfallId!), scryfallId!);
+  if (!isScryfallId(scryfallId)) {
+    res.status(404).json({ error: "Unknown card" });
+    return;
+  }
+  await serveImage(res, () => getSourceImageUri(scryfallId), scryfallId);
 }
 
 /** Serves the back face of a double-faced card; 404s for single-faced cards. */
 export async function serveCardBackImage(req: Request, res: Response): Promise<void> {
   const { scryfallId } = req.params;
-  await serveImage(res, () => getBackImageUri(scryfallId!), `${scryfallId}_back`);
+  if (!isScryfallId(scryfallId)) {
+    res.status(404).json({ error: "Unknown card" });
+    return;
+  }
+  await serveImage(res, () => getBackImageUri(scryfallId), `${scryfallId}_back`);
 }
