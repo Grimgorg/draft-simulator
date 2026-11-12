@@ -10,16 +10,8 @@ name: CI
 # manual run (Actions → CI → Run workflow) builds and smoke-tests them without
 # releasing them.
 #
-# dev is the beta channel and runs the same way: a pull request into dev, a
-# push to it and a manual run on it build "Draft Simulator Beta"
-# (tauri.beta.conf.json: its own name, app data folder and update address),
-# and a push to dev publishes it as the prerelease v<X.Y.Z-beta.N>. Installed
-# stable apps never see a beta: they ask for releases/latest, which GitHub
-# never resolves to a prerelease. Beta apps ask the beta-channel release, which
-# only ever holds the latest.json of the newest beta.
-#
-# These checks only block a merge because main's and dev's rulesets
-# ("protect" and "protect-dev", under Settings → Rules) require test, desktop,
+# These checks only block a merge because main's ruleset ("protect", under
+# Settings → Rules) requires test, desktop,
 # audit, version and the four package checks, plus codeql.yml's checks. A job
 # renamed here must be renamed there too, or no pull request can
 # be merged. The jobs that write ask for contents: write. The package jobs
@@ -38,27 +30,24 @@ name: CI
 # tags, so the tag a release creates doesn't start another run.
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
-    branches: [main, dev]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 # A new push cancels an older run on the same branch or pull request (its ref
-# is refs/pull/<n>/merge), except on main and dev, where
+# is refs/pull/<n>/merge), except on main, where
 # that would leave a release half-published. GitHub still keeps only one
 # waiting run per branch: if three merges land during one run, the middle one
 # gets no release of its own, and the next release includes its changes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  # beta for pull requests into dev (base_ref) and for pushes and manual runs
-  # on dev (ref_name); stable for everything else.
-  CHANNEL: ${{ (github.base_ref || github.ref_name) == 'dev' && 'beta' || 'stable' }}
   NODE_VERSION: "24"
   # Collects the Rust crates' licenses for THIRD_PARTY_NOTICES.txt. Pinned, so
   # a new release can't change what the build accepts.
@@ -166,7 +155,7 @@ jobs:
 
   # Fails on known vulnerabilities in the lockfiles, so a pull request can't
   # bring one in and a newly published advisory blocks merging until it's
-  # fixed (Dependabot opens the update into dev). What reaches hosts and
+  # fixed (Dependabot opens the update). What reaches hosts and
   # players (the server, the client, the desktop app's crates) fails on any
   # advisory; build and test tools only on high or critical ones. cargo audit
   # fails on vulnerabilities only: its "unmaintained" warnings are mostly
@@ -193,10 +182,8 @@ jobs:
 
   # Compares against the highest published release, not the previous commit:
   # a merge that forgot the bump must fail even if an older commit had one.
-  # Stable versions are plain X.Y.Z, betas X.Y.Z-beta.N. sort -V only compares
-  # them correctly within one form, so each is compared with its own kind, and
-  # a beta's X.Y.Z with the latest stable release: 1.5.0-beta.1 comes before
-  # 1.5.0, so a beta numbered at or below a stable release would be wrong.
+  # Versions are plain X.Y.Z. The old v*-beta.* prereleases are left out of
+  # the comparison: sort -V would rank 1.5.0-beta.1 above 1.5.0.
   version:
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -214,55 +201,32 @@ jobs:
           version=$(jq -r .version package.json)
 
           # Fetched on its own line so a failed API call fails the step
-          # instead of looking like a repo without releases. Betas add many
-          # releases, so look further back than the newest few.
+          # instead of looking like a repo without releases. The old betas
+          # add many releases, so look further back than the newest few.
           tags=$(gh release list --exclude-drafts --limit 1000 --json tagName --jq '.[].tagName')
-          # The highest release whose tag matches the pattern, without the v.
-          latest_of() { printf '%s\n' "$tags" | grep -E "$1" | sed 's/^v//' | sort -V | tail -n 1 || true; }
-          # Whether $1 is higher than $2.
-          is_higher() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | tail -n 1)" = "$1" ]; }
-          stable=$(latest_of '^v[0-9]+\.[0-9]+\.[0-9]+$')
+          stable=$(printf '%s\n' "$tags" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -V | tail -n 1 || true)
 
-          if [ "$CHANNEL" = "beta" ]; then
-            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
-              echo "::error::The version in package.json (\"$version\") must look like 1.2.3-beta.0 on dev. Start the betas with: npm version preminor --preid beta --no-git-tag-version"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The version in package.json (\"$version\") must look like 1.2.3."
+            exit 1
+          fi
+          if [ -n "$stable" ]; then
+            if [ "$version" = "$stable" ] || [ "$(printf '%s\n%s\n' "$stable" "$version" | sort -V | tail -n 1)" != "$version" ]; then
+              echo "::error::Version $version in package.json is not higher than the latest release v$stable. Bump it with: npm version patch --no-git-tag-version"
               exit 1
             fi
-            if [ -n "$stable" ] && ! is_higher "${version%-beta.*}" "$stable"; then
-              echo "::error::Beta $version comes before the latest release v$stable. Start the next betas with: npm version preminor --preid beta --no-git-tag-version"
-              exit 1
-            fi
-            beta=$(latest_of '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$')
-            if [ -n "$beta" ] && ! is_higher "$version" "$beta"; then
-              echo "::error::Version $version in package.json is not higher than the latest beta v$beta. Bump it with: npm version prerelease --preid beta --no-git-tag-version"
-              exit 1
-            fi
-            echo "Beta $version is higher than the latest release v${stable:-none} and the latest beta v${beta:-none}."
+            echo "Version $version is higher than the latest release v$stable."
           else
-            if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              # A beta version usually means dev is being merged into main.
-              echo "::error::The version in package.json (\"$version\") must look like 1.2.3. From a beta, npm version patch --no-git-tag-version turns 1.2.3-beta.4 into 1.2.3."
-              exit 1
-            fi
-            if [ -n "$stable" ]; then
-              if ! is_higher "$version" "$stable"; then
-                echo "::error::Version $version in package.json is not higher than the latest release v$stable. Bump it with: npm version patch --no-git-tag-version"
-                exit 1
-              fi
-              echo "Version $version is higher than the latest release v$stable."
-            else
-              echo "No release yet; version $version will be the first."
-            fi
+            echo "No release yet; version $version will be the first."
           fi
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
   # Created as a draft so nobody sees a half-filled release; publish-release
   # makes it public once every executable is attached. Publishing it creates
-  # the tag on the merged commit. A beta is a prerelease, which GitHub never
-  # makes the latest release, so stable apps can't update to it.
+  # the tag on the merged commit.
   create-release:
     needs: [test, desktop, audit, version]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -284,9 +248,7 @@ jobs:
             echo "::error::Release $TAG is already published."
             exit 1
           fi
-          channel_flags=()
-          if [ "$CHANNEL" = "beta" ]; then channel_flags=(--prerelease --latest=false); fi
-          gh release create "$TAG" --draft "${channel_flags[@]}" --target "$GITHUB_SHA" --generate-notes
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --generate-notes
 
   package:
     needs: [test, desktop, version, create-release]
@@ -359,7 +321,6 @@ jobs:
       - run: npm run notices --workspace desktop
       # build:exe already put the executable where the desktop app bundles it.
       # tauri.updater.conf.json adds the signed update bundles; only CI has the key.
-      # tauri.beta.conf.json makes it Draft Simulator Beta.
       # On macOS, hdiutil sometimes can't eject the dmg it just built
       # ("couldn't eject disk2 - Resource busy"), which failed the job and left
       # v0.3.17 a draft until someone re-ran it. A re-run passes, so macOS
@@ -375,7 +336,6 @@ jobs:
           for attempt in $(seq "$attempts"); do
             if npm run build --workspace desktop -- \
               --config src-tauri/tauri.bundle.conf.json --config src-tauri/tauri.updater.conf.json \
-              ${{ env.CHANNEL == 'beta' && '--config src-tauri/tauri.beta.conf.json' || '' }} \
               --bundles ${{ matrix.bundles }}; then
               exit 0
             fi
@@ -392,7 +352,7 @@ jobs:
       # at start, while the executable tested above was fine.
       - name: Smoke-test the server inside the app (macOS)
         if: runner.os == 'macOS'
-        run: npm run smoke-test-exe --workspace server -- "desktop/src-tauri/target/release/bundle/macos/${{ env.CHANNEL == 'beta' && 'Draft Simulator Beta' || 'Draft Simulator' }}.app/Contents/MacOS/draft-simulator-server" server/data/cards.sqlite3
+        run: npm run smoke-test-exe --workspace server -- "desktop/src-tauri/target/release/bundle/macos/Draft Simulator.app/Contents/MacOS/draft-simulator-server" server/data/cards.sqlite3
 
       # Renamed to names without spaces or version, like the old downloads.
       # THIRD_PARTY_NOTICES.txt is inside every installer; it's also attached
@@ -443,10 +403,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Installed apps fetch releases/latest/download/latest.json at start
-      # (betas: beta-channel's copy, see the last step). Attached while the
-      # release is still a draft, so it only ever lists files that are
-      # already there.
+      # Installed apps fetch releases/latest/download/latest.json at start.
+      # Attached while the release is still a draft, so it only ever lists
+      # files that are already there.
       - name: Attach latest.json for the updater
         shell: bash
         env:
@@ -523,10 +482,6 @@ jobs:
             echo
             echo "See the [README](https://github.com/$GH_REPO#download-and-run) for installing and the first-start warnings. Installed apps update themselves from most of the other files below."
             echo
-            if [ "$CHANNEL" = "beta" ]; then
-              echo "**This is a beta.** It installs as Draft Simulator Beta, next to the normal app, with its own drafts and settings, and only updates to newer betas. See [Beta versions](https://github.com/$GH_REPO#beta-versions)."
-              echo
-            fi
             echo "$body"
           } > notes.md
           cat notes.md
@@ -538,25 +493,3 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.tag }}
         run: gh release edit "$TAG" --draft=false
-
-      # Installed betas fetch beta-channel's latest.json, so it moves only
-      # once the beta it lists is public. beta-channel must stay a
-      # prerelease: as the latest release, stable apps would install betas.
-      - name: Point beta apps at this beta
-        if: env.CHANNEL == 'beta'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          channel=beta-channel
-          if is_prerelease=$(gh release view "$channel" --json isPrerelease --jq .isPrerelease 2>/dev/null); then
-            if [ "$is_prerelease" != "true" ]; then
-              echo "::error::Release $channel isn't a prerelease, so stable apps could update to a beta. Mark it as a pre-release on GitHub."
-              exit 1
-            fi
-          else
-            gh release create "$channel" --prerelease --latest=false --target "$GITHUB_SHA" --title "Beta channel" \
-              --notes "Holds latest.json for installed betas of Draft Simulator, which they check for updates. The betas themselves are the v*-beta.* releases."
-          fi
-          gh release upload "$channel" latest.json --clobber

@@ -2,18 +2,18 @@ name: CodeQL
 
 # Static analysis for security bugs (path traversal, injection and the like)
 # in the TypeScript, the desktop app's Rust and these workflows. A pull request
-# into main or dev is analyzed, and the rulesets "protect" and "protect-dev"
-# require these checks and block merging one that adds an alert of high
-# severity or above (the "code scanning results" rule). Pushes to main and
-# dev give pull requests a baseline to compare against; the weekly run finds
-# what new queries catch in code that hasn't changed. Results are under
-# Security → Code scanning. ci.yml's release doesn't wait for it: a push to
-# main or dev comes from a pull request whose analysis already passed.
+# into main is analyzed, and the ruleset "protect" requires these checks and
+# blocks merging one that adds an alert of high severity or above (the "code
+# scanning results" rule). Pushes to main give pull requests a baseline to
+# compare against; the weekly run finds what new queries catch in code that
+# hasn't changed. Results are under Security → Code scanning. ci.yml's
+# release doesn't wait for it: a push to main comes from a pull request whose
+# analysis already passed.
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
-    branches: [main, dev]
+    branches: [main]
   schedule:
     - cron: "23 4 * * 1"
   workflow_dispatch:
@@ -22,10 +22,10 @@ permissions:
   contents: read
 
 # Like ci.yml: a new push cancels an older run on a pull request, never on
-# main or dev, whose analyses are the baseline pull requests compare against.
+# main, whose analyses are the baseline pull requests compare against.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   codeql:

@@ -37,7 +37,7 @@ At each start, before the server starts, the app checks this repository's latest
 
 ### Beta versions
 
-Releases marked **Pre-release** (versions like `0.4.0-beta.2`) are betas: new features that are still being tried out. The normal app never updates to a beta. A beta installs as a separate app, **Draft Simulator Beta**, next to the normal one, and keeps its own drafts, card database and settings, in a folder ending in `.beta` instead of the one under [Where your data is stored](#where-your-data-is-stored). It checks for newer betas at each start, the same way the normal app checks for releases, and never switches back to the normal app by itself. Both apps use port 4000 by default, so run only one server at a time, or give the beta another port in its management UI.
+There are no more betas. If you installed **Draft Simulator Beta** (a `0.4.0-beta` pre-release), it no longer gets updates: install the normal app and uninstall the beta. The beta's drafts and settings stay in its own folder, ending in `.beta`, and the normal app doesn't use them.
 
 ### First-start warnings
 
