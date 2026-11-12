@@ -27,6 +27,6 @@
     "postject": "^1.0.0-alpha.6",
     "socket.io-client": "^4.8.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^7.0.2"
   }
 }
