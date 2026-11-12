@@ -1,28 +1,28 @@
 import { expect, test } from "../fixtures.js";
-import { joinDraft, NO_DRAFT_MESSAGE, packCards, panel, pickFirstCard, expectPoolSize } from "../helpers.js";
+import {
+  expectPoolSize,
+  joinDraft,
+  NO_DRAFT_MESSAGE,
+  openNewDraftDialog,
+  packCards,
+  pickFirstCard,
+} from "../helpers.js";
 
-test("the host creates a Reality Fracture draft and every player opens a 14-card booster", async ({
-  openManagement,
-  openPlayer,
-}) => {
-  const management = await openManagement();
+test("a player creates a Reality Fracture draft and every player opens a 14-card booster", async ({ openPlayer }) => {
   const host = await openPlayer();
   await expect(host.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
 
-  await management.getByRole("button", { name: "Create draft" }).click();
-  const dialog = management.getByRole("dialog", { name: "New draft" });
-  await dialog.getByRole("button", { name: "Normal draft" }).click();
-  await dialog.getByRole("button", { name: "Set draft" }).click();
+  const dialog = await openNewDraftDialog(host, "Normal draft", "Set draft");
   await expect(dialog.getByLabel("Set")).toHaveValue("fra");
   await dialog.getByLabel("Set").selectOption({ label: "Reality Fracture" });
   await expect(dialog.getByLabel("CubeCobra cube URL or ID")).toBeHidden();
   await expect(dialog.getByLabel("Cards per pack")).toBeHidden();
-  await dialog.getByRole("button", { name: "Start draft" }).click();
+  await dialog.getByLabel("Your name").fill("Alice");
+  await dialog.getByRole("button", { name: "Create draft" }).click();
   await expect(dialog).toBeHidden();
-  await expect(panel(management, "Current draft").getByText("Reality Fracture (")).toBeVisible();
-  await expect(panel(management, "Current draft").getByText("3 per player, 14 cards each")).toBeVisible();
+  await expect(host.getByRole("heading", { name: "Reality Fracture" })).toBeVisible();
+  await expect(host.getByText(/3 packs of 14/)).toBeVisible();
 
-  await joinDraft(host, "Alice");
   await host.getByRole("button", { name: "Open a sample pack" }).click();
   const samplePack = host.getByRole("dialog", { name: "Reality Fracture" });
   await expect(samplePack.getByRole("img")).toHaveCount(14);
@@ -33,8 +33,8 @@ test("the host creates a Reality Fracture draft and every player opens a 14-card
   await expect(samplePack).toBeHidden();
 
   const guest = await openPlayer();
-  await joinDraft(guest, "Bob");
-  await management.getByRole("button", { name: "Start picking" }).click();
+  await joinDraft(guest, "Bob", "Reality Fracture");
+  await host.getByRole("button", { name: "Start picking" }).click();
 
   for (const page of [host, guest]) {
     await expect(page.getByRole("heading", { name: "Pack 1 of 3, pick 1" })).toBeVisible();

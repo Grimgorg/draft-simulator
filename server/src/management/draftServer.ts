@@ -2,7 +2,6 @@ import fs from "node:fs";
 import { createServer, type Server as HttpServer } from "node:http";
 import path from "node:path";
 import express from "express";
-import cors from "cors";
 import { Server } from "socket.io";
 import type {
   ActionResult,
@@ -17,6 +16,8 @@ import { serveEmbeddedClient } from "../packaged/embeddedClient.js";
 import { isPackaged, resolveClientDist } from "../packaged/seaRuntime.js";
 import { requireLobbyPassword } from "../realtime/lobbyPassword.js";
 import { registerSocketHandlers } from "../realtime/socketHandlers.js";
+import { isAllowedPlayerRequest, isViteDevOrigin } from "./requestOrigin.js";
+import { PLAYER_PAGE_POLICY, securityHeaders } from "./securityHeaders.js";
 import { validateSettings } from "./settingsFile.js";
 
 export type DraftIoServer = Server<ClientToServerEvents, ServerToClientEvents>;
@@ -24,8 +25,10 @@ export type DraftIoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 /** The server players connect to: the client, card images and the draft's socket traffic, all on one port. */
 export function createDraftHttpServer(lobbyPassword: string | undefined): { httpServer: HttpServer; io: DraftIoServer } {
   const app = express();
-  app.use(cors());
-  app.use(express.json());
+  // No cors() or JSON body parser: the player page is served from here, so it's same-origin, and it only loads
+  // images over HTTP. Everything else goes through the socket, and no route takes a request body.
+  app.disable("x-powered-by");
+  app.use(securityHeaders(PLAYER_PAGE_POLICY));
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", cardsCached: countCards(), cardsLastImportedAt: getLastImportedAt() ?? null });
@@ -57,8 +60,17 @@ export function createDraftHttpServer(lobbyPassword: string | undefined): { http
   }
 
   const httpServer = createServer(app);
+  // Only when run from source: the packaged server never has Vite's dev server in front of it.
+  const allowViteDevServer = !isPackaged;
   const io: DraftIoServer = new Server(httpServer, {
-    cors: { origin: "*" },
+    allowRequest: (req, callback) => callback(null, isAllowedPlayerRequest(req.headers, allowViteDevServer)),
+    // The player page is same-origin and needs no CORS, except from Vite's port in development.
+    cors: {
+      origin: (origin, callback) => callback(null, origin !== undefined && allowViteDevServer && isViteDevOrigin(origin)),
+    },
+    // Player messages are small: the biggest, draft:create, is a few settings and a name. The 1 MB default let one
+    // socket send far more than any draft needs.
+    maxHttpBufferSize: 64 * 1024,
   });
 
   io.use(requireLobbyPassword(lobbyPassword));

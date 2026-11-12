@@ -1,6 +1,6 @@
 import type { ManagementStateView } from "@draft-simulator/shared";
 import { ConfirmButton } from "../../components/ConfirmButton.js";
-import { isDraftActive } from "../lobbyStatus.js";
+import { isAnyDraftActive } from "../lobbyStatus.js";
 import { managementSocket } from "../managementSocket.js";
 import { useManagementAction } from "../useManagementAction.js";
 
@@ -18,7 +18,7 @@ function describeCardDatabase({ cardCount, lastImportedAt, refreshing }: Managem
 export function ServerPanel({ state }: ServerPanelProps) {
   const { pending, error, run } = useManagementAction();
   const { status, running, error: startError } = state.server;
-  const draftActive = isDraftActive(state.lobby);
+  const draftActive = isAnyDraftActive(state.drafts);
 
   const start = () => run((callback) => managementSocket.emit("manage:startServer", callback));
   const stop = () => run((callback) => managementSocket.emit("manage:stopServer", callback));
@@ -56,7 +56,7 @@ export function ServerPanel({ state }: ServerPanelProps) {
               <ConfirmButton
                 label="Stop server"
                 className="danger-button"
-                confirmMessage="Stop the server? Players are disconnected until you start it again. The draft is kept."
+                confirmMessage="Stop the server? Players are disconnected until you start it again. The drafts are kept."
                 confirmLabel="Stop"
                 disabled={pending}
                 onConfirm={stop}

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { CUBE_ID, expect } from "./fixtures.js";
+import { CUBE_ID, CUBE_NAME, expect } from "./fixtures.js";
 
 // Two players, two packs of two cards each: the 8-card test cube, fully drafted in four picks.
 export const PACKS = 2;
@@ -10,48 +10,70 @@ export const PICKS_PER_PLAYER = PACKS * CARDS_PER_PACK;
 // back after a stop or restart can take that long.
 export const RECONNECT_TIMEOUT = 15_000;
 
-export const NO_DRAFT_MESSAGE = "The host needs to create and start a draft before players can join.";
+export const NO_DRAFT_MESSAGE = "No drafts yet. Create one, then send the link to your friends.";
 
-export async function createDraft(
-  management: Page,
-  cubeId = CUBE_ID,
-  format: "Normal draft" | "Winston draft" = "Normal draft"
-): Promise<void> {
-  await management.getByRole("button", { name: "Create draft" }).click();
-  const dialog = management.getByRole("dialog", { name: "New draft" });
+export type DraftFormat = "Normal draft" | "Winston draft";
+
+/**
+ * Opens the New draft dialog on the player page and picks the format and type. A set draft keeps the set the
+ * dialog offers first.
+ */
+export async function openNewDraftDialog(player: Page, format: DraftFormat, type: "Cube draft" | "Set draft") {
+  await player.getByRole("button", { name: "Create draft" }).click();
+  const dialog = player.getByRole("dialog", { name: "New draft" });
   await dialog.getByRole("button", { name: format }).click();
-  await dialog.getByRole("button", { name: "Cube draft" }).click();
+  await dialog.getByRole("button", { name: type }).click();
+  return dialog;
+}
+
+/** The waiting room only a seated player sees: its creator's start button, or the wait for the creator. */
+async function expectSeated(player: Page): Promise<void> {
+  await expect(
+    player.getByRole("button", { name: /^(Start picking|Waiting for players)/ }).or(
+      player.getByText(/^Waiting for .+ to start the draft...$/)
+    )
+  ).toBeVisible();
+}
+
+/** `player` creates a draft of the test cube from the player page, and is seated in it as `name`. */
+export async function createDraft(
+  player: Page,
+  name: string,
+  cubeId = CUBE_ID,
+  format: DraftFormat = "Normal draft"
+): Promise<void> {
+  const dialog = await openNewDraftDialog(player, format, "Cube draft");
+  await dialog.getByLabel("Your name").fill(name);
   await dialog.getByLabel("CubeCobra cube URL or ID").fill(cubeId);
   await dialog.getByLabel("Packs per player").fill(String(PACKS));
   await dialog.getByLabel("Cards per pack").fill(String(CARDS_PER_PACK));
-  await dialog.getByRole("button", { name: "Start draft" }).click();
+  await dialog.getByRole("button", { name: "Create draft" }).click();
   await expect(dialog).toBeHidden();
+  await expectSeated(player);
 }
 
-export async function joinDraft(player: Page, name: string): Promise<void> {
+/** The draft's entry in the player page's draft list. */
+export function draftListItem(player: Page, cubeName = CUBE_NAME) {
+  return player.getByRole("listitem").filter({ has: player.getByRole("heading", { name: cubeName }) });
+}
+
+/** Opens the draft from the list and joins it as a new player. */
+export async function joinDraft(player: Page, name: string, cubeName = CUBE_NAME): Promise<void> {
+  await draftListItem(player, cubeName).getByRole("button", { name: "Join" }).click();
   await player.getByLabel("Your name").fill(name);
   await player.getByRole("button", { name: "Join draft" }).click();
-  // Only a seated player gets here: the join screen shows the cube's name too.
-  await expect(player.getByText("Waiting for the host to start the draft...")).toBeVisible();
+  await expectSeated(player);
 }
 
-/**
- * The host creates the draft in the management UI, joins it from the player page like the guest does from a
- * second browser, and starts it from the management UI.
- */
-export async function startTwoPlayerDraft(
-  openManagement: () => Promise<Page>,
-  openPlayer: () => Promise<Page>
-): Promise<{ management: Page; host: Page; guest: Page }> {
-  const management = await openManagement();
+/** The host creates the draft from the player page, the guest joins it from a second browser, and the host starts it. */
+export async function startTwoPlayerDraft(openPlayer: () => Promise<Page>): Promise<{ host: Page; guest: Page }> {
   const host = await openPlayer();
   await expect(host.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
-  await createDraft(management);
-  await joinDraft(host, "Alice");
+  await createDraft(host, "Alice");
   const guest = await openPlayer();
   await joinDraft(guest, "Bob");
-  await management.getByRole("button", { name: "Start picking" }).click();
-  return { management, host, guest };
+  await host.getByRole("button", { name: "Start picking" }).click();
+  return { host, guest };
 }
 
 /** A management UI section, found by its heading. */

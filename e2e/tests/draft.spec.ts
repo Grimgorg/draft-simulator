@@ -2,17 +2,55 @@ import type { Page } from "@playwright/test";
 import { CUBE_CARDS, CUBE_NAME, expect, test } from "../fixtures.js";
 import {
   CARDS_PER_PACK,
-  NO_DRAFT_MESSAGE,
   PACKS,
   PICKS_PER_PLAYER,
   createDraft,
   draftWholeCube,
   expectPoolSize,
+  draftListItem,
   joinDraft,
   packCards,
   pickFirstCard,
   startTwoPlayerDraft,
 } from "../helpers.js";
+
+test("two drafts run at once, each players' own, and a finished one stays listed until its creator closes it", async ({
+  openPlayer,
+}) => {
+  const { host, guest } = await startTwoPlayerDraft(openPlayer);
+  const otherHost = await openPlayer();
+  // The running draft is listed, and can't be joined as a new player any more.
+  await expect(draftListItem(otherHost)).toContainText("Drafting");
+  await expect(draftListItem(otherHost)).toContainText("Alice, Bob");
+  await createDraft(otherHost, "Cara");
+  const otherGuest = await openPlayer();
+  await expect(otherGuest.getByRole("listitem").filter({ hasText: "Waiting for players" })).toContainText("Cara");
+  await otherGuest
+    .getByRole("listitem")
+    .filter({ hasText: "Waiting for players" })
+    .getByRole("button", { name: "Join" })
+    .click();
+  await otherGuest.getByLabel("Your name").fill("Dan");
+  await otherGuest.getByRole("button", { name: "Join draft" }).click();
+  await otherHost.getByRole("button", { name: "Start picking" }).click();
+
+  // Each table picks on its own: the first one finishes while the second hasn't picked at all.
+  await expect(otherHost.getByRole("heading", { name: `Pack 1 of ${PACKS}, pick 1` })).toBeVisible();
+  await draftWholeCube(host, guest);
+  await expect(host.getByRole("heading", { name: "Draft complete!" })).toBeVisible();
+  await expect(otherHost.getByRole("heading", { name: `Pack 1 of ${PACKS}, pick 1` })).toBeVisible();
+  await expect(otherGuest.getByRole("heading", { name: "Your pool (0)" })).toBeVisible();
+
+  // Back on the list, the finished draft waits for deck building; only its creator can close it.
+  await guest.getByRole("button", { name: "All drafts" }).click();
+  await expect(draftListItem(guest).filter({ hasText: "Finished" })).toBeVisible();
+  await expect(guest.getByRole("button", { name: "Close draft" })).toHaveCount(0);
+  await host.getByRole("button", { name: "Close draft" }).click();
+  await host.getByRole("button", { name: "Yes, close draft" }).click();
+  await expect(host.getByRole("heading", { name: "Drafts" })).toBeVisible();
+  await expect(draftListItem(guest).filter({ hasText: "Finished" })).toHaveCount(0);
+  await expect(guest.getByRole("listitem").filter({ hasText: "Drafting" })).toContainText("Cara, Dan");
+});
 
 function cardNamesIn(page: Page, selector: string): Promise<string[]> {
   return page.locator(selector).getByRole("img").evaluateAll((imgs) => imgs.map((img) => img.getAttribute("alt")!));
@@ -27,15 +65,12 @@ function poolPiles(page: Page): Promise<string[][]> {
     );
 }
 
-test("a player waiting for the draft to start looks through the cube's cards", async ({
-  openManagement,
-  openPlayer,
-}) => {
-  const management = await openManagement();
+test("a player waiting for the draft to start looks through the cube's cards", async ({ openPlayer }) => {
+  const creator = await openPlayer();
+  await createDraft(creator, "Alice");
   const player = await openPlayer();
-  await expect(player.getByText(NO_DRAFT_MESSAGE)).toBeVisible();
-  await createDraft(management);
-  await joinDraft(player, "Alice");
+  await joinDraft(player, "Bob");
+  await expect(player.getByText("Waiting for Alice to start the draft...")).toBeVisible();
 
   await player.getByRole("button", { name: "Preview cube" }).click();
   const preview = player.getByRole("dialog", { name: CUBE_NAME });
@@ -45,11 +80,8 @@ test("a player waiting for the draft to start looks through the cube's cards", a
   await expect(preview).toBeHidden();
 });
 
-test("host and guest draft the whole cube and each builds a deck from exactly their own picks", async ({
-  openManagement,
-  openPlayer,
-}) => {
-  const { host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
+test("host and guest draft the whole cube and each builds a deck from exactly their own picks", async ({ openPlayer }) => {
+  const { host, guest } = await startTwoPlayerDraft(openPlayer);
   const picks = await draftWholeCube(host, guest);
 
   for (const [page, myPicks] of [
@@ -63,11 +95,8 @@ test("host and guest draft the whole cube and each builds a deck from exactly th
   expect([...picks.host, ...picks.guest].sort()).toEqual([...CUBE_CARDS].sort());
 });
 
-test("a player who refreshes mid-draft gets back the same pack and pool and keeps picking", async ({
-  openManagement,
-  openPlayer,
-}) => {
-  const { host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
+test("a player who refreshes mid-draft gets back the same pack and pool and keeps picking", async ({ openPlayer }) => {
+  const { host, guest } = await startTwoPlayerDraft(openPlayer);
   await pickFirstCard(host);
   await expectPoolSize(host, 1);
   await pickFirstCard(guest);
@@ -96,11 +125,8 @@ test("a player who refreshes mid-draft gets back the same pack and pool and keep
   await expect(host.getByRole("heading", { name: `Pack 2 of ${PACKS}, pick 1` })).toBeVisible();
 });
 
-test("a player stacks pool cards and takes one out of the middle with Ctrl+drag", async ({
-  openManagement,
-  openPlayer,
-}) => {
-  const { host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
+test("a player stacks pool cards and takes one out of the middle with Ctrl+drag", async ({ openPlayer }) => {
+  const { host, guest } = await startTwoPlayerDraft(openPlayer);
   for (let pick = 1; pick <= 3; pick++) {
     await pickFirstCard(host);
     await expectPoolSize(host, pick);
@@ -134,11 +160,8 @@ test("a player stacks pool cards and takes one out of the middle with Ctrl+drag"
   await expect(host.getByRole("tooltip")).toContainText("Ctrl (⌘ on Mac) + drag");
 });
 
-test("the pool wraps into rows instead of scrolling sideways, and a wide window keeps the preview off the cards", async ({
-  openManagement,
-  openPlayer,
-}) => {
-  const { host, guest } = await startTwoPlayerDraft(openManagement, openPlayer);
+test("the pool wraps into rows instead of scrolling sideways, and a wide window keeps the preview off the cards", async ({ openPlayer }) => {
+  const { host, guest } = await startTwoPlayerDraft(openPlayer);
   // Room for two piles a row.
   await host.setViewportSize({ width: 450, height: 900 });
   for (let pick = 1; pick <= 3; pick++) {

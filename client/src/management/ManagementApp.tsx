@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { AppFooter } from "./components/AppFooter.js";
-import { DraftPanel } from "./components/DraftPanel.js";
+import { DraftsPanel } from "./components/DraftsPanel.js";
 import { InvitePanel } from "./components/InvitePanel.js";
 import { LogViewer } from "./components/LogViewer.js";
-import { PlayersPanel } from "./components/PlayersPanel.js";
 import { ServerPanel } from "./components/ServerPanel.js";
 import { SettingsPanel } from "./components/SettingsPanel.js";
 import { StatusBadge } from "./components/StatusBadge.js";
@@ -13,7 +12,7 @@ type Tab = "draft" | "settings" | "logs";
 
 const TAB_LABELS: Record<Tab, string> = { draft: "Draft", settings: "Settings", logs: "Logs" };
 
-/** The host's window onto the server: start and stop it, see who's in the draft, change settings, read the logs. */
+/** The host's window onto the server: start and stop it, see its drafts, change settings, read the logs. */
 export function ManagementApp() {
   const { connected, state, logs } = useManagementConnection();
   const [tab, setTab] = useState<Tab>("draft");
@@ -65,8 +64,7 @@ export function ManagementApp() {
               <InvitePanel state={state} />
             </div>
             <div className="manage-column">
-              <DraftPanel lobby={state.lobby} />
-              <PlayersPanel lobby={state.lobby} playerConnections={state.playerConnections} />
+              <DraftsPanel drafts={state.drafts} playerConnections={state.playerConnections} />
             </div>
           </div>
         )}

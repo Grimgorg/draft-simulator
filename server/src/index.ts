@@ -11,7 +11,7 @@ import { ensureImageDir } from "./images/imageCache.js";
 import { shouldStartDraftServerAtLaunch } from "./management/launchStart.js";
 import { startManagementServer } from "./management/managementServer.js";
 import { readStartupSettings } from "./management/settingsFile.js";
-import { getSession } from "./session/lobbyManager.js";
+import { listDrafts } from "./session/lobbyManager.js";
 import { exitAfterFatalError, resolveEnvFilePath } from "./packaged/seaRuntime.js";
 
 const MANAGEMENT_PORT = Number(process.env.MANAGEMENT_PORT ?? 4001);
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     refreshCardDatabase();
   }
 
-  if (!shouldStartDraftServerAtLaunch(MANAGED, getSession()?.status)) {
+  if (!shouldStartDraftServerAtLaunch(MANAGED, listDrafts().map((entry) => entry.session.status))) {
     console.log("Draft server not started: start it from the management UI.");
     return;
   }

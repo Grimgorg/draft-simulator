@@ -15,9 +15,9 @@ import {
 import { countCards, getLastImportedAt } from "../cardData/cardRepository.js";
 import { serveEmbeddedClient } from "../packaged/embeddedClient.js";
 import { isPackaged, resolveClientDist } from "../packaged/seaRuntime.js";
-import { cancelDraft, createDraft, startDraft } from "../realtime/socketHandlers.js";
+import { closeDraft, releaseSeatAsHost } from "../realtime/socketHandlers.js";
 import * as lobbyManager from "../session/lobbyManager.js";
-import { buildLobbyStateView } from "../session/lobbyStateView.js";
+import { buildDraftSummaries } from "../session/lobbyStateView.js";
 import {
   getDraftServerState,
   getPlayerConnectionCount,
@@ -28,6 +28,8 @@ import {
 import { getLogHistory, onLog } from "./logBuffer.js";
 import { buildManagementStateView, listLanAddresses } from "./managementStateView.js";
 import { openInBrowser } from "./openInBrowser.js";
+import { isLoopbackUrl } from "./requestOrigin.js";
+import { MANAGEMENT_PAGE_POLICY, securityHeaders } from "./securityHeaders.js";
 import { validateSettings, writeSettings } from "./settingsFile.js";
 
 type ManagementIoServer = Server<ManagementClientToServerEvents, ManagementServerToClientEvents>;
@@ -51,16 +53,6 @@ export interface ManagementServer {
   /** Sends the current state to the management UI, for changes it isn't told about otherwise. */
   broadcastState: () => void;
   close: () => Promise<void>;
-}
-
-const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-function isLoopbackUrl(url: string): boolean {
-  try {
-    return LOOPBACK_HOSTNAMES.has(new URL(url).hostname);
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -94,6 +86,8 @@ export async function startManagementServer(options: ManagementServerOptions): P
   }
 
   const app = express();
+  app.disable("x-powered-by");
+  app.use(securityHeaders(MANAGEMENT_PAGE_POLICY));
   app.use((req, res, next) => {
     if (isAllowedManagementRequest(req.headers)) next();
     else res.sendStatus(403);
@@ -143,7 +137,7 @@ export async function startManagementServer(options: ManagementServerOptions): P
         lastImportedAt: getLastImportedAt() ?? null,
         refreshing: options.isCardDatabaseRefreshing(),
       },
-      lobby: buildLobbyStateView(),
+      drafts: buildDraftSummaries(),
     });
   }
 
@@ -213,38 +207,17 @@ export async function startManagementServer(options: ManagementServerOptions): P
       }
     });
 
-    socket.on("manage:createDraft", async (payload, callback) => {
+    socket.on("manage:closeDraft", (draftId, callback) => {
       try {
-        if (payload.format !== undefined && payload.format !== "winston") {
-          throw new Error(`Unknown draft format "${String(payload.format)}"`);
-        }
-        callback(
-          await createDraft({
-            ...(payload.format === "winston" ? { format: "winston" as const } : {}),
-            ...(payload.setCode !== undefined
-              ? { setCode: String(payload.setCode) }
-              : { cubeIdOrUrl: String(payload.cubeIdOrUrl ?? "").trim() }),
-            packCount: Number(payload.packCount),
-            packSize: Number(payload.packSize),
-            alternatingDraft: payload.alternatingDraft === true,
-          }),
-        );
+        callback(closeDraft(String(draftId)));
       } catch (err) {
         callback({ ok: false, error: errorMessage(err) });
       }
     });
 
-    socket.on("manage:startDraft", (callback) => {
+    socket.on("manage:releaseSeat", (payload, callback) => {
       try {
-        callback(startDraft());
-      } catch (err) {
-        callback({ ok: false, error: errorMessage(err) });
-      }
-    });
-
-    socket.on("manage:cancelDraft", (callback) => {
-      try {
-        callback(cancelDraft());
+        callback(releaseSeatAsHost(String(payload?.draftId), String(payload?.playerId)));
       } catch (err) {
         callback({ ok: false, error: errorMessage(err) });
       }

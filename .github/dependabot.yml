@@ -1,0 +1,44 @@
+version: 2
+
+# Weekly update pull requests into main: minor and patch updates grouped into
+# one per ecosystem, majors one each. CI's audit job fails while a known
+# vulnerability is unfixed, so these are also how a new advisory gets fixed.
+#
+# A Dependabot pull request can't pass CI as it is: it doesn't bump the
+# version, and its runs get no repository secrets, so the package jobs can't
+# sign. Before merging one, push a version bump to its branch
+# (npm version patch --no-git-tag-version, see DEVELOPMENT.md): the run that
+# starts is yours, with the secrets.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      npm:
+        update-types: [minor, patch]
+
+  - package-ecosystem: cargo
+    directory: /desktop/src-tauri
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      cargo:
+        update-types: [minor, patch]
+
+  # Keeps the commit SHAs the workflows pin their actions to up to date.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        update-types: [minor, patch]

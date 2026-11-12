@@ -1,5 +1,5 @@
 import os from "node:os";
-import type { LobbyStateView, ManagementStateView, ServerSettings } from "@draft-simulator/shared";
+import type { DraftSummary, ManagementStateView, ServerSettings } from "@draft-simulator/shared";
 import type { DraftServerState } from "./draftServer.js";
 
 export interface ManagementStateInputs {
@@ -9,7 +9,7 @@ export interface ManagementStateInputs {
   lanAddresses: string[];
   playerConnections: number;
   cardDatabase: ManagementStateView["cardDatabase"];
-  lobby: LobbyStateView;
+  drafts: DraftSummary[];
 }
 
 export function buildManagementStateView(inputs: ManagementStateInputs): ManagementStateView {
@@ -25,7 +25,7 @@ export function buildManagementStateView(inputs: ManagementStateInputs): Managem
     lanAddresses: inputs.lanAddresses,
     playerConnections: inputs.playerConnections,
     cardDatabase: inputs.cardDatabase,
-    lobby: inputs.lobby,
+    drafts: inputs.drafts,
   };
 }
 

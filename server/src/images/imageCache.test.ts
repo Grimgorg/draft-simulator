@@ -6,7 +6,13 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import express from "express";
 import { countCards, findCardsByNames, getBackImageUri, getSourceImageUri } from "../cardData/cardRepository.js";
-import { serveCardBackImage, serveCardImage, setImageDirForTests } from "./imageCache.js";
+import {
+  resolveCachedImagePath,
+  serveCardBackImage,
+  serveCardImage,
+  setImageDirForTests,
+  setImageDownloadLimitForTests,
+} from "./imageCache.js";
 
 const realFetch = globalThis.fetch;
 const needsCardCache = {
@@ -74,6 +80,37 @@ test("an unknown card is a 404, without asking Scryfall", async (t) => {
   assert.deepEqual(server.scryfallRequests, []);
 });
 
+test("an id that climbs out of the image dir is a 404, not a file from elsewhere on disk", async (t) => {
+  const parentDir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-simulator-images-parent-"));
+  const imageDir = path.join(parentDir, "images");
+  fs.mkdirSync(imageDir);
+  fs.writeFileSync(path.join(parentDir, "secret.jpg"), "not a card image");
+  fs.writeFileSync(path.join(parentDir, "secret_back.jpg"), "not a card image");
+  const server = await startImageServer(t, undefined, imageDir);
+
+  for (const imagePath of ["/images/..%2Fsecret", "/images/..%2Fsecret/back", "/images/..%5Csecret"]) {
+    const res = await server.get(imagePath);
+    assert.equal(res.status, 404, imagePath);
+    assert.notEqual(res.body, "not a card image", imagePath);
+  }
+  assert.deepEqual(server.scryfallRequests, []);
+});
+
+test("behind the UUID check, a cache key can only name a file directly inside the image dir", () => {
+  const imageDir = fs.mkdtempSync(path.join(os.tmpdir(), "draft-simulator-images-"));
+  setImageDirForTests(imageDir);
+
+  assert.equal(resolveCachedImagePath("abc_back"), path.join(imageDir, "abc_back.jpg"));
+  for (const cacheKey of ["../secret", "..\\secret", "sub/abc", "sub\\abc", "/etc/passwd", "C:\\secret", ""]) {
+    const resolved = resolveCachedImagePath(cacheKey);
+    // "sub\\abc" and "C:\\secret" are plain file names on Linux and macOS, where a backslash isn't a separator.
+    if (resolved !== undefined) assert.equal(path.dirname(resolved), path.resolve(imageDir), cacheKey);
+  }
+  assert.equal(resolveCachedImagePath("../secret"), undefined);
+  assert.equal(resolveCachedImagePath("sub/abc"), undefined);
+  assert.equal(resolveCachedImagePath("/etc/passwd"), undefined);
+});
+
 test("an image is downloaded from Scryfall once, then served from the cache", needsCardCache, async (t) => {
   const server = await startImageServer(t);
   const boltId = cachedCardId("Lightning Bolt");
@@ -130,6 +167,28 @@ test("when Scryfall can't be reached at all, the request is a 502 instead of a c
   });
 
   assert.equal((await server.get(`/images/${cachedCardId("Lightning Bolt")}`)).status, 502);
+});
+
+test("an address can only make the server download so many new images an hour; cached ones are always served", needsCardCache, async (t) => {
+  let time = 0;
+  setImageDownloadLimitForTests(2, () => time);
+  t.after(() => setImageDownloadLimitForTests());
+  const server = await startImageServer(t);
+  const [boltId, delverId, counterspellId] = ["Lightning Bolt", "Delver of Secrets", "Counterspell"].map(cachedCardId);
+
+  assert.equal((await server.get(`/images/${boltId}`)).status, 200);
+  assert.equal((await server.get(`/images/${delverId}`)).status, 200);
+  await waitForCachedFiles(server.imageDir, [`${boltId}.jpg`, `${delverId}.jpg`]);
+
+  const refused = await server.get(`/images/${counterspellId}`);
+  assert.equal(refused.status, 429);
+  assert.equal(server.scryfallRequests.length, 2, "the refused image never reaches Scryfall");
+  assert.equal((await server.get(`/images/${boltId}`)).status, 200, "cached images don't count");
+  // Unknown cards are a 404 as before, not a 429.
+  assert.equal((await server.get("/images/00000000-0000-0000-0000-000000000000")).status, 404);
+
+  time = 60 * 60 * 1000;
+  assert.equal((await server.get(`/images/${counterspellId}`)).status, 200);
 });
 
 test("an image that can't be written to the cache is still served", needsCardCache, async (t) => {

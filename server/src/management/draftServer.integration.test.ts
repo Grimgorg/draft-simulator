@@ -30,13 +30,17 @@ async function freePort(): Promise<number> {
   return port;
 }
 
-/** Resolves once connected, or with the connect error's message (e.g. "invalid_password"). */
-function connect(port: number, password = ""): Promise<{ socket: DraftClientSocket; error?: string }> {
+/**
+ * Resolves once connected, or with the connect error's message (e.g. "invalid_password"). `origin` is sent the way a
+ * browser sends the page's address; without it the client is like a script, which sends none.
+ */
+function connect(port: number, password = "", origin?: string): Promise<{ socket: DraftClientSocket; error?: string }> {
   return new Promise((resolve) => {
     const socket: DraftClientSocket = ioClient(`http://127.0.0.1:${port}`, {
       forceNew: true,
       reconnection: false,
       auth: { password },
+      ...(origin === undefined ? {} : { extraHeaders: { origin } }),
     });
     socket.once("connect", () => resolve({ socket }));
     socket.once("connect_error", (err) => resolve({ socket, error: err.message }));
@@ -71,26 +75,24 @@ test("a started server answers players, and a stopped one doesn't", async (t) =>
 test("stopping keeps the draft: the player is marked disconnected but keeps their seat", async (t) => {
   t.after(ensureStopped);
   lobbyManager.resetForTests(freshSnapshotPath());
-  lobbyManager.createLobbyFromResolvedCube("Test Cube", [testCard("c1"), testCard("c2")], [], {
+  const { draftId } = lobbyManager.createLobbyFromResolvedCube("Test Cube", [testCard("c1"), testCard("c2")], [], {
     cubeId: "test-cube",
     packCount: 1,
     packSize: 1,
     alternatingDraft: true,
   });
-  const host = lobbyManager.addPlayer("Alice");
+  const { player: host, seatToken } = lobbyManager.joinDraft(draftId, "Alice");
   const port = await freePort();
   await startDraftServer({ port, lobbyPassword: "" });
 
   const { socket } = await connect(port);
-  const rejoined = await new Promise<ActionResult>((resolve) =>
-    socket.emit("lobby:reconnect", { playerId: host.id }, resolve),
-  );
-  assert.deepEqual(rejoined, { ok: true });
+  const rejoined = await socket.emitWithAck("lobby:reconnect", { draftId, playerId: host.id, seatToken });
+  assert.deepEqual(rejoined, { ok: true, seatToken });
 
   await stopDraftServer();
   socket.close();
 
-  const session = lobbyManager.getSession()!;
+  const session = lobbyManager.getSession(draftId)!;
   assert.equal(session.status, "lobby");
   assert.deepEqual(
     session.players.map((p) => [p.name, p.connected]),
@@ -164,6 +166,41 @@ test("players can't open the management page", async (t) => {
   await startDraftServer({ port, lobbyPassword: "" });
 
   assert.equal((await fetch(`http://127.0.0.1:${port}/manage.html`)).status, 404);
+});
+
+test("only the player page itself can open a socket: another website's origin is refused", async (t) => {
+  t.after(ensureStopped);
+  lobbyManager.resetForTests(freshSnapshotPath());
+  const port = await freePort();
+  await startDraftServer({ port, lobbyPassword: "" });
+
+  const ownPage = await connect(port, "", `http://127.0.0.1:${port}`);
+  ownPage.socket.close();
+  assert.equal(ownPage.error, undefined);
+
+  for (const origin of ["https://evil.example", `http://127.0.0.1:${port + 1}`]) {
+    const foreign = await connect(port, "", origin);
+    foreign.socket.close();
+    assert.notEqual(foreign.error, undefined, origin);
+  }
+  // Nothing was let in: only the page's own socket ever counted, and it's gone.
+  assert.equal(getPlayerConnectionCount(), 0);
+});
+
+test("every response carries the security headers, and no CORS or framework headers", async (t) => {
+  t.after(ensureStopped);
+  const port = await freePort();
+  await startDraftServer({ port, lobbyPassword: "" });
+
+  for (const route of ["/health", "/images/not-a-card", "/manage.html"]) {
+    const res = await fetch(`http://127.0.0.1:${port}${route}`, { headers: { origin: "https://evil.example" } });
+    assert.match(res.headers.get("content-security-policy") ?? "", /default-src 'self'.*frame-ancestors 'none'/, route);
+    assert.equal(res.headers.get("x-frame-options"), "DENY", route);
+    assert.equal(res.headers.get("x-content-type-options"), "nosniff", route);
+    assert.equal(res.headers.get("referrer-policy"), "no-referrer", route);
+    assert.equal(res.headers.get("access-control-allow-origin"), null, route);
+    assert.equal(res.headers.get("x-powered-by"), null, route);
+  }
 });
 
 test("a port that's taken or not allowed gets a message saying what to do", () => {

@@ -59,7 +59,7 @@ A failed browser test leaves a trace: `npx playwright show-trace test-results/<t
 
 ## Layout
 
-One server process runs **one draft at a time**: a single in-memory `DraftSession`, no rooms, and every socket receives every `lobby:state` broadcast. The process runs two HTTP + Socket.IO servers: the **management server** (127.0.0.1 only, always up) and the **draft server** players use, which the management server starts and stops.
+One server process runs **many drafts at once** (at most `MAX_OPEN_DRAFTS` unfinished): `lobbyManager` keeps them in memory, keyed by draft id (the session's id). Each draft's seated sockets share a Socket.IO room, `draft:<id>`, and only they get its `lobby:state`; every socket gets `drafts:list`. A socket is seated in at most one draft. The process runs two HTTP + Socket.IO servers: the **management server** (127.0.0.1 only, always up) and the **draft server** players use, which the management server starts and stops.
 
 ```
 shared/src/               wire contract: socket event types (events.ts, managementEvents.ts), DraftState, LobbyStateView
@@ -71,8 +71,10 @@ server/src/
   packaged/               executable-only runtime: data dir and .env next to it, embedded client and SQLite addon
   draftEngine/            draft rules: deal, pick, pass packs, advance rounds; winstonDraft (two-player Winston draft,
                           from docs/winston-draft.md)
-  session/                lobbyManager (owns the state), snapshotStore (saves it), outgoing views
-  realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware
+  session/                lobbyManager (owns every draft), snapshotStore (saves them), outgoing views
+  realtime/               socketHandlers (all socket traffic), LOBBY_PASSWORD middleware (10 wrong passwords lock
+                          an address out for 15 minutes)
+  limits/                 windowCounter and clientAddress, for the rate limits (X-Forwarded-For only from loopback)
   cardData/, db/          SQLite cache of Scryfall card data, downloaded on startup: one printing per card (`cards`), and
                           every printing of the sets set drafts open (`set_printings`)
   setBoosters/            set drafts' packs: one booster per set, built from docs/sets/<set>.md (realityFracture)
@@ -82,7 +84,7 @@ server/scripts/           buildExecutable.ts, smokeTestExecutable.ts (run with t
 client/src/
   socket.ts               the one socket connection
   useDraftConnection.ts   all server state + reconnect flow
-  App.tsx                 picks the screen: empty → lobby → drafting → complete
+  App.tsx                 picks the screen: draft list → join → lobby → drafting → complete
   components/             React components
   management/             the management UI (manage.html): its own socket, useManagementConnection, panels
 e2e/                      Playwright tests against the production build
@@ -92,8 +94,10 @@ desktop/                  Tauri app: src-tauri/src/main.rs (starts the server, s
                           splash/ (page shown while it starts), scripts/devServers.ts (dev:desktop's servers), app-icon.svg (source of src-tauri/icons)
 server/data/              runtime data, gitignored: card DB, image cache, draft snapshot
 release/                  built executables, gitignored (as are desktop/src-tauri/{target,gen,binaries})
-.github/workflows/ci.yml  on pull requests into main: tests, clippy, version check, and building and smoke-testing the installers;
-                          pushes to main also release them. main's "protect" ruleset requires these checks by job name
+.github/workflows/ci.yml  on pull requests into main: tests, clippy, dependency audit, version check, and building and
+                          smoke-testing the installers; pushes to main also release them. main's ruleset requires these
+                          checks by job name, and codeql.yml's
+.github/dependabot.yml    weekly update PRs into main; they need a version bump pushed to their branch before they can pass
 ```
 
 ## Conventions
@@ -106,17 +110,20 @@ release/                  built executables, gitignored (as are desktop/src-taur
 - `lobbyManager`: the only holder of session state and the only caller of engine mutators. Saves a snapshot after every change.
 - `socketHandlers`: the only code that emits player socket events. The server, not the client, decides who is picking.
 - `managementServer`: the only code that emits `manage:*` events, and the only caller of `startDraftServer`/`stopDraftServer`. It learns about changes from `lobbyManager.onStateChange`, `onDraftServerChange` and `onLog`.
-  Only the host creates, starts and cancels drafts, from the management UI, through `socketHandlers`' `createDraft`, `startDraft` and `cancelDraft`, which tell the players. Players have no host role: everyone joins with `lobby:join`.
+  Players create drafts (`draft:create`, which seats its creator) and join them (`lobby:join`). A draft's creator is its first player (`getCreatorPlayerId`), the only one who can `draft:start` and `draft:close` it; the server checks. The host can only close drafts and release seats, from the management UI, through `socketHandlers`' `closeDraft` and `releaseSeatAsHost`, which tell their players.
+  **Seat tokens.** Player ids are public (`drafts:list`); taking a seat back (`lobby:reconnect`) needs the seat's token, which `joinDraft` issues to the joining browser only. `lobbyManager` keeps only its SHA-256 (`seatTokenHashes`, also in the snapshot). A seat without one is claimable (`SeatView.claimable`): released by the creator (`lobby:releaseSeat`) or the host, or saved before tokens; claiming it issues a new token. Never send a token to anyone but the browser that owns the seat.
 - `useDraftConnection`: the only client code that listens to player socket events. Components send through the `socket` singleton and get state as props.
 - `useManagementConnection`: the same for the management UI and its `managementSocket` singleton.
 - Dependencies: `server` and `client` use `shared` but **never each other**. `e2e` uses only the browser and HTTP.
 
-**Privacy.** `lobby:state` goes to everyone, so it must never carry packs or pools. `draft:myState` and `draft:complete` go only to the owning player's socket. `manage:state` carries no packs or pools either: the host is a player too.
+**Privacy.** `lobby:state` goes to everyone in a draft and `drafts:list` to everyone connected, so neither may carry packs or pools, and one draft's events never go to another draft's room. `draft:myState` and `draft:complete` go only to the owning player's socket. `manage:state` carries no packs or pools either: the host is a player too.
 
 **Management security.** The management server listens on 127.0.0.1 and refuses any request whose `Host` or `Origin` isn't loopback (`isAllowedManagementRequest`), so websites the host visits can't drive it. Keep both when adding routes.
 
+**Player server security.** Only the player page itself may open a player socket (`isAllowedPlayerRequest` in `management/requestOrigin.ts`, as `allowRequest`): its `Origin` must match `Host` or `X-Forwarded-Host`, or be Vite's dev port on loopback when run from source. Both servers send `securityHeaders` (`management/securityHeaders.ts`); the player page's CSP allows only its own origin, so it must load nothing from elsewhere (card images go through `/images`). The draft server has no `cors()` and no body parser. Limits on what players ask for (`MAX_PACK_COUNT`, `MAX_PACK_SIZE`, `MAX_PLAYERS`, `MAX_PLAYER_NAME_LENGTH` in `shared`) are checked in `lobbyManager`.
+
 **Errors.**
-- Socket handlers report failures through the ack callback (`ActionResult`: `{ok:true,...}` or `{ok:false,error}`). They must never throw, including `disconnect`: one uncaught error ends every player's draft. The same goes for `manage:*` handlers.
+- Socket handlers report failures through the ack callback (`ActionResult`: `{ok:true,...}` or `{ok:false,error}`). They must never throw, including `disconnect`: one uncaught error ends every player's draft. The same goes for `manage:*` handlers. Every client event must take an ack callback: `socket.use` in `registerSocketHandlers` drops packets without one, because calling a missing callback threw and stopped the server.
 - `startDraftServer` and `stopDraftServer` return an `ActionResult` and never throw: a busy port is shown in the management UI, not a reason to exit.
 - `lobbyManager` and `logBuffer` listeners run inside picks and console calls, so their errors are caught and logged.
 - `saveSnapshot()` never throws: the in-memory state is the source of truth, and a failed write retries in the background.
@@ -162,7 +169,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 - When packaged, the data dir and `.env` are in `DRAFT_SIMULATOR_HOME` (the desktop app sets it to the OS app data folder), or next to the executable without it. Never in `server/`.
 
 **Desktop app**
-- The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app, and starts the draft server only to resume an open or running draft (`shouldStartDraftServerAtLaunch`): otherwise the host starts it. Run from source, it always starts.
+- The app finds the management UI by reading the server's `Management UI: <url>` line, and passes `MANAGEMENT_PORT=0`, `DRAFT_SIMULATOR_HOME` and `DRAFT_SIMULATOR_MANAGED=1`. With the last one, the server exits when its stdin closes, so it can't outlive a crashed app, and starts the draft server only to resume an open or running draft (`shouldStartDraftServerAtLaunch`, any of them): otherwise the host starts it. Run from source, it always starts.
 - `tauri.bundle.conf.json` holds the settings that need `build:exe` and `notices` to have run (the sidecar and `desktop/src-tauri/THIRD_PARTY_NOTICES.txt`, which `desktop/scripts/buildNotices.ts` builds from the server's notices plus cargo-about's list of Rust crates). Only `build:desktop` merges it in, so `dev:desktop` and CI's clippy work without the executable.
 - macOS `hardenedRuntime` must stay `false`: Tauri re-signs the bundled server, and with the hardened runtime V8 can't reserve memory for its JIT, so the server crashes at start. CI smoke-tests the server inside the `.app` for this reason.
 - The window shows the bundled start page (`desktop/splash/`), then loads `http://127.0.0.1:<port>`. It has no capabilities:
@@ -187,7 +194,7 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 
 | What | Breaks if changed carelessly |
 |---|---|
-| Snapshot shape (`server/data/draft-session.json`, path set by `DRAFT_SNAPSHOT_PATH`) | resuming a running draft after a server restart |
+| Snapshot shape (`server/data/draft-session.json`, path set by `DRAFT_SNAPSHOT_PATH`): `{ drafts: [...] }`; `fromSnapshot` still reads the old single-draft shape | resuming running drafts after a server restart or an update |
 | Card DB schema (`server/data/cards.sqlite3`) | existing caches. Only additive migrations, in `getDb()` (`db/database.ts`): check `PRAGMA table_info`, then `ALTER TABLE`, or add a table. When existing caches lack the new data, mark them stale (delete `last_imported_at`), and bump CI's card cache key |
 | Socket events (`shared/src/events.ts`, `managementEvents.ts`) | server and client talking. Change both in the same commit |
 | Executable layout (`data/` and `.env` in `DRAFT_SIMULATOR_HOME` or next to the executable, asset names in `buildExecutable.ts`) | hosts' existing data and settings after updating |
@@ -195,10 +202,9 @@ Before restructuring `draftEngine` or `lobbyManager`, add tests for the current 
 | `.env` lines the management UI writes (`PORT`, `LOBBY_PASSWORD` double-quoted) | settings hosts saved in the UI |
 | The `Management UI: <url>` line `index.ts` prints | the desktop app, which reads it to find the UI (`UI_LINE_PREFIX` in `main.rs`) |
 | Release asset names, `latest.json` and its URL, the updater `pubkey` | updating installed apps: they'd find no update, or refuse it |
-| `tauri.beta.conf.json` (beta `identifier`, `beta-channel/latest.json` URL); `beta-channel` staying a prerelease | installed betas' data and updates; as the latest release it would send betas to stable apps |
 | `localStorage` keys (`pileStorage.ts`, `playerIdentity.ts`, `lobbyPassword.ts`) | players' saved identity (their seat), piles, deck state and lobby password |
 
-To reset a stuck draft, delete `server/data/draft-session.json`.
+To reset every draft, delete `server/data/draft-session.json`; to end one, close it in the management UI.
 
 ## Principles
 
@@ -235,10 +241,6 @@ To reset a stuck draft, delete `server/data/draft-session.json`.
 - Commit messages and PR titles follow Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`, `docs:`, `test:`, `refactor:`).
 - Every branch bumps the root `package.json` version (`npm version patch --no-git-tag-version`): each merge into main
   publishes it as a release, and CI fails a version that isn't higher than the latest release.
-- `dev` is the beta channel: branches for it start from `dev`, PR into `dev`, and bump with
-  `npm version prerelease --preid beta --no-git-tag-version` (the first beta after a release: `preminor`). Each merge
-  publishes a prerelease of "Draft Simulator Beta" (`tauri.beta.conf.json`). DEVELOPMENT.md › *Betas from `dev`* has
-  the release flow, including bringing `main` back into `dev` with a merge commit.
 - PR descriptions follow `.github/pull_request_template.md`.
 - Merge pull requests with a squash commit (`gh pr merge --squash`), the only method main's ruleset allows. The commit
   takes the PR's title and description.
